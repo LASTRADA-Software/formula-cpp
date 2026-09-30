@@ -21,6 +21,18 @@ change is recorded here.
   `Measured`, an `Outcome`, a `checked_evaluate` result, an `Evaluated<Rational>`, a
   `RetryOutcome` and a `RejectionOutcome`, and is empty for an absent number, an error, a verdict
   and an invalid result, so `number_of(checked_evaluate<Q>(...)) == 0.5_r` is a complete check.
+- `describe` of a `ConstraintOutcomeKind`, a `RetryEnd`, a `ValueSource`, an `OutcomeKind` and a
+  `FailureSite`: a lowercase phrase with no trailing punctuation, as `describe` of an
+  `ArithmeticError` already gave -- `satisfied`, `not checked`, `manually entered`, `verdict`,
+  `result element`.
+
+### Changed
+
+- An unqualified call of `describe` with a `ConstraintOutcomeKind`, a `RetryEnd`, a `ValueSource`,
+  an `OutcomeKind` or a `FailureSite` now finds the library's function by argument-dependent
+  lookup. A consumer's own `describe` for one of these enums -- a `describe(ConstraintOutcomeKind)`
+  helper, say -- now makes such a call ambiguous, and has to be renamed or removed, as
+  `examples/constraints.cpp`'s was, or called by a qualified name such as `::describe`.
 
 ## [0.2.0] - 2026-09-30
 

@@ -57,6 +57,23 @@ enum class ConstraintOutcomeKind : std::uint8_t
     Invalid,
 };
 
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(ConstraintOutcomeKind judged) noexcept
+{
+    switch (judged)
+    {
+        case ConstraintOutcomeKind::Satisfied:
+            return "satisfied";
+        case ConstraintOutcomeKind::Violated:
+            return "violated";
+        case ConstraintOutcomeKind::NotChecked:
+            return "not checked";
+        case ConstraintOutcomeKind::Invalid:
+            return "invalid";
+    }
+    return "unknown constraint outcome";
+}
+
 /// What checking a `Constraint` produced.
 ///
 /// **A constraint whose predicate could not be evaluated must never report

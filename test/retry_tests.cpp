@@ -1357,3 +1357,13 @@ TEST_CASE("number_of a retry is the accepted value, and nothing for its verdict"
     STATIC_REQUIRE(formula::number_of(accepted) == rat(57, 5));
     STATIC_REQUIRE(!formula::number_of(*exhausted).has_value());
 }
+
+TEST_CASE("retry ends describe themselves in lowercase words", "[retry]")
+{
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::Accepted) == "accepted");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::Exhausted) == "exhausted");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::NotJudgeable) == "not judgeable");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::NotRecorded) == "not recorded");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::Failed) == "failed");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::ManuallyEntered) == "manually entered");
+}

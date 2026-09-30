@@ -232,3 +232,11 @@ TEST_CASE("constraint set: a not-checked constraint does not suppress a violated
         CHECK(outcomes[1].verdict()->label == std::string_view { "reject the specimen" });
     }
 }
+
+TEST_CASE("constraint outcome kinds describe themselves in lowercase words", "[constraint]")
+{
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::Satisfied) == "satisfied");
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::Violated) == "violated");
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::NotChecked) == "not checked");
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::Invalid) == "invalid");
+}

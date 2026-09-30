@@ -169,3 +169,18 @@ TEST_CASE("number_of: an error is nothing, a success is its number", "[outcome]"
     STATIC_REQUIRE(!formula::number_of(notMeasured).has_value());
     STATIC_REQUIRE(!formula::number_of(refused).has_value());
 }
+
+TEST_CASE("value sources describe themselves in lowercase words", "[outcome]")
+{
+    STATIC_REQUIRE(formula::describe(formula::ValueSource::Derived) == "derived");
+    STATIC_REQUIRE(formula::describe(formula::ValueSource::Measured) == "measured");
+    STATIC_REQUIRE(formula::describe(formula::ValueSource::ManuallyEntered) == "manually entered");
+}
+
+TEST_CASE("outcome kinds describe themselves in lowercase words", "[outcome]")
+{
+    STATIC_REQUIRE(formula::describe(formula::OutcomeKind::Value) == "value");
+    STATIC_REQUIRE(formula::describe(formula::OutcomeKind::Empty) == "empty");
+    STATIC_REQUIRE(formula::describe(formula::OutcomeKind::Verdict) == "verdict");
+    STATIC_REQUIRE(formula::describe(formula::OutcomeKind::Invalid) == "invalid");
+}

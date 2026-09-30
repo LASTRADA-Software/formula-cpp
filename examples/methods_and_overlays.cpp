@@ -216,22 +216,6 @@ inline constexpr auto westRevised = formula::overlay(formula::with_constraints(
 inline constexpr auto western = formula::apply(west, compressiveStrength);
 inline constexpr auto westernRevised = formula::apply(westRevised, western);
 
-[[nodiscard]] std::string_view describe(formula::ConstraintOutcomeKind kind)
-{
-    switch (kind)
-    {
-        case formula::ConstraintOutcomeKind::Satisfied:
-            return "satisfied";
-        case formula::ConstraintOutcomeKind::Violated:
-            return "violated";
-        case formula::ConstraintOutcomeKind::NotChecked:
-            return "not checked";
-        case formula::ConstraintOutcomeKind::Invalid:
-            return "invalid";
-    }
-    return "unknown";
-}
-
 template <std::size_t N>
 void print_outcomes(char const* method, std::array<formula::ConstraintOutcome, N> const& outcomes)
 {

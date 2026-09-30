@@ -42,6 +42,21 @@ enum class ValueSource : std::uint8_t
     ManuallyEntered,
 };
 
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(ValueSource valueSource) noexcept
+{
+    switch (valueSource)
+    {
+        case ValueSource::Derived:
+            return "derived";
+        case ValueSource::Measured:
+            return "measured";
+        case ValueSource::ManuallyEntered:
+            return "manually entered";
+    }
+    return "unknown value source";
+}
+
 /// Which alternative an `Outcome` holds.
 ///
 /// There is deliberately no `Overridden` alternative: an override is the `Value`
@@ -55,6 +70,23 @@ enum class OutcomeKind : std::uint8_t
     Verdict,
     Invalid,
 };
+
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(OutcomeKind held) noexcept
+{
+    switch (held)
+    {
+        case OutcomeKind::Value:
+            return "value";
+        case OutcomeKind::Empty:
+            return "empty";
+        case OutcomeKind::Verdict:
+            return "verdict";
+        case OutcomeKind::Invalid:
+            return "invalid";
+    }
+    return "unknown outcome kind";
+}
 
 /// A decision rather than a number: "reject the specimen", "repeat the test".
 struct Verdict

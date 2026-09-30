@@ -952,3 +952,9 @@ TEST_CASE("a per-element rounding is a series node carrying its unit, table and 
     STATIC_REQUIRE(Rounding::mode == formula::RoundingMode::Floor);
     STATIC_REQUIRE_FALSE(Rounding::refused);
 }
+
+TEST_CASE("failure sites describe themselves in lowercase words", "[series]")
+{
+    STATIC_REQUIRE(formula::describe(formula::FailureSite::ResultElement) == "result element");
+    STATIC_REQUIRE(formula::describe(formula::FailureSite::InputObservation) == "input observation");
+}

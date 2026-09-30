@@ -109,6 +109,27 @@ enum class RetryEnd : std::uint8_t
     ManuallyEntered,
 };
 
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(RetryEnd ended) noexcept
+{
+    switch (ended)
+    {
+        case RetryEnd::Accepted:
+            return "accepted";
+        case RetryEnd::Exhausted:
+            return "exhausted";
+        case RetryEnd::NotJudgeable:
+            return "not judgeable";
+        case RetryEnd::NotRecorded:
+            return "not recorded";
+        case RetryEnd::Failed:
+            return "failed";
+        case RetryEnd::ManuallyEntered:
+            return "manually entered";
+    }
+    return "unknown retry end";
+}
+
 /// The most attempts a retry may allow. The methods this shape exists for
 /// repeat a step a few times; a larger count is almost always a typo, and 64
 /// attempts of a five-node attempt with a four-node judgement fit one

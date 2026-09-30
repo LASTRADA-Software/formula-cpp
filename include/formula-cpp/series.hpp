@@ -746,6 +746,19 @@ enum class FailureSite : std::uint8_t
     InputObservation,
 };
 
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(FailureSite site) noexcept
+{
+    switch (site)
+    {
+        case FailureSite::ResultElement:
+            return "result element";
+        case FailureSite::InputObservation:
+            return "input observation";
+    }
+    return "unknown failure site";
+}
+
 /// Why a series could not be evaluated, and where.
 struct SeriesFailure
 {

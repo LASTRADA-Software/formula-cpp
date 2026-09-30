@@ -75,22 +75,6 @@ constexpr auto dividesByZero =
                                 formula::Measured<Diameter>::absent());
 }
 
-[[nodiscard]] std::string_view describe(formula::ConstraintOutcomeKind kind)
-{
-    switch (kind)
-    {
-        case formula::ConstraintOutcomeKind::Satisfied:
-            return "satisfied";
-        case formula::ConstraintOutcomeKind::Violated:
-            return "violated";
-        case formula::ConstraintOutcomeKind::NotChecked:
-            return "not checked";
-        case formula::ConstraintOutcomeKind::Invalid:
-            return "invalid";
-    }
-    return "unknown";
-}
-
 // Checks @p subject against @p environment through a fresh RecordingSink and
 // renders the one-step trace it produced -- the same shape
 // examples/rounding_and_conditionals.cpp uses for a Node's own trace, just
