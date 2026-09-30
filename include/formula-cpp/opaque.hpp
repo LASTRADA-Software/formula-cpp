@@ -157,8 +157,10 @@ struct OpaqueCallFailure
     /// Whose failure it is: `Own` or `Propagated`.
     OpaqueFailure origin;
     /// For an input series or curve that failed at one of its own elements,
-    /// that element's ZERO-BASED position, relayed as `detail::relayed_failure`
-    /// relays one (`series.hpp`); empty otherwise.
+    /// or raw observations that failed at one observation, that position,
+    /// ZERO-BASED, relayed as `detail::relayed_failure` relays one
+    /// (`series.hpp`); `site` says which of the two it counts. Empty
+    /// otherwise.
     std::optional<std::size_t> element;
     /// For a relayed failure, how many of the call's inputs after the one
     /// that failed were never evaluated -- the call stops at the first input
@@ -335,8 +337,8 @@ namespace detail
     {
         static_assert(opaque_dimensions_declared<Op>,
                       "formula: this opaque operation's output_dimensions must be a static function taking "
-                      "std::array<Dimension, D> -- one Dimension per single value, series or observations input and two per curve, "
-                      "its points then its values -- and returning std::optional<std::array<Dimension, M>>, with M "
+                      "std::array<Dimension, D> -- one Dimension per single value, series or observations input and "
+                      "two per curve, its points then its values -- and returning std::optional<std::array<Dimension, M>>, with M "
                       "the number of outputs; the operation appears in this diagnostic as the template argument of "
                       "RequireOpaqueOutputDimensionsDeclared");
 

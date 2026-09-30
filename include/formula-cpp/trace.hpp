@@ -1367,12 +1367,12 @@ struct Step
     /// broke no rule of a curve's own -- an operand's, or an overflow.
     CurveBreak curveBreak {};
 
-    /// For a series step that failed at a position: what `failedElement`
-    /// counts, as the evaluation's `SeriesFailure::site` said -- an element of
-    /// the step's own series, or an observation it read (raw observations and
-    /// a binning) and, for an opaque call relaying the failure of raw
-    /// observations, the observation it arose at. Zero-initialises to `ResultElement`, the site of every
-    /// other failure.
+    /// For a step that failed at a position: what `failedElement` counts, as
+    /// the evaluation's `SeriesFailure::site` said. For a series step, an
+    /// element of its own series, or an observation it read (raw observations
+    /// and a binning); for an opaque call relaying the failure of raw
+    /// observations, the observation it arose at. Zero-initialises to
+    /// `ResultElement`, the site of every other failure.
     FailureSite failureSite {};
 
     /// For a binary step (`Add` to `Divide`, `ElementwiseAdd` to

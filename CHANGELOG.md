@@ -252,8 +252,8 @@ may break it, and each such change is recorded here.
 - `OpaqueCallFailure` has a last member, `site` (`FailureSite`, default `FailureSite::ResultElement`), so an
   aggregate initialisation naming the members before it is unchanged. Raw observations that fail to convert at
   observation k relay `site == FailureSite::InputObservation`, and the call's trace line says
-  `[carried up from #1, at observation k]`. `InputShape` has a fourth enumerator, so a consumer's exhaustive
-  `switch` over it warns.
+  `[carried up from #n, at observation k]`. `InputShape` has a fourth enumerator, so a consumer's exhaustive
+  `switch` over it warns under `-Wswitch`.
 - An unqualified call of `fraction_text`, `number_text`, `decimal_text`, `exact_decimal_text`,
   `define`, `calculation` or `worksheet` now also finds the library's function by argument-dependent
   lookup, since each takes an argument of a type in namespace `formula`. A consumer's own function
