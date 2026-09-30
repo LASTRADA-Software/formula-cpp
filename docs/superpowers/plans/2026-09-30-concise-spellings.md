@@ -80,7 +80,7 @@ The 19 programs in `examples/` repeat a few shapes, and those shapes make the li
 These bind every task.
 
 - **C++23, header-only**, no dependency beyond the standard library in `include/`.
-- **Worktree.** All work happens in `D:\formula-cpp\.claude\worktrees\concise-spellings` on `feature/concise-spellings`, branched from master `eb5eed8`. Never touch `D:\formula-cpp` itself or another worktree. Only `STATUS.md`, in the main tree, is written by the controller (see *Status board*).
+- **Worktree.** All work happens in `D:\formula-cpp\.claude\worktrees\concise-spellings` on `feature/concise-spellings`, branched from master `eb5eed8`. Never touch `D:\formula-cpp` itself or another worktree. Only the controller writes outside the worktree, where it keeps local progress notes (see *Execution*).
 - **Verification per task: the Windows compilers only, MSVC `cl` and `clang-cl`** (owner, 2026-09-30, for speed; this replaces the earlier MSVC + g++-14 rule). No WSL build runs during Tasks 1–15. The full suite (all eight presets, g++-14 and clang++ under WSL, Doxygen 1.9.8, `mkdocs build --strict`) runs once, in Task 16, and is driven to green there. Set `$S = C:\Users\c.parpart\AppData\Local\Temp\claude\D--formula-cpp\b0c0e78c-1b2d-4d4c-a792-0760adeb4a03\scratchpad` and `$T = D:\formula-cpp\.claude\worktrees\concise-spellings`.
   - **Verify(`<regex>`)**, the per-task gate, is two commands, and both must print `ALL OK`:
     1. `pwsh -NoProfile -File $S\cl.ps1 -Tree $T -Exclude "^negative\."`: the full cl-debug build, then every test except the negative ones (unit, compile-time, hygiene, example, docs, census).
@@ -113,13 +113,13 @@ These bind every task.
   - every ```` ```cpp ```` block must be consecutive source lines of the example, and every ```` ```text ```` block consecutive lines of its real output;
   - **so a checked guide changes only in the same task as its example** (Tasks 11–15). Library tasks document in Doxygen, in `CHANGELOG.md`, and in the *unchecked* guides named in each task;
   - a refusal quoted in `docs/` must be a header's message verbatim (`hygiene.documented-diagnostic-text`).
-- **No internal labels in public text.** No task, phase, plan, lane or reviewer names in code, docs, commit messages or the PR. Every sentence must make sense to a reader who never saw this plan. Never cite `STATUS.md` or its URL.
+- **No internal labels in public text.** No task, phase, plan, lane or reviewer names in code, docs, commit messages or the PR. Every sentence must make sense to a reader who never saw this plan. Never cite the controller's local progress notes.
 - **No third-party standard content.** Cite only `Example Standard N:YYYY` (`hygiene.no-real-standards`). Fixture values are plainly invented, and a size-like value is not a Renard R40 number (100, 106, 112, … 450, 475, 500, …). Primes such as 103, 127, 139, 163, 197 work.
 - **Do not run clang-format** on existing files; match the surrounding style by hand. A Doxygen `///` comment goes on every new public entity and member.
 - **Printing:** new or touched code prints with `std::print` / `std::println`. No new `printf`, `puts` or iostream anywhere. The one exception is `support/fail_without_dialogs.cpp`, whose CRT-failure handler must neither allocate nor throw.
 - **CHANGELOG.md:** entries go under `## [Unreleased]` (`CHANGELOG.md:7`), in `### Added` / `### Changed` subsections that Task 1 creates, in the task that changes public behaviour.
 - **Commits:** a conventional subject, a body that says why, and the last line exactly `Signed-off-by: Christian Parpart <c.parpart@lastrada.net>`. One commit per task. Every commit builds and passes on its own. Never `--no-verify`, never amend another task's commit.
-- **Status board:** the controller only (see *Execution*). Implementers report to the controller and never edit `STATUS.md`.
+- **Progress notes:** the controller keeps local progress notes (see *Execution*). Implementers report to the controller and never edit them.
 
 ## Review Focus
 
@@ -154,12 +154,8 @@ These are the five inputs most likely to bite a user that no task's happy-path t
 
 ## Execution
 
-- **The controller** (this session) owns the worktree, dispatch, review gates and the status board.
-- **Status board** (`/contour-workflows:status-board`). `STATUS.md` at `D:\formula-cpp` already exists and is excluded (`.git/info/exclude:9`).
-  - In Task 0, archive its finished plan into `.superpowers/status-archive-2026-09-30.md` (`.superpowers/` is git-ignored, `.gitignore:17`).
-  - Replace the plan section with this one: goal, decisions, and a `| Phase | Tasks done | State | Where it is |` table with one row per group (Setup 0; Literals and inputs 1–2; Reading and printing 3–5; Traces 6; Rules stated once 7–8; Bound formulas 9; Printing 10; Examples 11–15; Finish 16).
-  - Then render and publish. There is no remembered URL (`git config --local status-board.url` is unset), so the first publish creates the artifact. Store its URL and give the owner the link once.
-  - **Update and republish at every state change, in the same turn**: dispatched, reported, reviewed, fixed, landed, blocked. Take the stamp from `date`.
+- **The controller** (this session) owns the worktree, dispatch and review gates, and keeps local progress notes.
+- **Progress notes.** The controller keeps local progress notes outside the repository, with one row per group of tasks (Setup 0; Literals and inputs 1–2; Reading and printing 3–5; Traces 6; Rules stated once 7–8; Bound formulas 9; Printing 10; Examples 11–15; Finish 16), and updates them at every state change, in the same turn: dispatched, reported, reviewed, fixed, landed, blocked.
 - **Speed (owner, 2026-09-30: as fast as possible).**
   - Per-task gates run on Windows compilers only (*Global Constraints*).
   - A task's review may run while the next task's implementer starts, when the next task touches none of the reviewed task's files. `CHANGELOG.md`, `test/CMakeLists.txt` and the consumer-globals files are shared, so the implementer appends to them after the review's fixes land. A review fix is then its own commit on top, never an amend.
@@ -168,14 +164,14 @@ These are the five inputs most likely to bite a user that no task's happy-path t
 
 ---
 
-### Task 0: Setup, baseline, board, and the `<print>` probe
+### Task 0: Setup, baseline, progress notes, and the `<print>` probe
 
 **Files:**
 - Create: `docs/superpowers/specs/2026-09-30-concise-spellings-design.md` (the *Design* section, verbatim)
 - Create: `docs/superpowers/plans/2026-09-30-concise-spellings.md` (this file, verbatim)
 - Modify: `examples/simple.cpp` (probe only)
 
-**Interfaces:** Produces the worktree, the scripts in `$S`, both baselines, and the board URL.
+**Interfaces:** Produces the worktree, the scripts in `$S` and both baselines.
 
 - [ ] **Step 1: Create the worktree.** Use `superpowers:using-git-worktrees`: `git -C D:\formula-cpp worktree add .claude/worktrees/concise-spellings -b feature/concise-spellings eb5eed8`.
 - [ ] **Step 2: Copy the scripts.** Copy `cl.ps1`, `gcc14.sh`, `verify.ps1`, `windows-matrix.ps1`, `posix-matrix.sh` and `docs-pages.sh` from `C:\Users\c.parpart\AppData\Local\Temp\claude\D--formula-cpp\6031eb20-da56-4aa2-bb6a-de8c11d53bfc\scratchpad\` into `$S`.
@@ -211,7 +207,7 @@ exit 0
 
   Prove it can fail. Run `neg.ps1 -Filter "rational_from_floating_point"` with that case's expected text temporarily wrong in the build tree's generated `negative/<name>.expect.cmake`. Expected: `TESTS FAILED`. Restore the text; expected: `ALL OK`.
 - [ ] **Step 3: Baseline.** Run `pwsh -NoProfile -File $S\cl.ps1 -Tree $T` (the full cl-debug suite, negatives included) and `neg.ps1 -Filter ".*"` once for clang-cl's negatives. Expected: `ALL OK` from both. Record the cl-debug total.
-- [ ] **Step 4: Board.** Archive, rewrite and publish `STATUS.md` as *Execution* says. Give the owner the link.
+- [ ] **Step 4: Progress notes.** Start the controller's local progress notes for this plan, as *Execution* says.
 - [ ] **Step 5: Probe `<print>` on every CI leg.** Rewrite `examples/simple.cpp`'s output line to use `std::println`, and change nothing else:
 
 ```cpp
@@ -1489,7 +1485,7 @@ This is the first time the non-Windows compilers see the branch; the task's job 
 - [ ] **Step 2a: Whole-branch review.** Dispatch one fresh reviewer, on the most capable model, over `git diff eb5eed8...HEAD`, against this plan's *Design*, *Global Constraints* and *Review Focus*. Run it in parallel with Step 1, since it reads code and builds nothing. Fix what it finds with one commit per finding group, then finish with Step 2's full run.
 - [ ] **Step 3: Measure.** Totals over `examples/`, before (`eb5eed8`) and after: lines, and the counts of `Rational {`, `Measured<`, `measurement().value()`, `%.*s`, `RecordingSink` and local `rat(`.
 - [ ] **Step 4: PR.** Update the draft PR's title and body (`/contour-workflows:update-pr`) with what changed, the before/after counts, and the two *Changed* entries (the ADL rule for `describe`, and the compile-time conversion refusal). Mark it ready once every CI job is green (`/contour-workflows:fix-ci` for any that is not). **Do not merge** without the owner.
-- [ ] **Step 5: Board.** Mark every row landed or done, state what waits for the owner, and republish.
+- [ ] **Step 5: Progress notes.** Mark every row of the progress notes landed or done, and state what waits for the owner.
 
 ---
 
