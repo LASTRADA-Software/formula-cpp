@@ -15,87 +15,64 @@
 // differ on purpose rather than being inconsistent.
 //
 // Every citation here is invented -- generic physics with fictional Example
-// Standard references, exactly as every other example in this repository is.
 
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
-#include <cstdio>
-#include <string>
+#include <print>
 
 namespace
 {
 namespace unit = formula::unit;
 using formula::var;
+using namespace formula::literals;
 
 using Strength = formula::Quantity<struct StrengthTag, "f", "measured compressive strength", unit::Megapascal>;
 using Diameter = formula::Quantity<struct DiameterTag, "d", "measured specimen diameter", unit::Millimetre>;
 
 // "reject the specimen below 27.3 MPa" -- an invented threshold, given an
 // invented citation here.
-constexpr auto minimumStrength =
-    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
-                        formula::Verdict { "reject the specimen" },
-                        formula::Citation { .title = "Minimum compressive strength",
-                                            .reference = "Example Standard 7:2020",
-                                            .section = "5.1" });
+constexpr auto minimumStrength = formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(27.3_r),
+                                                     formula::Verdict { "reject the specimen" },
+                                                     formula::Citation { .title = "Minimum compressive strength",
+                                                                         .reference = "Example Standard 7:2020",
+                                                                         .section = "5.1" });
 
-constexpr auto maximumDiameter =
-    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 139 }),
-                        formula::Verdict { "specimen exceeds diameter tolerance" });
+constexpr auto maximumDiameter = formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(139_r),
+                                                     formula::Verdict { "specimen exceeds diameter tolerance" });
 
 // Divides a measured value by zero while checking, so the predicate can
 // never resolve at all -- Invalid, distinct from NotChecked: this one broke
 // while checking, rather than never having its input measured in the first
 // place.
 constexpr auto dividesByZero =
-    formula::constraint((var<Strength> / formula::number(formula::Rational { 0 }))
-                             > formula::constant<unit::Megapascal>(formula::Rational { 1 }),
+    formula::constraint((var<Strength> / formula::number(0_r)) > formula::constant<unit::Megapascal>(1_r),
                         formula::Verdict { "specimen result is unusable" });
 
-[[nodiscard]] constexpr auto strengthOf(long long megapascals)
-{
-    return formula::environment(formula::Measured<Strength> { formula::Rational { megapascals } });
-}
+constexpr auto strength45 = formula::environment(formula::Measured<Strength> { 45 });
+constexpr auto strength20 = formula::environment(formula::Measured<Strength> { 20 });
+constexpr auto strength0 = formula::environment(formula::Measured<Strength> { 0 });
 
 // Neither quantity measured -- the case this whole example exists to show.
-[[nodiscard]] constexpr auto nothingMeasured()
-{
-    return formula::environment(formula::Measured<Strength>::absent(), formula::Measured<Diameter>::absent());
-}
+constexpr auto nothingMeasured =
+    formula::environment(formula::Measured<Strength>::absent(), formula::Measured<Diameter>::absent());
 
 // Strength measured, diameter never measured -- so checking a set spanning
 // both quantities resolves one and leaves the other not checked.
-[[nodiscard]] constexpr auto strengthOnly(long long megapascals)
-{
-    return formula::environment(formula::Measured<Strength> { formula::Rational { megapascals } },
-                                formula::Measured<Diameter>::absent());
-}
-
-// Checks @p subject against @p environment through a fresh RecordingSink and
-// renders the one-step trace it produced -- the same shape
-// examples/rounding_and_conditionals.cpp uses for a Node's own trace, just
-// built by hand here because Constraint::check takes a sink parameter
-// directly rather than going through explain(), which only accepts a Node.
-template <typename P, typename Env>
-[[nodiscard]] std::string tracedCheck(formula::Constraint<P> const& subject, Env const& environment)
-{
-    formula::Trace<> trace {};
-    formula::RecordingSink<> sink { trace };
-    [[maybe_unused]] auto const outcome = formula::check(subject, environment, sink);
-    return formula::render_trace(trace, { .maxSteps = 5 });
-}
+constexpr auto strength20Only =
+    formula::environment(formula::Measured<Strength> { 20 }, formula::Measured<Diameter>::absent());
 
 } // namespace
 
 int main()
 {
     // ---- 1. A constraint renders as its rule, never its verdict -----------
-    std::printf("rendered: %s\n", formula::render(minimumStrength).c_str());
-    std::printf("rendered (LaTeX): %s\n", formula::render<formula::Dialect::LaTeX>(minimumStrength).c_str());
+    std::println("rendered: {}", formula::render(minimumStrength));
+    std::println("rendered (LaTeX): {}", formula::render<formula::Dialect::LaTeX>(minimumStrength));
 
     // ---- 2. document() walks it for its citation and symbol table ---------
     //
@@ -106,47 +83,26 @@ int main()
     // formula does:
     formula::Documentation const documentation = formula::document(minimumStrength);
     formula::Citation const& citation = documentation.citations.front();
-    std::printf("documented: %s\n", documentation.formula.c_str());
-    std::printf("cited: %.*s, %.*s, %.*s\n",
-                static_cast<int>(citation.title.size()),
-                citation.title.data(),
-                static_cast<int>(citation.reference.size()),
-                citation.reference.data(),
-                static_cast<int>(citation.section.size()),
-                citation.section.data());
+    std::println("documented: {}", documentation.formula);
+    std::println("cited: {}, {}, {}", citation.title, citation.reference, citation.section);
     for (formula::SymbolEntry const& entry: documentation.symbols)
-        std::printf("symbol: %.*s = %.*s [%s]\n",
-                    static_cast<int>(entry.symbol.size()),
-                    entry.symbol.data(),
-                    static_cast<int>(entry.description.size()),
-                    entry.description.data(),
-                    std::string { formula::view(entry.unit.symbolText) }.c_str());
+        std::println("symbol: {} = {} [{}]", entry.symbol, entry.description, entry.unit);
 
     // ---- 3. The four outcomes, checked one at a time -----------------------
-    constexpr auto satisfied = formula::check(minimumStrength, strengthOf(45));
-    constexpr auto violated = formula::check(minimumStrength, strengthOf(20));
-    constexpr auto notChecked = formula::check(minimumStrength, nothingMeasured());
-    constexpr auto invalid = formula::check(dividesByZero, strengthOf(0));
+    constexpr auto satisfied = formula::check(minimumStrength, strength45);
+    constexpr auto violated = formula::check(minimumStrength, strength20);
+    constexpr auto notChecked = formula::check(minimumStrength, nothingMeasured);
+    constexpr auto invalid = formula::check(dividesByZero, strength0);
 
-    std::string_view const satisfiedWord = describe(satisfied.kind());
-    std::string_view const violatedWord = describe(violated.kind());
-    std::string_view const notCheckedWord = describe(notChecked.kind());
-    std::string_view const invalidWord = describe(invalid.kind());
-    std::string_view const violatedVerdict = violated.verdict()->label;
-    std::string_view const invalidReason = formula::describe(*invalid.error());
+    // Each outcome is the one it was built to be, or the build stops here --
+    // before the verdict and the error below are read.
+    static_assert(satisfied.is_satisfied() && violated.is_violated() && violated.verdict().has_value()
+                  && notChecked.is_not_checked() && invalid.is_invalid() && invalid.error().has_value());
 
-    std::printf("45 MPa: %.*s\n", static_cast<int>(satisfiedWord.size()), satisfiedWord.data());
-    std::printf("20 MPa: %.*s (%.*s)\n",
-                static_cast<int>(violatedWord.size()),
-                violatedWord.data(),
-                static_cast<int>(violatedVerdict.size()),
-                violatedVerdict.data());
-    std::printf("no strength measured: %.*s\n", static_cast<int>(notCheckedWord.size()), notCheckedWord.data());
-    std::printf("divides by zero: %.*s (%.*s)\n",
-                static_cast<int>(invalidWord.size()),
-                invalidWord.data(),
-                static_cast<int>(invalidReason.size()),
-                invalidReason.data());
+    std::println("45 MPa: {}", satisfied.kind());
+    std::println("20 MPa: {} ({})", violated.kind(), violated.verdict()->label);
+    std::println("no strength measured: {}", notChecked.kind());
+    std::println("divides by zero: {} ({})", invalid.kind(), *invalid.error());
 
     // The safety property this whole phase exists for, stated as code rather
     // than only as a printed word: an unresolved check is neither satisfied
@@ -154,14 +110,13 @@ int main()
     bool const notCheckedIsHonest = notChecked.is_not_checked() && !notChecked.is_satisfied() && !notChecked.is_violated();
 
     // ---- 4. Each outcome as its own trace step ------------------------------
-    std::string const satisfiedTrace = tracedCheck(minimumStrength, strengthOf(45));
-    std::string const violatedTrace = tracedCheck(minimumStrength, strengthOf(20));
-    std::string const notCheckedTrace = tracedCheck(minimumStrength, nothingMeasured());
-    std::string const invalidTrace = tracedCheck(dividesByZero, strengthOf(0));
-    std::printf("%s", satisfiedTrace.c_str());
-    std::printf("%s", violatedTrace.c_str());
-    std::printf("%s", notCheckedTrace.c_str());
-    std::printf("%s", invalidTrace.c_str());
+    //
+    // explain_check() is check() with a recording sink: the outcome, and the
+    // trace it recorded.
+    std::print("{}", formula::render_trace(formula::explain_check(minimumStrength, strength45).trace, { .maxSteps = 5 }));
+    std::print("{}", formula::render_trace(formula::explain_check(minimumStrength, strength20).trace, { .maxSteps = 5 }));
+    std::print("{}", formula::render_trace(formula::explain_check(minimumStrength, nothingMeasured).trace, { .maxSteps = 5 }));
+    std::print("{}", formula::render_trace(formula::explain_check(dividesByZero, strength0).trace, { .maxSteps = 5 }));
 
     // ---- 5. Checking a SET of constraints never short-circuits -------------
     //
@@ -176,11 +131,9 @@ int main()
     // someone back for a second round of testing they should not have
     // needed.
     constexpr auto setOutcomes =
-        formula::check_all(formula::constraints(minimumStrength, maximumDiameter), strengthOnly(20));
-    std::string_view const setWord0 = describe(setOutcomes[0].kind());
-    std::string_view const setWord1 = describe(setOutcomes[1].kind());
-    std::printf("set[0] (minimumStrength): %.*s\n", static_cast<int>(setWord0.size()), setWord0.data());
-    std::printf("set[1] (maximumDiameter): %.*s\n", static_cast<int>(setWord1.size()), setWord1.data());
+        formula::check_all(formula::constraints(minimumStrength, maximumDiameter), strength20Only);
+    std::println("set[0] (minimumStrength): {}", setOutcomes[0].kind());
+    std::println("set[1] (maximumDiameter): {}", setOutcomes[1].kind());
 
     bool const setCheckedBothWithoutShortCircuit = setOutcomes[0].is_violated() && setOutcomes[1].is_not_checked();
 
@@ -196,6 +149,6 @@ int main()
 
     bool const allChecksPassed = renderedCorrectly && documentedCorrectly && fourOutcomesCorrect
                                  && notCheckedIsHonest && setCheckedBothWithoutShortCircuit;
-    std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

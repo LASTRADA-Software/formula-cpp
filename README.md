@@ -252,9 +252,9 @@ library targets. See [the tracing guide](docs/tracing.md).
 
 ```cpp
 inline constexpr formula::BandTable<3> SizeBands {
-    formula::band(0, 1, 127, 1),   // 0 to under 127 mm
-    formula::band(127, 1, 173, 1), // 127 to under 173 mm
-    formula::band(173, 1, 211, 1), // 173 to under 211 mm -- 211 mm itself is NOT in it
+    formula::band(0, 127),   // 0 to under 127 mm
+    formula::band(127, 173), // 127 to under 173 mm
+    formula::band(173, 211), // 173 to under 211 mm -- 211 mm itself is NOT in it
 };
 ```
 
