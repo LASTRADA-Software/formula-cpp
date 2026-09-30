@@ -129,7 +129,7 @@ inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::num
 // clang-format off
 inline constexpr formula::SampleSizeTable<5> declaredSizes { 3, 4, 5, 6, 8 };
 inline constexpr auto gapLimit = formula::gap_to_range(
-    formula::critical_value<declaredSizes, unit::One>(formula::pass_count, { 900_r, 700_r, 30_r, 45_r, 5_r })
+    formula::critical_value<declaredSizes, unit::One>(formula::pass_count, { 900, 700, 30, 45, 5 })
     * 0.01_r);
 // clang-format on
 
@@ -148,7 +148,7 @@ struct Tag
 inline constexpr auto twoResults =
     formula::environment(formula::Measured<FirstResult> { 40 }, formula::Measured<SecondResult> { 40.905_r });
 
-inline constexpr auto pairMean = (var<FirstResult> + var<SecondResult>) / 2_r;
+inline constexpr auto pairMean = (var<FirstResult> + var<SecondResult>) / 2;
 
 /// The repeatability limit at a level: r = 0.1 g + level / 50. The level is a
 /// placeholder; the precision limit binds it.

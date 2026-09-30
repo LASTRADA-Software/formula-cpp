@@ -177,7 +177,7 @@ inline constexpr auto bill = formula::calculation(
     formula::define<OvenKwh>(var<OvenKw> * var<OvenH>),
     formula::define<HeaterKwh>(var<HeaterKw> * var<HeaterH>),
     formula::define<DailyLoad>(var<FridgeKwh> + var<OvenKwh> + var<HeaterKwh>),
-    formula::define<MonthlyLoad>(var<DailyLoad> * 30_r),
+    formula::define<MonthlyLoad>(var<DailyLoad> * 30),
     formula::define<SelfUsed>(var<Solar> * selfUseShare),
     formula::define<Exported>(var<Solar> - var<SelfUsed>),
     formula::define<NetDraw>(var<MonthlyLoad> - var<SelfUsed>),

@@ -105,7 +105,7 @@ inline constexpr formula::DecimalRounding tenthMpa { unit::Megapascal,
 inline constexpr auto compressiveStrength = formula::method(
     formula::variants(formula::variant<Prism>(var<Force> / (var<EdgeA> * var<EdgeA>)),
                       formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeA> * var<EdgeB>)),
-                      formula::variant<Cylinder>(formula::constant<unit::One>(4_r) * var<Force>
+                      formula::variant<Cylinder>(formula::constant<unit::One>(4) * var<Force>
                                                  / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<tenthMpa>(),
     formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(47.3_r),

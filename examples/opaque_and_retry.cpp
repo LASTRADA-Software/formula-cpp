@@ -149,7 +149,7 @@ using Tolerance = formula::Quantity<struct ToleranceTag, "t_w", "an invented tol
 constexpr auto halving = formula::constant<unit::Gram>(6.08_r) + formula::previous_attempt<Estimate> / 2_r;
 constexpr auto settled = formula::previous_attempt<Estimate> - formula::this_attempt<Estimate>
                          >= formula::constant<unit::Gram>(-0.76_r);
-constexpr auto fromZero = formula::starting_from(formula::constant<unit::Gram>(0_r));
+constexpr auto fromZero = formula::starting_from(formula::constant<unit::Gram>(0));
 constexpr formula::Verdict repeatDetermination { "repeat the determination" };
 constexpr formula::Citation settledCitation { .title = "Settled estimate",
                                               .reference = "Example Standard 12",
@@ -395,7 +395,7 @@ int main()
           "running out is the method's verdict");
 
     constexpr auto withinTolerance = formula::previous_attempt<Estimate> - formula::this_attempt<Estimate>
-                                     >= formula::constant<unit::Gram>(0_r) - var<Tolerance>;
+                                     >= formula::constant<unit::Gram>(0) - var<Tolerance>;
     constexpr auto againstTolerance = estimating<4>(fromZero, halving, withinTolerance);
     constexpr auto noTolerance = formula::environment(formula::Measured<Tolerance>::absent());
     auto const untold = formula::explain_retry(againstTolerance, noTolerance);
@@ -411,7 +411,7 @@ int main()
           "a determination nobody recorded");
 
     constexpr auto dividing =
-        formula::previous_attempt<Estimate> / 2_r + formula::constant<unit::Gram>(1_r) / (formula::attempt_number - 1_r);
+        formula::previous_attempt<Estimate> / 2 + formula::constant<unit::Gram>(1) / (formula::attempt_number - 1);
     constexpr auto failing = estimating<4>(fromZero, dividing, settled);
     auto const divided = formula::explain_retry(failing, formula::environment());
     printEnding("divides by k - 1", divided);

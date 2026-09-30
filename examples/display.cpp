@@ -64,8 +64,8 @@ inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) 
 inline constexpr auto weighings = formula::environment(formula::measured_series<DishWeighing>(4.21_r, 4.23_r, 4.26_r));
 
 inline constexpr formula::Envelope<2> atMostTwelve {
-    formula::LimitRow { formula::unbounded, formula::limit(12_r) },
-    formula::LimitRow { formula::unbounded, formula::limit(12_r) },
+    formula::LimitRow { formula::unbounded, formula::limit(12) },
+    formula::LimitRow { formula::unbounded, formula::limit(12) },
 };
 inline constexpr auto moistureLimit = formula::conformity<unit::Percent>(
     formula::series<MoistureContent, 2>, atMostTwelve, formula::Verdict { "dry the specimen again" });
@@ -75,7 +75,7 @@ inline constexpr auto twoSpecimens =
 
 // ---- 3. The formula's text ---------------------------------------------------------
 // A tare typed as a whole 24 g, to set a formula's text beside a trace's.
-inline constexpr auto wholeTare = var<DryMass> - formula::constant<unit::Gram>(24_r);
+inline constexpr auto wholeTare = var<DryMass> - formula::constant<unit::Gram>(24);
 
 // The dish's mean without a weighing further than a typed 1/30 of the pass's
 // mean from it: a rejection, whose limit a documentation page states.

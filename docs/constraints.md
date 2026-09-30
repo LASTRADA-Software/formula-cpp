@@ -138,7 +138,7 @@ error instead of ever comparing anything:
 
 ```cpp
 constexpr auto dividesByZero =
-    formula::constraint((var<Strength> / formula::number(0_r)) > formula::constant<unit::Megapascal>(1_r),
+    formula::constraint((var<Strength> / formula::number(0)) > formula::constant<unit::Megapascal>(1),
                         formula::Verdict { "specimen result is unusable" });
 ```
 
@@ -280,7 +280,7 @@ Alongside `minimumStrength`, a second, independent constraint over a
 different quantity:
 
 ```cpp
-constexpr auto maximumDiameter = formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(139_r),
+constexpr auto maximumDiameter = formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(139),
                                                      formula::Verdict { "specimen exceeds diameter tolerance" });
 ```
 

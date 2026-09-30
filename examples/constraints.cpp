@@ -43,7 +43,7 @@ constexpr auto minimumStrength = formula::constraint(var<Strength> >= formula::c
                                                                          .reference = "Example Standard 7:2020",
                                                                          .section = "5.1" });
 
-constexpr auto maximumDiameter = formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(139_r),
+constexpr auto maximumDiameter = formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(139),
                                                      formula::Verdict { "specimen exceeds diameter tolerance" });
 
 // Divides a measured value by zero while checking, so the predicate can
@@ -51,7 +51,7 @@ constexpr auto maximumDiameter = formula::constraint(var<Diameter> <= formula::c
 // while checking, rather than never having its input measured in the first
 // place.
 constexpr auto dividesByZero =
-    formula::constraint((var<Strength> / formula::number(0_r)) > formula::constant<unit::Megapascal>(1_r),
+    formula::constraint((var<Strength> / formula::number(0)) > formula::constant<unit::Megapascal>(1),
                         formula::Verdict { "specimen result is unusable" });
 
 constexpr auto strength45 = formula::environment(formula::Measured<Strength> { 45 });

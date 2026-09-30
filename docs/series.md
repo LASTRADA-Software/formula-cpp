@@ -30,7 +30,7 @@ or on a coarser one:
 
 ```cpp
 inline constexpr auto passing = formula::yields<Passing>(
-    formula::constant<unit::Percent>(100_r)
+    formula::constant<unit::Percent>(100)
     - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>) / var<TotalMass>);
 ```
 
@@ -246,11 +246,11 @@ a `Node`: it produces verdicts, not a quantity.
 
 ```cpp
 inline constexpr formula::Envelope<5> gradingEnvelope {
-    formula::LimitRow { formula::limit(31_r), formula::limit(43_r) },
-    formula::LimitRow { formula::limit(47_r), formula::limit(59_r) },
+    formula::LimitRow { formula::limit(31), formula::limit(43) },
+    formula::LimitRow { formula::limit(47), formula::limit(59) },
     formula::LimitRow { formula::limit(62.96_r), formula::unbounded },
-    formula::LimitRow { formula::limit(61_r), formula::limit(79_r) },
-    formula::LimitRow { formula::limit(83_r), formula::limit(99_r) }
+    formula::LimitRow { formula::limit(61), formula::limit(79) },
+    formula::LimitRow { formula::limit(83), formula::limit(99) }
 };
 ```
 

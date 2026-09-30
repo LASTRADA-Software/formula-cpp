@@ -269,7 +269,7 @@ limits could not be exceeded by any sample:
 ```cpp
 inline constexpr formula::SampleSizeTable<5> declaredSizes { 3, 4, 5, 6, 8 };
 inline constexpr auto gapLimit = formula::gap_to_range(
-    formula::critical_value<declaredSizes, unit::One>(formula::pass_count, { 900_r, 700_r, 30_r, 45_r, 5_r })
+    formula::critical_value<declaredSizes, unit::One>(formula::pass_count, { 900, 700, 30, 45, 5 })
     * 0.01_r);
 ```
 

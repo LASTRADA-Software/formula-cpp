@@ -59,7 +59,7 @@ int main()
     //
     // `{:/}` writes a Rational as its fraction; `{}` writes the exact decimal
     // where there is one, and the fraction otherwise.
-    Rational const volumeInLitres = 450_r;
+    Rational const volumeInLitres = 450;
     Rational const volumeInCubicMetres = formula::convert(volumeInLitres, unit::Litre, unit::CubicMetre);
     Rational const volumeBackInLitres = formula::convert(volumeInCubicMetres, unit::CubicMetre, unit::Litre);
 
@@ -72,7 +72,7 @@ int main()
     //
     // Conversion moves a POINT on a scale, not a difference: 100 degC is not
     // 100 K, it is 100 K above the offset between the two scales.
-    Rational const tempInCelsius = 100_r;
+    Rational const tempInCelsius = 100;
     Rational const tempInKelvin = formula::convert(tempInCelsius, unit::Celsius, unit::Kelvin);
     Rational const tempBackInCelsius = formula::convert(tempInKelvin, unit::Kelvin, unit::Celsius);
 
@@ -85,9 +85,9 @@ int main()
     // Celsius meet, so it converts to itself. 100 degF is a number of degrees
     // Celsius that is a fraction, 340/9, not a terminating decimal, and it is
     // kept as that fraction: converting divides by 9 and rounds nothing.
-    Rational const minusFortyInFahrenheit = -40_r;
+    Rational const minusFortyInFahrenheit = -40;
     Rational const minusFortyInCelsius = formula::convert(minusFortyInFahrenheit, unit::Fahrenheit, unit::Celsius);
-    Rational const hundredInFahrenheit = 100_r;
+    Rational const hundredInFahrenheit = 100;
     Rational const hundredFahrenheitInCelsius = formula::convert(hundredInFahrenheit, unit::Fahrenheit, unit::Celsius);
 
     std::println("{} degF = {} degC", minusFortyInFahrenheit, minusFortyInCelsius);
@@ -100,7 +100,7 @@ int main()
     // A watt-hour is the energy of one watt sustained for an hour, 3600
     // joules, and a kilowatt-hour is a thousand of them: the factor is a whole
     // number, so the conversion needs no rounded constant.
-    Rational const oneKilowattHour = 1_r;
+    Rational const oneKilowattHour = 1;
     Rational const kilowattHourInJoules = formula::convert(oneKilowattHour, unit::KilowattHour, unit::Joule);
 
     std::println("{} kWh = {} J", oneKilowattHour, kilowattHourInJoules);
@@ -187,7 +187,7 @@ int main()
                          .symbolText = formula::symbol("JPY"),
                          .decimals = 0 };
 
-    Rational const priceInEuros = 250_r;
+    Rational const priceInEuros = 250;
     Rational const priceInCents = formula::convert(priceInEuros, Euro, EuroCent);
     Rational const priceBackInEuros = formula::convert(priceInCents, EuroCent, Euro);
     std::expected<Rational, formula::ArithmeticError> const priceInYen =

@@ -65,7 +65,7 @@ inline constexpr formula::BreakpointTable<5> screens { formula::breakpoint(103),
 // The percentage passing each screen: everything not retained on it or on a
 // coarser one. `cumulative<FromLast>` runs from the coarsest screen down.
 inline constexpr auto passing = formula::yields<Passing>(
-    formula::constant<unit::Percent>(100_r)
+    formula::constant<unit::Percent>(100)
     - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>) / var<TotalMass>);
 
 // 130, 210, 95, 340 and 28 g retained of 1250 g.
@@ -79,7 +79,7 @@ inline constexpr auto retainedInAll = formula::yields<Retained>(formula::sum(for
 // point between two of them.
 inline constexpr auto grading = formula::curve(formula::domain<unit::Metre, screens>, passing.expression);
 inline constexpr auto passingAt173 =
-    formula::yields<Passing>(formula::interpolate_at(grading, formula::constant<unit::Metre>(173_r)));
+    formula::yields<Passing>(formula::interpolate_at(grading, formula::constant<unit::Metre>(173)));
 
 // ---- 3. Absence: the operations of the table --------------------------------
 //
@@ -98,11 +98,11 @@ inline constexpr auto roundedMasses = formula::rounded_elementwise<wholeGram>(fo
 // specification -- master data, registered per customer -- and never part of
 // a formula.
 inline constexpr formula::Envelope<5> gradingEnvelope {
-    formula::LimitRow { formula::limit(31_r), formula::limit(43_r) },
-    formula::LimitRow { formula::limit(47_r), formula::limit(59_r) },
+    formula::LimitRow { formula::limit(31), formula::limit(43) },
+    formula::LimitRow { formula::limit(47), formula::limit(59) },
     formula::LimitRow { formula::limit(62.96_r), formula::unbounded },
-    formula::LimitRow { formula::limit(61_r), formula::limit(79_r) },
-    formula::LimitRow { formula::limit(83_r), formula::limit(99_r) }
+    formula::LimitRow { formula::limit(61), formula::limit(79) },
+    formula::LimitRow { formula::limit(83), formula::limit(99) }
 };
 inline constexpr auto gradingCheck = formula::conformity<unit::Percent>(passing.expression,
                                                                         gradingEnvelope,
@@ -114,7 +114,7 @@ inline constexpr auto gradingCheck = formula::conformity<unit::Percent>(passing.
 // round, and snapped to the nearest declared screen.
 inline constexpr auto halfPassing =
     formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(formula::interpolate_at(
-        formula::curve(passing.expression, formula::domain<unit::Metre, screens>), formula::constant<unit::Percent>(50_r)));
+        formula::curve(passing.expression, formula::domain<unit::Metre, screens>), formula::constant<unit::Percent>(50)));
 
 // A coarse analysis and a fine one, at invented openings of their own.
 inline constexpr formula::BreakpointTable<3> coarseScreens { formula::breakpoint(103),
@@ -317,7 +317,7 @@ int main()
     std::println("{}", snapTrace);
     check(snapTrace.contains("[127 m to 163 m; nearer 127 m]"), "4733/35 m snaps to 127 m, the nearer");
 
-    auto const midway = formula::constant<unit::Metre>(145_r);
+    auto const midway = formula::constant<unit::Metre>(145);
     std::string const towardLower = last_line(formula::render_trace(
         formula::trace_of<Opening>(formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(midway), analysis),
         { .maxSteps = 80 }));
@@ -326,7 +326,7 @@ int main()
         { .maxSteps = 80 }));
     std::string const beyond = last_line(formula::render_trace(
         formula::trace_of<Opening>(
-            formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(formula::constant<unit::Metre>(251_r)),
+            formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(formula::constant<unit::Metre>(251)),
             analysis),
         { .maxSteps = 80 }));
     std::println("{}\n{}\n{}\n", towardLower, towardHigher, beyond);
