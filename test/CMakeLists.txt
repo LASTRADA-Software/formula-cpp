@@ -52,6 +52,7 @@ add_executable(formula-cpp-tests
     rounding_node_tests.cpp
     rounded_root_tests.cpp
     transcendental_tests.cpp
+    rounded_transcendental_tests.cpp
     critical_value_tests.cpp
     precision_tests.cpp
     predicate_tests.cpp
@@ -964,6 +965,18 @@ formula_add_negative_test(precision_level_offset_unit
 formula_add_negative_test(rounded_sqrt_rep_double
     "formula: a rounding node cannot be evaluated with Rep = double"
     REJECT "formula: this rounded_sqrt names a unit")
+
+# A rounded logarithm or exponential: the plain node's dimension check, once,
+# through the factory and around it; and RepRounding<double>'s own refusal
+# under double, as for every rounding node.
+formula_add_negative_test(rounded_transcendental_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1
+    REJECT "formula: this rounding node names a unit")
+formula_add_negative_test(rounded_transcendental_no_factory_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(rounded_transcendental_rep_double
+    "formula: a rounding node cannot be evaluated with Rep = double"
+    REJECT "formula: the argument of this logarithm or exponential is not dimensionless")
 
 # Same NAME-not-message shape as the exponent and symbol-length sentinels
 # above: there is no static_assert to quote here, only a deleted default

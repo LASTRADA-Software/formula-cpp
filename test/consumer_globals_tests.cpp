@@ -18,7 +18,7 @@
 // evaluation of every node kind -- arithmetic with a bare number on either
 // side, negation, powers and every root, pi, rounding both ways, a rounded
 // square root, a logarithm, a decimal logarithm and an exponential, exactly
-// and in double, a conditional, the escape hatch, the three lookups, a
+// and in double, each rounded exactly to declared places, a conditional, the escape hatch, the three lookups, a
 // critical value, an absolute value and a two-pass precision limit --
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
@@ -187,6 +187,7 @@ int index;
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -526,6 +527,17 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(logarithmic.is_value() && logarithmic.measurement().value() == formula::Rational { 3 });
     probe.checks.push_back(approximateLogarithm.has_value() && approximateLogarithm->has_value()
                            && **approximateLogarithm > 0.69 && **approximateLogarithm < 0.70);
+    // The rounded forms through the kernel: ln 2 to 4 places is 0.6931, log10 2 to 3 is 0.301 and exp 1
+    // to 4 is 2.7183, 3.7124 together.
+    auto const roundedLogarithms = formula::evaluate<Factor>(
+        formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Factor> * formula::Rational { 2 })
+            + formula::rounded_log10<formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(
+                var<Factor> * formula::Rational { 2 })
+            + formula::rounded_exp<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Factor>),
+        specimen);
+    probe.checks.push_back(roundedLogarithms.is_value()
+                           && roundedLogarithms.measurement().value() == formula::Rational { 37124, 10000 });
     pages += formula::render(-var<Force>) + formula::render(formula::pi * var<Force>)
              + formula::render<formula::Dialect::LaTeX>(formula::cbrt(var<Force>));
 

@@ -218,6 +218,16 @@ may break it, and each such change is recorded here.
   They render as `ln(x)`, `log10(x)` and `exp(x)`, in LaTeX as `\ln\left(x\right)`,
   `\log_{10}\left(x\right)` and `\exp\left(x\right)`, and a trace writes each as a step of its own,
   `ln(#1) = ...`.
+- `rounded_ln<Places, Mode>(x)`, `rounded_log10<Places, Mode>(x)` and `rounded_exp<Places, Mode>(x)`, in the
+  new header `rounded_transcendental.hpp` (included by `formula.hpp`), answer the logarithm or exponential of a
+  dimensionless expression rounded to `Places` decimal places under `Mode`: the decimal the true value rounds
+  to, computed with integer arithmetic, so no floating-point mode enters and the same inputs give the same
+  digits at compile time and at run time. Only ln 1, log10 10^k and exp 0 can tie, and the mode breaks the tie
+  as `checked_round` does. `Overflow` answers a result too large for a `Rational` at the declared places,
+  places outside -18 to 18, and the rare rounding the computation cannot decide: one whose value lies within
+  the computation's width -- under 2^-118, relative for the exponential -- of a rounding boundary.
+  Evaluated with `Rep = double`, each is refused at compile time, as `rounded_sqrt` is.
+  `rounded<...>(ln(x))` still means an exact logarithm, which fails where there is none.
 
 ### Changed
 

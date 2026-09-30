@@ -152,6 +152,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
@@ -1671,6 +1672,14 @@ namespace detail
         }
     };
 
+    template <typename Sub, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct ConstantRewrite<Sub, RoundedTranscendentalNode<F, Places, Mode, Operand>>:
+        ConstantRewriteOperand<Sub,
+                               Operand,
+                               RoundedTranscendentalNode<F, Places, Mode, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
     template <typename Sub, Node Operand>
     struct ConstantRewrite<Sub, AbsoluteValueNode<Operand>>:
         ConstantRewriteOperand<Sub, Operand, AbsoluteValueNode<typename ConstantRewriteOf<Sub, Operand>::type>>
@@ -2397,6 +2406,11 @@ namespace detail
 
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
     struct SubstitutedIn<RoundedRootNode<U, Places, Mode, Radicand>>: SubstitutedInOperand<Radicand>
+    {
+    };
+
+    template <Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct SubstitutedIn<RoundedTranscendentalNode<F, Places, Mode, Operand>>: SubstitutedInOperand<Operand>
     {
     };
 

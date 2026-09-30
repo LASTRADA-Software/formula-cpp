@@ -89,6 +89,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rejection.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/retry.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounded_root.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounded_transcendental.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding_node.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/series.hpp"
