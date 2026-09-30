@@ -44,10 +44,10 @@
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
 // opaque operation's output, evaluated exactly and in double, and rounded
-// where it is used, traced, rendered and documented; a least-squares fit; a retry over recorded
-// determinations, evaluated, traced, rendered and documented; and the four
-// table validators; and `record_key`, `sample_id`, `test_id`,
-// `record`, `Record::unbound`, `record_context`, its `this_record`,
+// where it is used, traced, rendered and documented; a least-squares fit; a
+// retry over recorded determinations, evaluated, traced, rendered and
+// documented; and the four table validators; and `record_key`, `sample_id`,
+// `test_id`, `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
 // unbound record, untraced and traced into `render_trace`, gated on

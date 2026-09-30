@@ -532,13 +532,21 @@ TEST_CASE("rounded output: a constant read inside a rounded output's call is fix
     // after the method's rule. The environment has no scale: a use left
     // reading it would not compile.
     constexpr auto fixed = formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex)), roundedInsideMethod);
-    STATIC_REQUIRE(formula::detail::ConstantRewriteOf<
-                   formula::ConstantOverride<Scale>,
-                   std::remove_cvref_t<decltype(formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
-                                                                        formula::RoundingMode::HalfEven>(scaledFit))>>::known);
+    using Rewritten = formula::detail::ConstantRewriteOf<
+        formula::ConstantOverride<Scale>,
+        std::remove_cvref_t<decltype(formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
+                                                             formula::RoundingMode::HalfEven>(scaledFit))>>;
+    STATIC_REQUIRE(Rewritten::known);
     auto const outcome = formula::evaluate_method<Fitted>(fixed, fitPoints);
     REQUIRE(outcome.has_value());
     CHECK(outcome->value() == rat(419, 600'000));
+
+    // The rewrite keeps the rounding: the value above cannot show it, since
+    // the unrounded 0.698928... mm/s is 41.9 mm/min after the method's rule too.
+    STATIC_REQUIRE(Rewritten::type::unit == MillimetrePerSecond);
+    STATIC_REQUIRE(Rewritten::type::places == formula::DecimalPlaces { 4 });
+    STATIC_REQUIRE(Rewritten::type::mode == formula::RoundingMode::HalfEven);
+    CHECK(formula::render(std::get<0>(fixed.variantSet.cases).expression).starts_with("round(linear least squares("));
 }
 
 TEST_CASE("a scoped vocabulary renames a fit's input in the trace, the render and the page", "[least-squares][vocabulary]")
@@ -650,9 +658,10 @@ TEST_CASE("rounded output: the fit's trace names its outputs without values and 
     REQUIRE(formula::opaque_output_data(explained.trace, 4) != nullptr);
     CHECK(formula::opaque_output_data(explained.trace, 4)->outputIndex == 1);
 
-    // The exact route's row is as it was: every value, Exact.
+    // The exact route's row is as it was: every value, Exact, and answered.
     auto const exactRoute = formula::explain<Rate>(formula::opaque_output<"slope">(fit), fitPoints);
     CHECK(formula::opaque_data(exactRoute.trace, 3)->values == formula::OpaqueValues::Exact);
+    CHECK(formula::opaque_data(exactRoute.trace, 3)->answered);
     CHECK(formula::opaque_data(exactRoute.trace, 3)->outputs[1].value == rat(19, 28'000));
 }
 

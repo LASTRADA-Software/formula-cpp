@@ -2539,7 +2539,6 @@ namespace detail
         using type = SubstitutedInAll<Inputs...>;
     };
 
-
     /// Fails to compile when `with_constant<Q>` is applied to a method that
     /// never uses `Q`. Such an override changes nothing, and the likeliest
     /// reason is that it names the wrong quantity.
