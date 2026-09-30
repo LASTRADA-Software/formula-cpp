@@ -230,7 +230,7 @@ template <Node Limit>
     return DeviationFromMean<Limit> { limitExpression };
 }
 
-/// abs(x - pass mean) / s against @p limitExpression: `deviation_in_stddevs(1.75_r)`.
+/// abs(x - pass mean) / s against @p limitExpression: `deviation_in_stddevs(number(1.75_r))`.
 template <Node Limit>
 [[nodiscard]] constexpr DeviationInStddevs<Limit> deviation_in_stddevs(Limit limitExpression) noexcept
 {
