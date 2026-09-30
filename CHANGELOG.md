@@ -92,21 +92,24 @@ change is recorded here.
   time; it no longer compiles, and the message names the two quantities. A conversion between
   quantities of one dimension is unchanged.
 - An unqualified call with arguments of this library's types now also finds, by argument-dependent
-  lookup, the functions this release adds: `describe` of a `ConstraintOutcomeKind`, a `RetryEnd`, a
-  `ValueSource`, an `OutcomeKind` or a `FailureSite`; `number_of`, `convert_to`, `round_to_declared`
-  and `within_bounds`; `traced`, `trace_of` and `trace_of_si`; and the `explain_*` twins above. A
-  consumer's own function of one of these names, visible where the call is written, meets the
-  library's in one of two ways. A function template of the same name and shape -- a
+  lookup, the functions this release adds, among them: `describe` of a `ConstraintOutcomeKind`, a
+  `RetryEnd`, a `ValueSource`, an `OutcomeKind` or a `FailureSite`; `number_of`, `convert_to`,
+  `round_to_declared` and `within_bounds`; `traced`, `trace_of` and `trace_of_si`; the `explain_*`
+  twins above; `yields`, given an expression; and `declared_rounding`, given a `Unit`. A consumer's
+  own function of one of these names, visible where the call is written, meets the library's in one
+  of three ways. A function template of the same name and shape -- a
   `template <typename R, typename Q> Measured<R> convert_to(Measured<Q>)` helper, say -- is
   displaced **silently**: the library's is more constrained, so it is chosen, the helper no longer
   runs, and where the helper returned an absent value on failure the library's `convert_to` throws
-  `ArithmeticException`. A non-template function, or one taking other parameter types -- a
-  `describe(ConstraintOutcomeKind)` helper, or a
-  `template <typename Q> Rational number_of(Measured<Q>)` that takes its argument by value -- makes
-  the call ambiguous. Either way, rename the helper, as `examples/constraints.cpp`'s `describe` was,
-  or call it by a qualified name such as `::convert_to`. And since `_r` is declared in an inline
-  namespace of `formula`, `using namespace formula;` now brings it into scope, where a consumer's
-  own `_r` is ambiguous with it.
+  `ArithmeticException`. A function of another shape -- a non-template beside the library's
+  non-template `describe`, such as a `describe(ConstraintOutcomeKind)` helper, or a template taking
+  its argument by value, such as `template <typename Q> Rational number_of(Measured<Q>)` -- makes
+  the call ambiguous. A non-template taking exactly a library template's parameter types is
+  preferred over it and keeps working. Where a helper is displaced or a call is ambiguous, rename
+  the helper, remove it where the library's does the same (as `examples/constraints.cpp`'s
+  `describe` was removed), or call it by a qualified name such as `::convert_to`. And since `_r` is
+  declared in an inline namespace of `formula`, `using namespace formula;` now brings it into scope,
+  where a consumer's own `_r` is ambiguous with it.
 
 ## [0.2.0] - 2026-09-30
 
