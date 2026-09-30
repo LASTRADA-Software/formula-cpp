@@ -3,9 +3,10 @@
 
 /// @file
 /// An integer kernel that encloses the natural logarithm, the decimal logarithm and the exponential of a
-/// rational: two ends between which the value certainly lies, computed in 384-bit fixed point with no
-/// floating point, so that the same inputs give the same bits on every compiler, at compile time and at
-/// run time. It is what the rounded forms (`rounded_transcendental.hpp`) round: when both ends round to the
+/// rational: two ends between which the value certainly lies, computed in 384-bit fixed point with only
+/// integer operations the language defines exactly, so that no floating-point mode enters and the same
+/// inputs are meant to give the same bits, at compile time and at run time. The test suite has passed on
+/// MSVC (cl 19.51.36257) and g++ 14 only. It is what the rounded forms (`rounded_transcendental.hpp`) round: when both ends round to the
 /// same decimal, that is the rounding of the value.
 ///
 /// ## The algorithm and its error bound
@@ -13,7 +14,7 @@
 /// - **Fixed point.** A value v is an integer V in `WideUnsigned<12>` (384 bits) with 128 fraction bits,
 ///   V = floor(v 2^128). Every operation truncates a non-negative value, so a lower bound stays one; each
 ///   upper bound is the lower bound plus a slack derived here. No `<cmath>`, no floating point, no
-///   intrinsics, no 128-bit type, **and no call of the general `divmod`** (one costs about 130 000 cl steps
+///   intrinsics, no 128-bit type, **and no call of the general `divmod`** (too costly in a constant evaluation
 ///   over 384 bits): the two scaled quotients are 64-bit long divisions, k is a binary search, and the
 ///   series' divisors are below 2^32 (`divmod_small`).
 /// - **ln(a/b)**, a, b > 0, a != b. For a < b, ln(b/a) is taken and negated: the sign comes from a < b and
@@ -24,13 +25,13 @@
 ///   by less than 2z + 1 < 2; the deficit d_i of P_i against z^(2i+1) 2^128 obeys d_0 < 1 and
 ///   d_{i+1} < 2 z^(2i+1) + z^2 d_i + 1, so d_i < 2 throughout; each term is short by less than
 ///   1 + d_i/(2i+1); P_i is 0 by i = 41 (z^83 2^128 < 1), after which the tail is below 2.25/(2i+1). So
-///   atanh(z) 2^128 - S < 42 + 2 (1 + 1/3 + ... + 1/83) + 1 < 48 <= `AtanhSlack` = 64. With
+///   atanh(z) 2^128 - S < 41 + 2 (1 + 1/3 + ... + 1/81) + 2.25/83 < 47 <= `AtanhSlack` = 64. With
 ///   L = floor(ln 2 2^128): lower = k L + 2S, upper = k (L + 1) + 2 (S + 64) — at most k + 128 <= 190 units
 ///   of 2^-128 apart, under 2^-120, absolute.
 /// - **log10** = ln log10(e). With M = floor(log10(e) 2^128): lower = floor(lower_ln M / 2^128),
 ///   upper = floor(upper_ln (M + 1) / 2^128) + 1, under 190 · 0.44 + 44 + 2 < 130 units apart, since
 ///   |ln(a/b)| <= ln(2^63) < 44. The widest product, upper_ln (M + 1), is below 2^261.
-/// - **exp(x)**, x = a/b != 0, -43 <= x <= 44 (Task 5 answers outside). X = floor(|x| 2^128), exact or one
+/// - **exp(x)**, x = a/b != 0, -43 <= x <= 44 (the rounded forms answer outside it). X = floor(|x| 2^128), exact or one
 ///   below. For x > 0, k is the largest integer in [0, 63] with k (L + 1) <= X (64 ln 2 > 44 bounds it), and
 ///   R = X - k (L + 1) <= r 2^128 for r = x - k ln 2; for x < 0, m is the smallest in [1, 63] with
 ///   m L >= X' (X' = X + 1 when X is inexact; 63 ln 2 > 43 bounds it), R = m L - X' <= r 2^128 for
@@ -271,7 +272,7 @@ namespace formula::detail
     [[nodiscard]] constexpr std::optional<Enclosure> exponential_enclosure(Rational argument) noexcept
     {
         bool const negative = argument.sign() < 0;
-        ScaledQuotient const scaled =
+        ScaledQuotient const fixedMagnitude =
             scaled_quotient(magnitude(argument.numerator()), static_cast<std::uint64_t>(argument.denominator()));
         std::optional<KernelWord> remainderBelow;
         std::uint32_t shifts = 0;
@@ -286,20 +287,20 @@ namespace formula::detail
                 std::optional<KernelWord> const multiple = mul_small_checked_or_none(Ln2Upper, middle);
                 if (!multiple)
                     return std::nullopt;
-                if (*multiple <= scaled.below)
+                if (*multiple <= fixedMagnitude.below)
                     below = middle;
                 else
                     above = middle;
             }
             std::optional<KernelWord> const multiple = mul_small_checked_or_none(Ln2Upper, below);
-            remainderBelow = multiple ? sub_checked_or_none(scaled.below, *multiple) : std::nullopt;
+            remainderBelow = multiple ? sub_checked_or_none(fixedMagnitude.below, *multiple) : std::nullopt;
             shifts = below;
         }
         else
         {
             // The smallest m in [1, 63] with m L >= X' (X rounded up): 63 ln 2 > 43 >= |x|.
-            std::optional<KernelWord> const roundedUp = scaled.exact ? std::optional<KernelWord> { scaled.below }
-                                                                     : add_small_checked_or_none(scaled.below, 1U);
+            std::optional<KernelWord> const roundedUp = fixedMagnitude.exact ? std::optional<KernelWord> { fixedMagnitude.below }
+                                                                     : add_small_checked_or_none(fixedMagnitude.below, 1U);
             if (!roundedUp)
                 return std::nullopt;
             std::uint32_t below = 0;
@@ -333,9 +334,9 @@ namespace formula::detail
                 return std::nullopt;
             return Enclosure { { false, *nearer, KernelOne }, { false, *farther, KernelOne } };
         }
-        std::optional<KernelWord> const halved = shift_left_checked_or_none(KernelOne, shifts);
-        if (!halved)
+        std::optional<KernelWord> const denominatorPower = shift_left_checked_or_none(KernelOne, shifts);
+        if (!denominatorPower)
             return std::nullopt;
-        return Enclosure { { false, *series, *halved }, { false, *slacked, *halved } };
+        return Enclosure { { false, *series, *denominatorPower }, { false, *slacked, *denominatorPower } };
     }
 } // namespace formula::detail

@@ -243,7 +243,7 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
 
 TEST_CASE("transcendental kernel: an enclosure is at most 2^-118 wide", "[transcendental]")
 {
-    // Absolute for the logarithms, whose ends share the denominator 2^128: at most 2^10 units apart.
+    // Absolute for the logarithms, whose ends share the denominator 2^128: at most 2^8 units apart (2^-120).
     // Relative for the exponential: upper - lower at most lower / 2^118.
     Word const unit = *detail::shift_left_checked_or_none(Word::from_u64(1), 128);
     for (Reference const& row: references)
@@ -259,7 +259,7 @@ TEST_CASE("transcendental kernel: an enclosure is at most 2^-118 wide", "[transc
         else
         {
             CHECK(nearer.denominator == unit);
-            CHECK(width <= Word::from_u64(1024));
+            CHECK(width <= Word::from_u64(256));
         }
     }
 }
@@ -283,9 +283,8 @@ TEST_CASE("transcendental kernel: an enclosure that straddles a tie is Overflow 
 TEST_CASE("transcendental kernel: the kernel answers at compile time", "[transcendental]")
 {
     // The one deliberate compile-time check of the kernel. A whole rounding -- the enclosure and
-    // decide_rounding -- in one constant evaluation, the cheapest measured while planning: about
-    // 240 600 steps on cl 19.51 and 298 000 on clang-cl 22.1.3, against defaults of about 1 049 000
-    // and 1 048 576. Every other check that runs the kernel runs at run time.
+    // decide_rounding -- in one constant evaluation, measured at about
+    // 239 000 steps on cl 19.51.36257, against a default budget of about 1 049 000. Every other check that runs the kernel runs at run time.
     STATIC_REQUIRE(kernel_rounding(Transcendental::DecimalLogarithm, Rational { 2 }, 3, RoundingMode::HalfEven)
                    == Rational { 301, 1000 });
 }
