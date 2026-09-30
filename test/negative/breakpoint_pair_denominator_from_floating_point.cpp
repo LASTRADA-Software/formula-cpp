@@ -10,5 +10,5 @@ inline constexpr auto declared = formula::breakpoint(1, 2.5);
 
 int main()
 {
-    return declared.numerator == 1 ? 1 : 0;
+    return 0;
 }

@@ -9,5 +9,5 @@ inline constexpr auto key = formula::breakpoint(1.5, 2);
 
 int main()
 {
-    return key.numerator == 1 ? 1 : 0;
+    return 0;
 }

@@ -56,7 +56,8 @@ void report_invalid_parameter(wchar_t const* expression,
     (void) file;
     (void) line;
     (void) reserved;
-    // fputs, not std::print: this handler is noexcept and must neither allocate nor throw, which std::print may do.
+    // fputs, not std::print: this handler is noexcept and must neither allocate nor throw, and std::print
+    // may do either.
     std::fputs("formula: the C runtime rejected an invalid parameter; exiting without a dialog\n", stderr);
     std::fflush(stderr);
     // _Exit, not abort: abort would re-enter the very handling this file is

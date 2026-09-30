@@ -9,5 +9,5 @@ inline constexpr auto declared = formula::band(12.7, 1, 17, 1);
 
 int main()
 {
-    return declared.lowNumerator == 12 ? 1 : 0;
+    return 0;
 }

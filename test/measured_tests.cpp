@@ -498,6 +498,8 @@ TEST_CASE("round_to_declared and within_bounds: throwing twins", "[measured]")
 
     CHECK(formula::within_bounds(Measured<GaugeReading>::absent()) == formula::BoundsCheck::NotMeasured);
     CHECK(formula::within_bounds(Measured<GaugeReading> { *Rational::make(42, 1) }) == formula::BoundsCheck::WithinBounds);
+    CHECK(formula::within_bounds(Measured<GaugeReading> { *Rational::make(-1, 1) })
+          == formula::BoundsCheck::BelowMinimum);
     CHECK(formula::within_bounds(Measured<GaugeReading> { *Rational::make(101, 1) })
           == formula::BoundsCheck::AboveMaximum);
 }

@@ -542,6 +542,7 @@ namespace detail
     consteval Rational rational_from_spelling(char const* spelling)
     {
         std::size_t at = 0;
+        // Also true for an exponent: that is how `0x1E` gets past the leading guard, to be refused at its `x`.
         bool const hasPoint = [&] {
             for (std::size_t probe = 0; spelling[probe] != '\0'; ++probe)
                 if (spelling[probe] == '.' || spelling[probe] == 'e' || spelling[probe] == 'E')
