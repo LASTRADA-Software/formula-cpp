@@ -1123,6 +1123,18 @@ formula_add_negative_test(band_zero_width
     "formula: this band is not well-formed"
     REJECT "must be initialized by a constant expression")
 
+# A floating-point key or bound would be truncated by the integer overloads;
+# each form is refused once, by the library's own message.
+formula_add_negative_test(breakpoint_from_floating_point
+    "formula: a breakpoint's key is an exact number" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(breakpoint_pair_from_floating_point
+    "formula: a breakpoint's key is an exact number" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(band_from_floating_point
+    "formula: a band's bounds are exact numbers" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+
 formula_add_negative_test(lookup_band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"
     REJECT "must be initialized by a constant expression")

@@ -1333,6 +1333,40 @@ struct Breakpoint
     return { keyValue.numerator(), keyValue.denominator() };
 }
 
+namespace detail
+{
+    /// Fails to compile when a breakpoint's key is given as a floating-point
+    /// value, which the integer overloads would silently truncate.
+    template <typename T>
+    struct RequireExactBreakpointKey
+    {
+        static_assert(!std::is_floating_point_v<T>,
+                      "formula: a breakpoint's key is an exact number, and this is a floating-point value that "
+                      "would be truncated; write 12.7_r, Rational { 127, 10 } or breakpoint(127, 10)");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// Refused: a floating-point key -- see `detail::RequireExactBreakpointKey`.
+template <typename T>
+    requires std::is_floating_point_v<T>
+[[nodiscard]] constexpr Breakpoint breakpoint(T) noexcept
+{
+    static_assert(detail::RequireExactBreakpointKey<T>::value);
+    return {};
+}
+
+/// Refused: a floating-point numerator or denominator -- see
+/// `detail::RequireExactBreakpointKey`.
+template <typename N, typename D>
+    requires(std::is_floating_point_v<N> || std::is_floating_point_v<D>)
+[[nodiscard]] constexpr Breakpoint breakpoint(N, D) noexcept
+{
+    static_assert(detail::RequireExactBreakpointKey<std::conditional_t<std::is_floating_point_v<N>, N, D>>::value);
+    return {};
+}
+
 /// A table of breakpoints, declared in strictly ascending order. An alias
 /// template over `std::array`, for the reason `BandTable` (`band.hpp`) and
 /// `KeyTable` above are: a spike compiled `template <BandTable Bands>` with

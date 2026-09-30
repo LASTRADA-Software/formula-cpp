@@ -178,10 +178,10 @@ compiler), with the rest of the instantiation backtrace below these lines:
 ```
 In file included from test\negative\lookup_band_gap.cpp:10:
 In file included from include\formula-cpp/lookup.hpp:474:
-include\formula-cpp/band.hpp(226,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{103, 1, 197, 1}, formula::Band{241, 1, 331, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
-  226 |     static_assert(bands_are_adjacent(First, Second),
+include\formula-cpp/band.hpp(255,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{103, 1, 197, 1}, formula::Band{241, 1, 331, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
+  255 |     static_assert(bands_are_adjacent(First, Second),
       |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-include\formula-cpp/band.hpp(267,29): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{103, 1, 197, 1}, Band{241, 1, 331, 1}>' requested here
+include\formula-cpp/band.hpp(296,29): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{103, 1, 197, 1}, Band{241, 1, 331, 1}>' requested here
 ```
 
 The message names **both offending rows**, as the values you typed: the one

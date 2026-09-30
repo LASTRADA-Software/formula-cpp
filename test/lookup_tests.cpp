@@ -1174,3 +1174,10 @@ TEST_CASE("breakpoint: a key given as an exact number", "[lookup]")
     STATIC_REQUIRE(formula::breakpoint(12.7_r) == formula::breakpoint(127, 10));
     STATIC_REQUIRE(formula::breakpoint(127) == formula::Breakpoint { 127, 1 }); // the integer overload still wins
 }
+
+TEST_CASE("breakpoint: integer keys still take the integer overload", "[lookup]")
+{
+    STATIC_REQUIRE(formula::breakpoint(127) == formula::Breakpoint { 127, 1 });
+    STATIC_REQUIRE(formula::breakpoint(127, 10) == formula::Breakpoint { 127, 10 });
+    STATIC_REQUIRE(formula::breakpoint(std::int64_t { 3 }, std::int64_t { 4 }) == formula::Breakpoint { 3, 4 });
+}
