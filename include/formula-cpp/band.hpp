@@ -135,6 +135,8 @@ namespace detail
 
 /// Refused: a floating-point numerator or denominator -- see
 /// `detail::RequireExactBandBound`.
+/// Only a floating-point type is refused; every other arithmetic type converts as it
+/// did before.
 template <typename A, typename B, typename C, typename D>
     requires(std::is_floating_point_v<A> || std::is_floating_point_v<B> || std::is_floating_point_v<C> || std::is_floating_point_v<D>)
 [[nodiscard]] constexpr Band band(A, B, C, D) noexcept

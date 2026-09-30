@@ -1349,6 +1349,8 @@ namespace detail
 } // namespace detail
 
 /// Refused: a floating-point key -- see `detail::RequireExactBreakpointKey`.
+/// Only a floating-point type is refused; every other arithmetic type converts as it
+/// did before.
 template <typename T>
     requires std::is_floating_point_v<T>
 [[nodiscard]] constexpr Breakpoint breakpoint(T) noexcept
@@ -1359,6 +1361,8 @@ template <typename T>
 
 /// Refused: a floating-point numerator or denominator -- see
 /// `detail::RequireExactBreakpointKey`.
+/// Only a floating-point type is refused; every other arithmetic type converts as it
+/// did before.
 template <typename N, typename D>
     requires(std::is_floating_point_v<N> || std::is_floating_point_v<D>)
 [[nodiscard]] constexpr Breakpoint breakpoint(N, D) noexcept

@@ -69,8 +69,9 @@ change is recorded here.
 
 - A floating-point key given to `breakpoint`, or a floating-point bound given to the
   four-argument `band`, used to be truncated silently (`breakpoint(1.5)` was `breakpoint(1)`). It is
-  now refused at compile time, with a message that names the exact spellings: `12.7_r`,
-  `Rational { 127, 10 }` or `breakpoint(127, 10)`.
+  now refused at compile time, with a message that names the exact spelling for that call:
+  `12.7_r` or `Rational { 127, 10 }` for `breakpoint`, `breakpoint(127, 10)`, `band(12.7_r, 17.3_r)`
+  or `band(127, 10, 173, 10)`.
 - GCC 14 is the oldest supported GCC; older GCC is not supported. The install-and-consume check
   now builds with it on Linux.
 - `<formula-cpp/format.hpp>` now specialises `std::formatter` for `formula::Outcome<Q>`,
