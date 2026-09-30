@@ -580,53 +580,39 @@ template <std::size_t L, std::size_t M>
     return narrowed;
 }
 
-/// One `RepTraits` call each, on answers that may already have failed: the
-/// first failure is passed on untouched.
-template <typename Rep>
-[[nodiscard]] constexpr std::expected<Rep, ArithmeticError> rep_add(std::expected<Rep, ArithmeticError> const& leftOperand,
-                                                                    std::expected<Rep, ArithmeticError> const& rightOperand) noexcept
+/// Which `RepTraits` operation `rep_apply` makes.
+enum class RepOperation : std::uint8_t
 {
-    if (!leftOperand.has_value())
-        return leftOperand;
-    if (!rightOperand.has_value())
-        return rightOperand;
-    return RepTraits<Rep>::add(*leftOperand, *rightOperand);
-}
+    /// `RepTraits<Rep>::add`.
+    Add,
+    /// `RepTraits<Rep>::subtract`.
+    Subtract,
+    /// `RepTraits<Rep>::multiply`.
+    Multiply,
+    /// `RepTraits<Rep>::divide`.
+    Divide,
+};
 
-/// The difference, as `rep_add` is the sum.
-template <typename Rep>
-[[nodiscard]] constexpr std::expected<Rep, ArithmeticError> rep_sub(std::expected<Rep, ArithmeticError> const& leftOperand,
-                                                                    std::expected<Rep, ArithmeticError> const& rightOperand) noexcept
+/// One `RepTraits` call, @p Operation, on answers that may already have
+/// failed: the first failure is passed on untouched. Named by an enumerator,
+/// not handed a `RepTraits` function, so that a representation's traits may
+/// overload theirs.
+template <RepOperation Operation, typename Rep>
+[[nodiscard]] constexpr std::expected<Rep, ArithmeticError> rep_apply(
+    std::expected<Rep, ArithmeticError> const& leftOperand, std::expected<Rep, ArithmeticError> const& rightOperand) noexcept
 {
     if (!leftOperand.has_value())
         return leftOperand;
     if (!rightOperand.has_value())
         return rightOperand;
-    return RepTraits<Rep>::subtract(*leftOperand, *rightOperand);
-}
-
-/// The product, as `rep_add` is the sum.
-template <typename Rep>
-[[nodiscard]] constexpr std::expected<Rep, ArithmeticError> rep_mul(std::expected<Rep, ArithmeticError> const& leftOperand,
-                                                                    std::expected<Rep, ArithmeticError> const& rightOperand) noexcept
-{
-    if (!leftOperand.has_value())
-        return leftOperand;
-    if (!rightOperand.has_value())
-        return rightOperand;
-    return RepTraits<Rep>::multiply(*leftOperand, *rightOperand);
-}
-
-/// The quotient, as `rep_add` is the sum.
-template <typename Rep>
-[[nodiscard]] constexpr std::expected<Rep, ArithmeticError> rep_div(std::expected<Rep, ArithmeticError> const& leftOperand,
-                                                                    std::expected<Rep, ArithmeticError> const& rightOperand) noexcept
-{
-    if (!leftOperand.has_value())
-        return leftOperand;
-    if (!rightOperand.has_value())
-        return rightOperand;
-    return RepTraits<Rep>::divide(*leftOperand, *rightOperand);
+    if constexpr (Operation == RepOperation::Add)
+        return RepTraits<Rep>::add(*leftOperand, *rightOperand);
+    else if constexpr (Operation == RepOperation::Subtract)
+        return RepTraits<Rep>::subtract(*leftOperand, *rightOperand);
+    else if constexpr (Operation == RepOperation::Multiply)
+        return RepTraits<Rep>::multiply(*leftOperand, *rightOperand);
+    else
+        return RepTraits<Rep>::divide(*leftOperand, *rightOperand);
 }
 
 /// The fit in any representation, for `checked_evaluate_si<double>`: the
@@ -651,6 +637,7 @@ template <typename Rep, std::size_t K>
 {
     using Traits = RepTraits<Rep>;
     using Answer = std::expected<Rep, ArithmeticError>;
+    using enum RepOperation;
     if (!regression_is_posed<Rep, K>(regressorColumns, responses))
         return std::unexpected { ArithmeticError::DomainError };
     std::size_t const rowCount = responses.size();
@@ -664,13 +651,13 @@ template <typename Rep, std::size_t K>
     {
         Answer runningTotal = zero;
         for (std::size_t rowAt = 0; rowAt < rowCount; ++rowAt)
-            runningTotal = rep_add<Rep>(runningTotal, regressorColumns[regressorAt][rowAt]);
-        regressorMeans[regressorAt] = rep_div<Rep>(runningTotal, rowTally);
+            runningTotal = rep_apply<Add, Rep>(runningTotal, regressorColumns[regressorAt][rowAt]);
+        regressorMeans[regressorAt] = rep_apply<Divide, Rep>(runningTotal, rowTally);
     }
     Answer responseTotal = zero;
     for (std::size_t rowAt = 0; rowAt < rowCount; ++rowAt)
-        responseTotal = rep_add<Rep>(responseTotal, responses[rowAt]);
-    Answer const responseMean = rep_div<Rep>(responseTotal, rowTally);
+        responseTotal = rep_apply<Add, Rep>(responseTotal, responses[rowAt]);
+    Answer const responseMean = rep_apply<Divide, Rep>(responseTotal, rowTally);
 
     // The centred sums, one pass over the rows.
     std::array<std::array<Answer, K>, K> centredCross;
@@ -686,16 +673,20 @@ template <typename Rep, std::size_t K>
     {
         std::array<Answer, K> regressorDeviations;
         for (std::size_t regressorAt = 0; regressorAt < K; ++regressorAt)
-            regressorDeviations[regressorAt] = rep_sub<Rep>(regressorColumns[regressorAt][rowAt], regressorMeans[regressorAt]);
-        Answer const responseDeviation = rep_sub<Rep>(responses[rowAt], responseMean);
-        responseSpreadSum = rep_add<Rep>(responseSpreadSum, rep_mul<Rep>(responseDeviation, responseDeviation));
+            regressorDeviations[regressorAt] =
+                rep_apply<Subtract, Rep>(regressorColumns[regressorAt][rowAt], regressorMeans[regressorAt]);
+        Answer const responseDeviation = rep_apply<Subtract, Rep>(responses[rowAt], responseMean);
+        responseSpreadSum =
+            rep_apply<Add, Rep>(responseSpreadSum, rep_apply<Multiply, Rep>(responseDeviation, responseDeviation));
         for (std::size_t regressorAt = 0; regressorAt < K; ++regressorAt)
         {
-            centredWithResponse[regressorAt] = rep_add<Rep>(
-                centredWithResponse[regressorAt], rep_mul<Rep>(regressorDeviations[regressorAt], responseDeviation));
+            centredWithResponse[regressorAt] =
+                rep_apply<Add, Rep>(centredWithResponse[regressorAt],
+                                    rep_apply<Multiply, Rep>(regressorDeviations[regressorAt], responseDeviation));
             for (std::size_t otherAt = regressorAt; otherAt < K; ++otherAt)
-                centredCross[regressorAt][otherAt] = rep_add<Rep>(
-                    centredCross[regressorAt][otherAt], rep_mul<Rep>(regressorDeviations[regressorAt], regressorDeviations[otherAt]));
+                centredCross[regressorAt][otherAt] = rep_apply<Add, Rep>(
+                    centredCross[regressorAt][otherAt],
+                    rep_apply<Multiply, Rep>(regressorDeviations[regressorAt], regressorDeviations[otherAt]));
         }
     }
     for (std::size_t regressorAt = 0; regressorAt < K; ++regressorAt)
@@ -710,10 +701,10 @@ template <typename Rep, std::size_t K>
         Answer pivotValue = centredCross[stage][stage];
         for (std::size_t earlier = 0; earlier < stage; ++earlier)
         {
-            Answer const squared = rep_mul<Rep>(unitLower[stage][earlier], unitLower[stage][earlier]);
-            pivotValue = rep_sub<Rep>(pivotValue, rep_mul<Rep>(squared, pivots[earlier]));
+            Answer const squared = rep_apply<Multiply, Rep>(unitLower[stage][earlier], unitLower[stage][earlier]);
+            pivotValue = rep_apply<Subtract, Rep>(pivotValue, rep_apply<Multiply, Rep>(squared, pivots[earlier]));
         }
-        Answer const floorValue = rep_mul<Rep>(pivotFloorScale, centredCross[stage][stage]);
+        Answer const floorValue = rep_apply<Multiply, Rep>(pivotFloorScale, centredCross[stage][stage]);
         if (!pivotValue.has_value())
             return std::unexpected { pivotValue.error() };
         if (!floorValue.has_value())
@@ -726,10 +717,10 @@ template <typename Rep, std::size_t K>
             Answer entryValue = centredCross[later][stage];
             for (std::size_t earlier = 0; earlier < stage; ++earlier)
             {
-                Answer const weighted = rep_mul<Rep>(unitLower[later][earlier], unitLower[stage][earlier]);
-                entryValue = rep_sub<Rep>(entryValue, rep_mul<Rep>(weighted, pivots[earlier]));
+                Answer const weighted = rep_apply<Multiply, Rep>(unitLower[later][earlier], unitLower[stage][earlier]);
+                entryValue = rep_apply<Subtract, Rep>(entryValue, rep_apply<Multiply, Rep>(weighted, pivots[earlier]));
             }
-            unitLower[later][stage] = rep_div<Rep>(entryValue, pivots[stage]);
+            unitLower[later][stage] = rep_apply<Divide, Rep>(entryValue, pivots[stage]);
         }
     }
 
@@ -739,15 +730,17 @@ template <typename Rep, std::size_t K>
     {
         Answer forwardValue = centredWithResponse[stage];
         for (std::size_t earlier = 0; earlier < stage; ++earlier)
-            forwardValue = rep_sub<Rep>(forwardValue, rep_mul<Rep>(unitLower[stage][earlier], forward[earlier]));
+            forwardValue = rep_apply<Subtract, Rep>(forwardValue,
+                                                    rep_apply<Multiply, Rep>(unitLower[stage][earlier], forward[earlier]));
         forward[stage] = forwardValue;
     }
     std::array<Answer, K> coefficientAnswers;
     for (std::size_t stage = K; stage-- > 0;)
     {
-        Answer backValue = rep_div<Rep>(forward[stage], pivots[stage]);
+        Answer backValue = rep_apply<Divide, Rep>(forward[stage], pivots[stage]);
         for (std::size_t later = stage + 1; later < K; ++later)
-            backValue = rep_sub<Rep>(backValue, rep_mul<Rep>(unitLower[later][stage], coefficientAnswers[later]));
+            backValue = rep_apply<Subtract, Rep>(
+                backValue, rep_apply<Multiply, Rep>(unitLower[later][stage], coefficientAnswers[later]));
         coefficientAnswers[stage] = backValue;
     }
 
@@ -756,14 +749,16 @@ template <typename Rep, std::size_t K>
     Answer explainedSum = zero;
     for (std::size_t stage = 0; stage < K; ++stage)
     {
-        constantValue = rep_sub<Rep>(constantValue, rep_mul<Rep>(coefficientAnswers[stage], regressorMeans[stage]));
-        explainedSum = rep_add<Rep>(explainedSum, rep_mul<Rep>(coefficientAnswers[stage], centredWithResponse[stage]));
+        constantValue = rep_apply<Subtract, Rep>(constantValue,
+                                                 rep_apply<Multiply, Rep>(coefficientAnswers[stage], regressorMeans[stage]));
+        explainedSum = rep_apply<Add, Rep>(explainedSum,
+                                           rep_apply<Multiply, Rep>(coefficientAnswers[stage], centredWithResponse[stage]));
     }
     std::array<Answer, K + 3> produced;
     produced[0] = constantValue;
     for (std::size_t stage = 0; stage < K; ++stage)
         produced[1 + stage] = coefficientAnswers[stage];
-    produced[K + 1] = rep_div<Rep>(explainedSum, responseSpreadSum);
+    produced[K + 1] = rep_apply<Divide, Rep>(explainedSum, responseSpreadSum);
     produced[K + 2] = rowTally;
 
     std::array<Rep, K + 3> outputs;
