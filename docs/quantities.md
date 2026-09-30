@@ -281,16 +281,14 @@ does not compile, and it draws one message, so a conversion nobody could
 perform cannot look like it succeeded merely because there was no value to
 get wrong. (Before this check moved to compile time, such a call compiled
 and returned `ArithmeticError::DomainError`.) With no value present the
-result is absent. The worked example checks the `std::expected` before it
-reads the measurement inside:
+result is absent. The worked example converts a constant, so it checks the
+`std::expected` with a `static_assert`, and an error would stop the build:
 
 ```cpp
-auto const convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
-if (!convertedAbsent)
-{
-    std::println("converting an absent measurement: {}", convertedAbsent.error());
-    return 1;
-}
+constexpr auto convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
+constexpr auto roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
+constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+static_assert(convertedAbsent.has_value() && roundedAbsent.has_value() && boundsOfAbsent.has_value());
 ```
 
 ```

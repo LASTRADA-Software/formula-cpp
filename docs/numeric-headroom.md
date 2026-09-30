@@ -147,7 +147,7 @@ Each program's largest integers over everything it evaluates at run time.
 | example `simple` | 4 | 10 | 6 | 53 |
 | example `exact_numbers` | 9 | 10 | 9 | 53 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 41 |
-| example `quantities` | 4 | 10 | 5 | 53 |
+| example `quantities` | 0 | 0 | 0 | 63 |
 | example `expressions` | 0 | 0 | 0 | 63 |
 | example `citations` | 4 | 10 | 6 | 53 |
 | example `composition` | 10 | 10 | 9 | 53 |

@@ -171,12 +171,8 @@ int main()
     std::println("{}\n", formula::render(passingAt173));
     check(formula::render(passing) == "100 % - cumulative(m_r(i), from last) / m_t", "the series marked, the total unmarked");
 
-    auto const inAll = formula::checked_evaluate(retainedInAll, analysis);
-    if (!inAll)
-    {
-        std::println("sum of the retained masses: {}", inAll.error());
-        return 1;
-    }
+    constexpr auto inAll = formula::checked_evaluate(retainedInAll, analysis);
+    static_assert(inAll.has_value());
     check(formula::number_of(inAll) == 803_r, "sum: 803 g retained in all");
     auto const at173 = formula::checked_explain(passingAt173, analysis);
     if (!at173)

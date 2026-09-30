@@ -111,40 +111,21 @@ int main()
     // ---- 4. A present measurement, converted exactly between quantities (450 l to m3) ----
     //
     // A conversion, a rounding and a bounds check each return a std::expected
-    // -- the value, or the arithmetic error that stopped it -- and each is
-    // checked before it is read. Nothing in this program can make one fail,
-    // but dereferencing a std::expected that holds an error is undefined
-    // behaviour.
-    Measured<WaterVolume> const presentVolume { 450 };
-    auto const convertedPresent = formula::checked_convert_to<VolumeInCubicMetres>(presentVolume);
-    if (!convertedPresent)
-    {
-        std::println("converting {}: {}", presentVolume, convertedPresent.error());
-        return 1;
-    }
+    // -- the value, or the arithmetic error that stopped it. These run over
+    // constants, so a static_assert checks each and an error would stop the
+    // build.
+    constexpr Measured<WaterVolume> presentVolume { 450 };
+    constexpr auto convertedPresent = formula::checked_convert_to<VolumeInCubicMetres>(presentVolume);
+    static_assert(convertedPresent.has_value());
     std::println("{} converted to {} = {}", presentVolume, Describe<VolumeInCubicMetres>::unit, *convertedPresent);
     bool const presentValueConvertsExactly = formula::number_of(convertedPresent) == 0.45_r;
 
     // ---- 5. An absent measurement surviving conversion, rounding and a bounds check ----
-    Measured<WaterVolume> const absentVolume {};
-    auto const convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
-    if (!convertedAbsent)
-    {
-        std::println("converting an absent measurement: {}", convertedAbsent.error());
-        return 1;
-    }
-    auto const roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
-    if (!roundedAbsent)
-    {
-        std::println("rounding an absent measurement: {}", roundedAbsent.error());
-        return 1;
-    }
-    auto const boundsOfAbsent = formula::checked_within_bounds(absentVolume);
-    if (!boundsOfAbsent)
-    {
-        std::println("bounds-checking an absent measurement: {}", boundsOfAbsent.error());
-        return 1;
-    }
+    constexpr Measured<WaterVolume> absentVolume {};
+    constexpr auto convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
+    constexpr auto roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
+    constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+    static_assert(convertedAbsent.has_value() && roundedAbsent.has_value() && boundsOfAbsent.has_value());
 
     std::println("an absent measurement, converted: {}", *convertedAbsent);
     std::println("an absent measurement, rounded: {}", *roundedAbsent);

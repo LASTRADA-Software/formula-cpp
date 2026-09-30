@@ -142,18 +142,9 @@ int main()
                                   .decimals = 1,
                                   .bounds = formula::bounds(0, 1, 100, 1) };
 
-    auto const unboundedVerdict = formula::checked_within_bounds(1'000'000_r, unit::Litre);
-    if (!unboundedVerdict)
-    {
-        std::println("bounds-checking a litre: {}", unboundedVerdict.error());
-        return 1;
-    }
-    auto const boundedVerdict = formula::checked_within_bounds(42_r, BoundedGauge);
-    if (!boundedVerdict)
-    {
-        std::println("bounds-checking the gauge: {}", boundedVerdict.error());
-        return 1;
-    }
+    constexpr auto unboundedVerdict = formula::checked_within_bounds(1'000'000_r, unit::Litre);
+    constexpr auto boundedVerdict = formula::checked_within_bounds(42_r, BoundedGauge);
+    static_assert(unboundedVerdict.has_value() && boundedVerdict.has_value());
 
     // `{}` of a BoundsCheck writes its describe() words.
     std::println("unbounded unit (litre) reports: {}", *unboundedVerdict);

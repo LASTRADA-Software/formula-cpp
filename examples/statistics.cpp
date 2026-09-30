@@ -260,12 +260,10 @@ int main()
     std::println("== 2. Rejecting outliers ==\n");
 
     std::println("{}\n", formula::render(withoutOutliers));
-    auto const settled = formula::checked_evaluate_rejection<Mass>(withoutOutliers, sixMasses);
-    if (!settled)
-    {
-        std::println("the rejection of six masses: {}", settled.error().error);
-        return 1;
-    }
+    constexpr auto settled = formula::checked_evaluate_rejection<Mass>(withoutOutliers, sixMasses);
+    constexpr auto aborted = formula::checked_evaluate_rejection<Mass>(atMostOne, sixMasses);
+    constexpr auto tied = formula::checked_evaluate_rejection<Mass>(tieRejection, tiedMasses);
+    static_assert(settled.has_value() && aborted.has_value() && tied.has_value());
     std::println("result: {:/}, {} rejected in {} passes\n",
                  settled->outcome(),
                  settled->rejected().size(),
@@ -279,20 +277,8 @@ int main()
     std::println("{}",
                  formula::render_trace(formula::trace_of<Mass>(formula::sample_mean(atMostOne), sixMasses),
                                        { .maxSteps = 40 }));
-    auto const aborted = formula::checked_evaluate_rejection<Mass>(atMostOne, sixMasses);
-    if (!aborted)
-    {
-        std::println("the rejection allowed one: {}", aborted.error().error);
-        return 1;
-    }
     check(aborted->outcome().is_verdict(), "one rejection too many is the author's verdict");
 
-    auto const tied = formula::checked_evaluate_rejection<Mass>(tieRejection, tiedMasses);
-    if (!tied)
-    {
-        std::println("the rejection of a tie: {}", tied.error().error);
-        return 1;
-    }
     check(tied->rejected().size() == 2 && tied->rejected()[0].pass == tied->rejected()[1].pass,
           "a tie rejects both, in the same pass");
     std::println("a tie: elements {} and {} rejected together in pass {}, result {:/}\n",

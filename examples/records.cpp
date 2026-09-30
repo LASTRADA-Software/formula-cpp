@@ -163,43 +163,21 @@ int main()
 
     // The context is this record's environment: anything that takes one takes
     // the context, and reads this record's values from it.
-    auto const viaContext = formula::checked_evaluate_si<formula::Rational>(var<Strength>, records);
-    if (!viaContext)
-    {
-        std::println("f_c through the context: {}", viaContext.error());
-        return 1;
-    }
-    auto const viaEnvironment = formula::checked_evaluate_si<formula::Rational>(var<Strength>, here);
-    if (!viaEnvironment)
-    {
-        std::println("f_c through this record's environment: {}", viaEnvironment.error());
-        return 1;
-    }
-    auto const strengthViaContext = formula::number_of(viaContext);
-    auto const strengthViaEnvironment = formula::number_of(viaEnvironment);
-    if (!strengthViaContext || !strengthViaEnvironment)
-    {
-        std::println("f_c: no answer");
-        return 1;
-    }
+    constexpr auto viaContext = formula::checked_evaluate_si<formula::Rational>(var<Strength>, records);
+    constexpr auto viaEnvironment = formula::checked_evaluate_si<formula::Rational>(var<Strength>, here);
+    constexpr auto strengthViaContext = formula::number_of(viaContext);
+    constexpr auto strengthViaEnvironment = formula::number_of(viaEnvironment);
+    static_assert(viaContext.has_value() && viaEnvironment.has_value());
+    static_assert(strengthViaContext.has_value() && strengthViaEnvironment.has_value());
     std::println("f_c through the context: {} Pa", *strengthViaContext);
     std::println("f_c through this record's environment: {} Pa\n", *strengthViaEnvironment);
     check(strengthViaContext == strengthViaEnvironment, "the context reads this record's own values");
 
     std::println("== 2. Reading a value, or computing over another specimen ==\n");
 
-    auto const referenceRead = formula::checked_evaluate_si<formula::Rational>(referenceStrength, records);
-    if (!referenceRead)
-    {
-        std::println("the reference's strength from its load and edges: {}", referenceRead.error());
-        return 1;
-    }
-    auto const referenceValue = formula::number_of(referenceRead);
-    if (!referenceValue)
-    {
-        std::println("the reference's strength from its load and edges: no answer");
-        return 1;
-    }
+    constexpr auto referenceRead = formula::checked_evaluate_si<formula::Rational>(referenceStrength, records);
+    constexpr auto referenceValue = formula::number_of(referenceRead);
+    static_assert(referenceRead.has_value() && referenceValue.has_value());
     std::println("{} = {} Pa", formula::render(referenceStrength), *referenceValue);
     std::println("{}\n", formula::render<formula::Dialect::LaTeX>(referenceStrength));
     check(formula::render(referenceStrength) == "(F / (x_m * y_m)) of Reference",
