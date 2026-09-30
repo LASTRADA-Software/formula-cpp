@@ -6,6 +6,7 @@
 #include "census_tally.hpp"
 
 #include <cstdio>
+#include <print>
 
 namespace
 {
@@ -21,13 +22,13 @@ struct ReportAtExit
     ~ReportAtExit()
     {
         using formula::detail::CensusRole;
-        std::printf("overflow census: numerator %d bits, denominator %d bits, intermediate %d bits, unsigned %d "
-                    "bits; headroom %d of 63\n",
-                    formula_census::bits_used(CensusRole::Numerator),
-                    formula_census::bits_used(CensusRole::Denominator),
-                    formula_census::bits_used(CensusRole::Intermediate),
-                    formula_census::bits_used(CensusRole::Unsigned),
-                    63 - formula_census::signed_bits_used());
+        std::println("overflow census: numerator {} bits, denominator {} bits, intermediate {} bits, unsigned {} "
+                     "bits; headroom {} of 63",
+                     formula_census::bits_used(CensusRole::Numerator),
+                     formula_census::bits_used(CensusRole::Denominator),
+                     formula_census::bits_used(CensusRole::Intermediate),
+                     formula_census::bits_used(CensusRole::Unsigned),
+                     63 - formula_census::signed_bits_used());
         std::fflush(stdout);
     }
 };

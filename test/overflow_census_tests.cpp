@@ -22,9 +22,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <limits>
 #include <optional>
+#include <print>
 #include <span>
 #include <string>
 #include <tuple>
@@ -73,7 +73,7 @@ template <typename Evaluation>
 /// cmake/CheckCensusPage.cmake to collect.
 void emit(char const* table, std::string const& line)
 {
-    std::printf("@census:%s:%s\n", table, line.c_str());
+    std::println("@census:{}:{}", table, line);
 }
 
 /// Prints one row of the statistics table, in the page's shape.

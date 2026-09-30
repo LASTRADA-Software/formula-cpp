@@ -28,9 +28,9 @@
 #include <formula-cpp/trace_render.hpp>
 
 #include <cstdint>
-#include <cstdio>
 #include <expected>
 #include <fstream>
+#include <print>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -596,7 +596,7 @@ template <formula::Predicate P>
 
     if (plain.citations.empty())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: a gallery constraint must be cited, and this one is not\n");
+        std::println(stderr, "formula-cpp-gallery: a gallery constraint must be cited, and this one is not");
         return false;
     }
     formula::Citation const& citation = plain.citations.front();
@@ -647,14 +647,14 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        std::fprintf(stderr, "usage: formula-cpp-gallery <output-file>\n");
+        std::println(stderr, "usage: formula-cpp-gallery <output-file>");
         return 1;
     }
 
     std::ofstream out { argv[1], std::ios::trunc };
     if (!out)
     {
-        std::fprintf(stderr, "formula-cpp-gallery: could not open '%s' for writing\n", argv[1]);
+        std::println(stderr, "formula-cpp-gallery: could not open '{}' for writing", argv[1]);
         return 1;
     }
 
@@ -694,7 +694,7 @@ int main(int argc, char** argv)
     auto const outcome = formula::checked_evaluate<WaterCementRatio>(waterCementRatio, inputs);
     if (!outcome.has_value() || !outcome->is_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked evaluation did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the worked evaluation did not produce a value");
         return 1;
     }
     formula::Rational const result = outcome->measurement().value();
@@ -717,7 +717,7 @@ int main(int argc, char** argv)
     formula::Explained<BulkDensity> const explained = formula::explain<BulkDensity>(density, densityInputs);
     if (!explained.outcome.is_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked derivation did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the worked derivation did not produce a value");
         return 1;
     }
 
@@ -738,7 +738,7 @@ int main(int argc, char** argv)
         formula::explain<AdjustedBulkDensity>(compactionAdjustedDensity, compactionInputs);
     if (!explainedCompaction.outcome.is_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked conditional did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the worked conditional did not produce a value");
         return 1;
     }
 
@@ -763,7 +763,7 @@ int main(int argc, char** argv)
     formula::ConstraintOutcome const diameterOutcome = formula::check(maximumDiameter, oversizedSpecimen, constraintSink);
     if (!diameterOutcome.is_violated())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked constraint did not violate as expected\n");
+        std::println(stderr, "formula-cpp-gallery: the worked constraint did not violate as expected");
         return 1;
     }
 
@@ -791,7 +791,7 @@ int main(int argc, char** argv)
         formula::explain<CorrectedStrength>(correctedStrength, correctedInputs);
     if (!explainedCorrected.outcome.is_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked lookup derivation did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the worked lookup derivation did not produce a value");
         return 1;
     }
 
@@ -821,7 +821,7 @@ int main(int argc, char** argv)
         formula::checked_evaluate<SizeAllowance>(sizeAllowance, uncoveredSpecimen, missSink);
     if (missed.has_value() || missed.error() != formula::ArithmeticError::DomainError)
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the uncovered diameter did not report a domain error\n");
+        std::println(stderr, "formula-cpp-gallery: the uncovered diameter did not report a domain error");
         return 1;
     }
 
@@ -850,7 +850,7 @@ int main(int argc, char** argv)
         formula::evaluate_method<Cube>(cubeStrengthMethod, cubeSpecimen, formula::RecordingSink<> { methodTrace });
     if (!baseStrength.has_value() || !baseStrength->has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked method did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the worked method did not produce a value");
         return 1;
     }
 
@@ -868,7 +868,7 @@ int main(int argc, char** argv)
         formula::evaluate_method<Cube>(overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidTrace });
     if (!overlaidStrength.has_value() || !overlaidStrength->has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked overlaid method did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the worked overlaid method did not produce a value");
         return 1;
     }
 
@@ -890,7 +890,7 @@ int main(int argc, char** argv)
         formula::check_method(cubeStrengthMethod, cubeSpecimen, formula::RecordingSink<> { ownAcceptance });
     if (ownOutcomes.size() != 1 || !ownOutcomes[0].is_satisfied())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the method's own check did not hold\n");
+        std::println(stderr, "formula-cpp-gallery: the method's own check did not hold");
         return 1;
     }
 
@@ -906,7 +906,7 @@ int main(int argc, char** argv)
         formula::check_method(overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidAcceptance });
     if (overlaidOutcomes.size() != 2 || !overlaidOutcomes[0].is_violated() || !overlaidOutcomes[1].is_satisfied())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the overlay's checks did not answer as expected\n");
+        std::println(stderr, "formula-cpp-gallery: the overlay's checks did not answer as expected");
         return 1;
     }
 
@@ -937,7 +937,7 @@ int main(int argc, char** argv)
         passingEachScreen, screenAnalysis, formula::RecordingSink<> { seriesTrace });
     if (!passingValues.has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked series did not evaluate\n");
+        std::println(stderr, "formula-cpp-gallery: the worked series did not evaluate");
         return 1;
     }
 
@@ -959,7 +959,7 @@ int main(int argc, char** argv)
         formula::checked_evaluate<PassingShare>(passingAtOpening, screenAnalysis, formula::RecordingSink<> { curveTrace });
     if (!readOff.has_value() || !readOff->is_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked curve did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the worked curve did not produce a value");
         return 1;
     }
 
@@ -989,7 +989,7 @@ int main(int argc, char** argv)
         formula::checked_evaluate_series<ClassShare>(classShares, sieved, formula::RecordingSink<> { binningTrace });
     if (!shared.has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked binning did not evaluate\n");
+        std::println(stderr, "formula-cpp-gallery: the worked binning did not evaluate");
         return 1;
     }
 
@@ -1014,7 +1014,7 @@ int main(int argc, char** argv)
         formula::checked_evaluate_series<ClassShare>(classShares, oversized, formula::RecordingSink<> { binningMissTrace });
     if (missedShares.has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the oversized particle did not miss\n");
+        std::println(stderr, "formula-cpp-gallery: the oversized particle did not miss");
         return 1;
     }
 
@@ -1041,7 +1041,7 @@ int main(int argc, char** argv)
         formula::checked_evaluate<DeterminedMass>(massMean, sixDeterminations, formula::RecordingSink<> { meanTrace });
     if (!meanValue.has_value() || meanValue->measurement().value() != formula::Rational { 413, 10 })
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked mean did not come to 41.3 g\n");
+        std::println(stderr, "formula-cpp-gallery: the worked mean did not come to 41.3 g");
         return 1;
     }
     out << "```\n" << formula::render_trace(meanTrace, { .maxSteps = 20 }) << "```\n\n";
@@ -1053,7 +1053,7 @@ int main(int argc, char** argv)
         formula::checked_evaluate<MassSpread>(massSpread, sixDeterminations, formula::RecordingSink<> { spreadTrace });
     if (!spreadValue.has_value() || spreadValue->measurement().value() != formula::Rational { 37, 20 })
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked spread did not come to 1.85 g\n");
+        std::println(stderr, "formula-cpp-gallery: the worked spread did not come to 1.85 g");
         return 1;
     }
     out << "```\n" << formula::render_trace(spreadTrace, { .maxSteps = 20 }) << "```\n\n";
@@ -1066,7 +1066,7 @@ int main(int argc, char** argv)
         meanWithoutOutliers, sixDeterminations, formula::RecordingSink<> { settledTrace });
     if (!settledMean.has_value() || settledMean->measurement().value() != formula::Rational { 321, 8 })
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked rejection did not settle at 321/8 g\n");
+        std::println(stderr, "formula-cpp-gallery: the worked rejection did not settle at 321/8 g");
         return 1;
     }
     out << "```\n" << formula::render_trace(settledTrace, { .maxSteps = 30 }) << "```\n\n";
@@ -1080,7 +1080,7 @@ int main(int argc, char** argv)
         meanAtMostOne, sixDeterminations, formula::RecordingSink<> { abortedTrace });
     if (abortedMean.has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked rejection did not abort\n");
+        std::println(stderr, "formula-cpp-gallery: the worked rejection did not abort");
         return 1;
     }
     out << "```\n" << formula::render_trace(abortedTrace, { .maxSteps = 30 }) << "```\n\n";
@@ -1097,7 +1097,7 @@ int main(int argc, char** argv)
         formula::check(repeatabilityCheck, twoDeterminations, formula::RecordingSink<> { precisionTrace });
     if (!agreed.is_satisfied())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the worked precision check did not hold\n");
+        std::println(stderr, "formula-cpp-gallery: the worked precision check did not hold");
         return 1;
     }
     out << "```\n" << formula::render_trace(precisionTrace, { .maxSteps = 30 }) << "```\n\n";
@@ -1131,7 +1131,7 @@ int main(int argc, char** argv)
         relativeStrength, sameBatch, formula::RecordingSink<> { relativeTrace });
     if (!relative.has_value() || !relative->has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the relative strength did not produce a value\n");
+        std::println(stderr, "formula-cpp-gallery: the relative strength did not produce a value");
         return 1;
     }
 
@@ -1159,7 +1159,7 @@ int main(int argc, char** argv)
         gatedRelativeStrength, otherBatch, formula::RecordingSink<> { gatedTrace });
     if (gated.has_value() || gated.error() != formula::ArithmeticError::DomainError)
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the gated read was not refused\n");
+        std::println(stderr, "formula-cpp-gallery: the gated read was not refused");
         return 1;
     }
 
@@ -1194,7 +1194,7 @@ int main(int argc, char** argv)
         settlementSlope, settlementReadings, formula::RecordingSink<> { fitTrace });
     if (!fitted.has_value() || !fitted->has_value())
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the least-squares fit did not produce a slope\n");
+        std::println(stderr, "formula-cpp-gallery: the least-squares fit did not produce a slope");
         return 1;
     }
     out << "```\n" << formula::render_trace(fitTrace, { .maxSteps = 20 }) << "```\n\n";
@@ -1209,7 +1209,7 @@ int main(int argc, char** argv)
     auto const settling = formula::explain_retry(settledEstimate, formula::environment());
     if (!settling.outcome.has_value() || settling.outcome->end() != formula::RetryEnd::Accepted)
     {
-        std::fprintf(stderr, "formula-cpp-gallery: the retry was not accepted\n");
+        std::println(stderr, "formula-cpp-gallery: the retry was not accepted");
         return 1;
     }
     out << "```\n" << formula::render_trace(settling.trace, { .maxSteps = 60 }) << "```\n\n";
