@@ -319,9 +319,9 @@ int main()
         std::print("operation: {}, outputs:", operation.name);
         for (std::string_view const output: operation.outputs)
             std::print(" {}", output);
-        std::println();
+        std::println("");
     }
-    std::println();
+    std::println("");
     check(page.opaqueOperations.size() == 1, "one operation on the page");
 
     std::println("== 2. Two outputs, two runs ==\n");
@@ -420,7 +420,7 @@ int main()
     constexpr auto typedIn = formula::environment(formula::entered(formula::Measured<Estimate> { 11.3_r }));
     auto const entered = formula::explain_retry(fourAttempts, typedIn);
     printEnding("typed in by a person", entered);
-    std::println();
+    std::println("");
     check(entered.outcome.has_value() && entered.outcome->end() == formula::RetryEnd::ManuallyEntered,
           "a person's entry is never replaced");
 
@@ -439,7 +439,7 @@ int main()
         formula::environment(formula::measured_series<Determination>(41.3_r, 43.9_r, 42.7_r, 45.7_r));
     auto const agreed = formula::explain_retry(successive, allFour);
     printEnding("41.3, 43.9, 42.7, 45.7 g", agreed);
-    std::println();
+    std::println("");
     check(agreed.outcome.has_value() && agreed.outcome->end() == formula::RetryEnd::Accepted
               && agreed.outcome->accepted_at() == std::optional<std::size_t> { 2 }
               && formula::number_of(agreed.outcome) == 42.7_r,
