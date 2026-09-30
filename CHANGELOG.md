@@ -13,9 +13,10 @@ spelling away. `_r` writes an exact decimal, `27.3_r` being the `Rational` 273/1
 plain numbers and `not_measured`; `number_of` reads the number a result holds; `describe` and
 `std::format` write results, units, dimensions and enumerations; `traced`, the `explain_*` twins and
 `trace_of` return a trace in one call; `DecimalRounding` names a rounding once; a `Measured` has
-throwing twins for its checked conversions; and `yields<Q>` binds a formula to its result quantity.
-Every example is rewritten with these spellings and prints with `std::println`. GCC 14 is now the
-oldest supported GCC. Some changes break code written for 0.2.0; each is listed under Changed.
+throwing twins for its checked conversion, rounding and bounds check; and `yields<Q>` binds a
+formula to its result quantity. Every example is rewritten with these spellings and prints with
+`std::println`. GCC 14 is now the oldest supported GCC. Some changes break code written for 0.2.0;
+each is listed under Changed.
 
 ### Added
 

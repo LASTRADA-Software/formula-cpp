@@ -342,7 +342,7 @@ and still growing. The public API may change until 1.0.
 | Named base dimensions such as money | shipped |
 | Decimals in traces, rendered formulas and `std::format` | shipped |
 | Calculations: definitions, dependency graph, incremental worksheets | shipped |
-| Short spellings: exact decimal literals, bound formulas, number_of, trace_of, std::format of results | shipped |
+| Short spellings: exact decimal literals, bound formulas, `number_of`, `trace_of`, `std::format` of results | shipped |
 
 ## Requirements
 

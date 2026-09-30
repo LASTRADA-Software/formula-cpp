@@ -133,6 +133,6 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Named base dimensions such as money | shipped |
 | Decimals in traces, rendered formulas and `std::format` | shipped |
 | Calculations: definitions, dependency graph, incremental worksheets | shipped |
-| Short spellings: exact decimal literals, bound formulas, number_of, trace_of, std::format of results | shipped |
+| Short spellings: exact decimal literals, bound formulas, `number_of`, `trace_of`, `std::format` of results | shipped |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).
