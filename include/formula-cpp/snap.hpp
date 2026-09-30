@@ -60,6 +60,12 @@ enum class SnapTie : std::uint8_t
 
 namespace detail
 {
+template <>
+inline constexpr bool formats_by_describe<SnapTie> = true;
+} // namespace detail
+
+namespace detail
+{
     /// Fails to compile when a snap's permitted set is empty: there is nothing
     /// to snap to, and every value would miss. Named so the table prints.
     template <BreakpointTable Permitted>

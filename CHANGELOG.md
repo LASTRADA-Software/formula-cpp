@@ -25,6 +25,15 @@ change is recorded here.
   `FailureSite`: a lowercase phrase with no trailing punctuation, as `describe` of an
   `ArithmeticError` already gave -- `satisfied`, `not checked`, `manually entered`, `verdict`,
   `result element`.
+- `std::format` writes an `Outcome<Q>`, a `Unit`, a `Dimension` and every enumeration that has a
+  `describe()`, with `<formula-cpp/format.hpp>` included. An `Outcome` takes a `Measured`'s spec and
+  writes a value as it does, an empty one as `(not measured)`, and a verdict or an invalid one as
+  its label, padded by the spec's fill, alignment and width. A `Unit` is its symbol (`kJ`); a
+  `Dimension` its exponents (`L^2 M^-3`, `L^(1/2)`, `(dimensionless)`); an enumeration its words
+  (`overflow in exact arithmetic`), aligned as a string is.
+- `symbol_of<Q>()` without a vocabulary is `Describe<Q>::symbol`, and `render(x, options)`,
+  `render<D>(x, options)`, `document(x, options)` and `document<D>(x, options)` take
+  `RenderOptions` without a vocabulary that renames nothing.
 
 ### Changed
 

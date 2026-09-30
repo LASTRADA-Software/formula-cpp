@@ -50,8 +50,9 @@ foreach(file IN LISTS surfaces)
     # Whole-line comments: the doc comments in these headers name
     # `Describe<Q>::symbol` and one-argument calls freely.
     string(REGEX REPLACE "\n[ \t]*//[^\n]*" "\n" code "${contents}")
-    # The public forwarding overloads, each exactly one line of this shape.
-    string(REGEX REPLACE "\n[ \t]*return (render|document)<[A-Za-z:]+>[(]node, DefaultVocabulary {}[)];" "\n" code
+    # The public forwarding overloads, each exactly one line of this shape --
+    # the ones that take `RenderOptions` pass them on.
+    string(REGEX REPLACE "\n[ \t]*return (render|document)<[A-Za-z:]+>[(]node, DefaultVocabulary {}(, renderOptions)?[)];" "\n" code
                          "${code}")
     string(REGEX REPLACE "\n[ \t]*return render<Dialect::Plain>[(]node[)];" "\n" code "${code}")
 

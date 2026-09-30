@@ -1225,6 +1225,30 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && std::format("{:>10~HalfEven}", thirdEdge) == " \xe2\x89\x88" "150.7 mm"
                            && std::format("{:/}", thirdEdge) == "452/3 mm");
 
+    // An outcome, a unit, a dimension and an enumeration written by
+    // std::format, and the default vocabulary and render options taken
+    // without a vocabulary.
+    probe.checks.push_back(
+        std::format("{}", formula::Outcome<EdgeX>::value(thirdEdge, formula::ValueSource::Derived)) == "452/3 mm"
+        && std::format("{:>17}", formula::Outcome<EdgeX>::verdict({ "repeat the test" })) == "  repeat the test"
+        && std::format("{}", formula::unit::Millimetre) == "mm"
+        && std::format("{}", formula::dim::Density) == "L^-3 M^1"
+        && std::format("{}", formula::ArithmeticError::Overflow) == "overflow in exact arithmetic");
+    probe.checks.push_back(
+        formula::symbol_of<EdgeX>() == formula::Describe<EdgeX>::symbol
+        && formula::render(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                           formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() })
+               == formula::render(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                                  formula::DefaultVocabulary {},
+                                  formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() }));
+
+    // The words of the enumerations a constraint, a retry and a series
+    // failure report, which a consumer's own function of the same name must
+    // not make ambiguous.
+    probe.checks.push_back(formula::describe(formula::ConstraintOutcomeKind::Violated) == "violated"
+                           && !formula::describe(formula::RetryEnd::Accepted).empty()
+                           && !formula::describe(formula::FailureSite::ResultElement).empty());
+
     // The exact decimal literal: 27.3 is 273/10, not the double nearest it.
     {
         using namespace formula::literals;

@@ -131,7 +131,7 @@ set(exemptAllowances
     "trace.hpp=vector"
     "trace_render.hpp=string"
     "latex_math.hpp=string"
-    "format.hpp=format"
+    "format.hpp=format,string"
 )
 
 set(overreaches "")

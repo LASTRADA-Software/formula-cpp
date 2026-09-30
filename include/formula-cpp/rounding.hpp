@@ -70,6 +70,12 @@ enum class RoundingMode : std::uint8_t
     return "unknown rounding mode";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<RoundingMode> = true;
+} // namespace detail
+
 /// A decimal scale. Negative values are meaningful: DecimalPlaces { -1 } rounds
 /// to whole tens, which norms do ask for.
 struct DecimalPlaces

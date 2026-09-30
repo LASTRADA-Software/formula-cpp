@@ -2280,6 +2280,17 @@ TEST_CASE("render: RenderOptions writes a constant as an exact decimal, in every
     CHECK(formula::render(var<Strength> * rat(1, 3), formula::DefaultVocabulary {}, exactDecimals) == "f * 1/3");
 }
 
+TEST_CASE("render: RenderOptions without a vocabulary is the default vocabulary", "[render][decimals]")
+{
+    CHECK(formula::render(scaledStrength, exactDecimals) == "f * 0.863");
+    CHECK(formula::render(scaledStrength, exactDecimals)
+          == formula::render(scaledStrength, formula::DefaultVocabulary {}, exactDecimals));
+    CHECK(formula::render<Dialect::Markdown>(scaledStrength, exactDecimals) == "`f` * 0.863");
+    CHECK(formula::render<Dialect::LaTeX>(scaledStrength, exactDecimals) == "f \\cdot 0.863");
+    // Options that change nothing write what render() without them writes.
+    CHECK(formula::render(scaledStrength, formula::RenderOptions {}) == formula::render(scaledStrength));
+}
+
 TEST_CASE("render: a typed number is never approximated, whatever the style", "[render][decimals]")
 {
     // Under an approximating style a trace would round 1/3 to ≈0.333 in

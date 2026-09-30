@@ -57,6 +57,12 @@ enum class ValueSource : std::uint8_t
     return "unknown value source";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<ValueSource> = true;
+} // namespace detail
+
 /// Which alternative an `Outcome` holds.
 ///
 /// There is deliberately no `Overridden` alternative: an override is the `Value`
@@ -87,6 +93,12 @@ enum class OutcomeKind : std::uint8_t
     }
     return "unknown outcome kind";
 }
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<OutcomeKind> = true;
+} // namespace detail
 
 /// A decision rather than a number: "reject the specimen", "repeat the test".
 struct Verdict
@@ -228,7 +240,6 @@ class Outcome
     Verdict _verdict {};
     InvalidReason _reason {};
 };
-
 
 /// The number @p measured holds, or nothing when it is absent.
 template <Described Q>

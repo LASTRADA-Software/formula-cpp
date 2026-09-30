@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -73,6 +74,12 @@ enum class ConstraintOutcomeKind : std::uint8_t
     }
     return "unknown constraint outcome";
 }
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<ConstraintOutcomeKind> = true;
+} // namespace detail
 
 /// What checking a `Constraint` produced.
 ///

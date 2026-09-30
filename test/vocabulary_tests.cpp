@@ -1507,3 +1507,10 @@ TEST_CASE("a sum of a series traces inside an overlaid method, in the sink's wor
              "5. round(#4, in %) = 50 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "6. #5 = 50 % [variant OfEachElement (2nd of 2), selected by tag]\n");
 }
+
+TEST_CASE("a symbol asked without a vocabulary is the declared one", "[vocabulary]")
+{
+    STATIC_REQUIRE(formula::symbol_of<Strength>() == formula::symbol_of<Strength>(formula::DefaultVocabulary {}));
+    STATIC_REQUIRE(formula::symbol_of<Strength>() == formula::Describe<Strength>::symbol);
+    STATIC_REQUIRE(formula::symbol_of<Modulus>() == "E_m");
+}

@@ -555,6 +555,12 @@ enum class CumulativeDirection : std::uint8_t
 
 namespace detail
 {
+template <>
+inline constexpr bool formats_by_describe<CumulativeDirection> = true;
+} // namespace detail
+
+namespace detail
+{
     /// Fails to compile when `sum` is given a single value. Named so the
     /// operand prints.
     template <typename Operand>
@@ -758,6 +764,12 @@ enum class FailureSite : std::uint8_t
     }
     return "unknown failure site";
 }
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<FailureSite> = true;
+} // namespace detail
 
 /// Why a series could not be evaluated, and where.
 struct SeriesFailure

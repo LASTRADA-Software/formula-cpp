@@ -305,3 +305,30 @@ TEST_CASE("the spec parser reads each form, at compile time", "[format]")
     STATIC_REQUIRE(parse_number_format(".1TowardZero").roundingMode == RoundingMode::TowardZero);
     STATIC_REQUIRE(parse_number_format(".1AwayFromZero").roundingMode == RoundingMode::AwayFromZero);
 }
+
+TEST_CASE("an outcome writes its value, or says why it has none", "[format]")
+{
+    using Held = formula::Outcome<ImpactWork>;
+    Measured<ImpactWork> const fivePointTwo { Rational { 26, 5 } };
+    CHECK(std::format("{}", Held::value(fivePointTwo, formula::ValueSource::Derived)) == "5.2 kJ");
+    CHECK(std::format("{:.3HalfEven}", Held::value(fivePointTwo, formula::ValueSource::Derived)) == "5.200 kJ");
+    CHECK(std::format("{}", Held::empty()) == "(not measured)");
+    CHECK(std::format("{:>18}", Held::verdict({ "repeat the test" })) == "   repeat the test");
+    CHECK(std::format("{:.2HalfEven}", Held::invalid({ "discarded" })) == "discarded");
+}
+
+TEST_CASE("a unit is its symbol, a dimension its exponents", "[format]")
+{
+    CHECK(std::format("{}", unit::Kilojoule) == "kJ");
+    CHECK(std::format("[{:>4}]", unit::Kilojoule) == "[  kJ]");
+    CHECK(std::format("{}", formula::dim::Mass / formula::dim::Volume) == "L^-3 M^1");
+    CHECK(std::format("{}", formula::nth_root(formula::dim::Length, 2)) == "L^(1/2)");
+    CHECK(std::format("{}", formula::dim::Scalar) == "(dimensionless)");
+}
+
+TEST_CASE("a described enumeration is its words, aligned like a string", "[format]")
+{
+    CHECK(std::format("{}", formula::ArithmeticError::Overflow) == "overflow in exact arithmetic");
+    CHECK(std::format("[{:<12}]", formula::ConstraintOutcomeKind::Violated) == "[violated    ]");
+    CHECK(std::format("{}", formula::ValueSource::ManuallyEntered) == "manually entered");
+}

@@ -619,6 +619,12 @@ enum class BoundsCheck : std::uint8_t
     return "unknown bounds outcome";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<BoundsCheck> = true;
+} // namespace detail
+
 /// Checks @p magnitude, expressed in @p unitOfValue, against that unit's bounds.
 [[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(Rational magnitude,
                                                                                           Unit unitOfValue) noexcept

@@ -2771,4 +2771,14 @@ template <Dialect D = Dialect::Plain, typename X, Vocabulary V>
 {
     return render<D>(node, detail::styled(vocabulary, renderOptions.numbers));
 }
+
+/// Renders @p node as `render<D>(node, DefaultVocabulary {}, renderOptions)`
+/// does: every symbol as `Describe<Q>::symbol` says and every number as
+/// @p renderOptions says, without naming a vocabulary that renames nothing.
+template <Dialect D = Dialect::Plain, typename X>
+    requires requires(X const& written, DefaultVocabulary const& byDefault) { render<D>(written, byDefault); }
+[[nodiscard]] std::string render(X const& node, RenderOptions renderOptions)
+{
+    return render<D>(node, DefaultVocabulary {}, renderOptions);
+}
 } // namespace formula

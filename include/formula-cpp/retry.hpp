@@ -130,6 +130,12 @@ enum class RetryEnd : std::uint8_t
     return "unknown retry end";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<RetryEnd> = true;
+} // namespace detail
+
 /// The most attempts a retry may allow. The methods this shape exists for
 /// repeat a step a few times; a larger count is almost always a typo, and 64
 /// attempts of a five-node attempt with a four-node judgement fit one

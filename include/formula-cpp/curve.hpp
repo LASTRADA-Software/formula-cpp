@@ -275,6 +275,12 @@ enum class Monotone : std::uint8_t
     return "unknown direction";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<Monotone> = true;
+} // namespace detail
+
 /// The rule a curve broke where it failed, as its trace step names it.
 enum class CurveBreak : std::uint8_t
 {

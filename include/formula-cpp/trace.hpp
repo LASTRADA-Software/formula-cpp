@@ -561,6 +561,12 @@ enum class Branch : std::uint8_t
     return "unknown branch";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<Branch> = true;
+} // namespace detail
+
 /// What stands on one side of a binary step -- `Add` to `Divide` and their
 /// elementwise twins -- so that a line with fewer than two operands still
 /// says which side each one is, and what took the other's place.
