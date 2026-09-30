@@ -253,9 +253,9 @@ and `rounded_exp` for a
 nodes computed by an integer kernel, not opaque operations -- and
 `rounded_output` for an output of an
 [opaque operation](opaque-and-retry.md#rounded-where-it-is-used) that computes
-in wider integers, as `linear_least_squares` does. Any other operation's
-output is computed in `Rational`, and fails with `Overflow` where the exact
-output would.
+in wider integers, as `linear_least_squares` does, over a curve or over raw
+observations. Any other operation's output is computed in `Rational`, and
+fails with `Overflow` where the exact output would.
 
 - **The rounded decimal is the step's value, and it is exact.** It is the
   correct rounding of the true value, found with integer arithmetic alone --

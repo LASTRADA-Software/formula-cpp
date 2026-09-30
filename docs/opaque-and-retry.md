@@ -218,10 +218,13 @@ point overflows from 15. So there is no safe number of points to state. The
 every size, regenerated with every build. **A fit that overflows has a
 traced answer only at a declared precision** (`rounded_output`, below), **and
 none in `double`.** A curve evaluates only in `Rational`, so
-`checked_evaluate_si<double>` over a fit is refused where it is written.
-`LinearLeastSquares::compute<double>` can be called directly, on numbers the
-caller has put in coherent units, but it returns bare numbers: nothing checks
-their dimensions, and nothing reaches the trace or the page.
+`checked_evaluate_si<double>` over a curve fit is refused where it is
+written. `LinearLeastSquares::compute<double>` can be called directly, on
+numbers the caller has put in coherent units, but it returns bare numbers:
+nothing checks their dimensions, and nothing reaches the trace or the page.
+A fit over raw observations, [below](#a-line-through-observations), is
+evaluated in `double` too, untraced, and at a declared precision it answers
+where its exact route overflows.
 
 ### Rounded where it is used
 
@@ -277,6 +280,111 @@ fifteen distinct denominators, rounded where used: 116.232 mm/min
 - `rounded<...>(opaque_output<"slope">(fit))` keeps its meaning: the exact
   slope, rounded afterwards, which overflows where the exact slope does. Each
   output used runs the whole call, rounded or not.
+
+## A line through observations
+
+A method often fits every determination that meets a condition, so how many
+points there are is data, not part of the formula. Read them as raw
+observations, `observations<Q, Capacity>` ([statistics](statistics.md)
+introduces them), and the fit takes as many as were made:
+
+```cpp
+constexpr auto observedFit = formula::linear_least_squares(
+    formula::observations<Elapsed, 64>,
+    formula::observations<Length, 64>,
+    { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
+```
+
+**Pairing is by row.** Observation i of each input belongs to row i, so build
+every column from the same rows. Inputs whose counts differ make the fit fail
+with its own `DomainError`; so do fewer than two observations, points that
+are all equal, and values that are all equal. Flat values are refused
+because R² would be 0/0, so a flat response never passes an R² acceptance:
+
+```text
+flat lengths: argument outside the domain of the operation
+```
+
+**Four outputs.** `intercept` and `slope` as before, `r squared` -- the
+coefficient of determination, S_xy² / (S_xx S_yy), a bare number -- and
+`points`, the number of observations fitted, exact in every representation.
+The degrees of freedom are `points` minus two.
+
+```text
+1. t = 1 s; 2 s; 4 s; 7 s
+2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm
+3. linear least squares(#1, #2) = intercept = 19/2 mm; slope = 19/28 mm/s; r squared = 1083/1085; points = 4 [inside not shown] [Rate of change, Example Standard 12, 5.1]
+4. slope of #3 = 19/28 mm/s
+```
+
+The four observations were made in room for 64, and the call's line shows
+the four.
+
+### When the exact fractions do not fit
+
+An exact fit through fifty readings at four decimals does not fit
+`Rational`. Computed with Python's fractions, the slope is a fraction of 46
+and 54 bits, which fits, but the intercept's numerator needs 64 bits and R²
+92 bits over 92. `opaque_output` then answers `Overflow` -- for every
+output of the call, since its outputs answer or fail together. A formula
+that declares the precision it reports a coefficient at -- a unit, decimal
+places and a rounding mode, as `rounded<>` does -- gets the correctly
+rounded decimal instead, as long as the fit stays within the wide integers
+the kernel computes in (`detail/least_squares_kernel.hpp`; beyond them the
+answer is `Overflow` again, and the
+[numeric headroom](numeric-headroom.md#regression-over-observations-realistic-and-one-stress-control)
+page measures where). [Displaying numbers](display.md) explains values the
+exact layer cannot hold:
+
+```cpp
+constexpr auto observedSlope = formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 },
+                                                       formula::RoundingMode::HalfEven>(observedFit);
+```
+
+```text
+round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)
+1. t = 1 s; 2 s; 4 s; 7 s
+2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm
+3. linear least squares(#1, #2) = intercept, slope, r squared, points: rounded where used [inside not shown] [Rate of change, Example Standard 12, 5.1]
+4. round(slope of #3, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]
+```
+
+```text
+fifty readings at 4 decimals, exact: overflow in exact arithmetic
+fifty readings at 4 decimals, rounded: slope 3.1707 mm/s, intercept 2406.6455 mm, r squared 0.999996
+```
+
+The slope is 3.1707 mm/s at four decimals (a floor would give 3.1706), the
+intercept 2406.6455 mm, and R² 0.999996 floored at six decimals (to nearest
+it would be 0.999997).
+
+### R² as an acceptance
+
+A constraint can accept a fit by its R². `RoundingMode::Floor` makes the
+rounding never lift a fit over the line:
+
+```cpp
+constexpr auto closeEnough = formula::constraint(
+    formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(observedFit)
+        >= formula::constant<unit::One>(formula::Rational { 998, 1000 }),
+    formula::Verdict { "repeat the readings" });
+```
+
+```text
+r squared at 4 dp, floored, at least 0.998: satisfied
+```
+
+### In `double`, and against a temperature in degrees Celsius
+
+`checked_evaluate_si<double>` fits observations approximately, in coherent
+units, with nothing traced: it is the exploratory route, and a design the
+exact route answers may be refused there (the section on several regressors
+states the tolerance).
+
+The fit sees coherent units, so a regressor in degrees Celsius is fitted in
+kelvin: the slope per kelvin is the slope per degree Celsius, but the
+intercept is the value at 0 K. The value at 0 °C is the intercept plus the
+slope times 273.15 K, written as a formula over the two outputs.
 
 ## A citation is required
 

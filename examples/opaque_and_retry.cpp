@@ -18,6 +18,9 @@
 //      of attempts is the method's verdict, not a missing value.
 //   6. Judged from the second attempt, two successive results must agree,
 //      written with `abs`.
+//   7. A line through raw observations, whose number is data: exact, with R^2
+//      and the number of points, and rounded where used when the exact
+//      fractions no longer fit.
 //
 // Every number here is invented, as in every other example in this
 // repository; nothing here cites a standard.
@@ -237,6 +240,54 @@ std::string ending(char const* label, Retrying const& retrying, Env const& envir
     std::string const traced = formula::render_trace(explained.trace, { .maxSteps = 200 });
     return line + (traced.empty() ? std::string { "; nothing traced" } : "\n  " + lastLine(traced));
 }
+
+// ---- 7. A line through observations -------------------------------------------------
+
+using SlopeRate = formula::Quantity<struct SlopeRateTag, "v_s", "an invented slope", millimetrePerSecond>;
+using StartLength = formula::Quantity<struct StartLengthTag, "L_0", "an invented starting length", unit::Millimetre>;
+using FitQuality = formula::Quantity<struct FitQualityTag, "R2", "an invented coefficient of determination", unit::One>;
+
+constexpr auto observedFit = formula::linear_least_squares(
+    formula::observations<Elapsed, 64>,
+    formula::observations<Length, 64>,
+    { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
+constexpr auto observedSlope = formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 },
+                                                       formula::RoundingMode::HalfEven>(observedFit);
+constexpr auto closeEnough = formula::constraint(
+    formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(observedFit)
+        >= formula::constant<unit::One>(formula::Rational { 998, 1000 }),
+    formula::Verdict { "repeat the readings" });
+
+constexpr auto observedPoints = formula::environment(
+    formula::MeasuredObservations<Elapsed, 64>(formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 },
+                                               formula::Rational { 7 }),
+    formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 }, formula::Rational { 109, 10 },
+                                              formula::Rational { 121, 10 }, formula::Rational { 143, 10 }));
+
+/// Fifty readings at four decimals: t = k + 1 + (7919 k mod 997) / 10^4 s and
+/// L = 2410 + 3.17 k + ((3217 k mod 1009) - 504) / 10^4 mm, for k from 0.
+auto fiftyReadings()
+{
+    std::array<formula::Rational, 50> times;
+    std::array<formula::Rational, 50> lengths;
+    for (std::size_t k = 0; k < 50; ++k)
+    {
+        auto const position = static_cast<std::int64_t>(k);
+        times[k] = formula::Rational { 10'000 * (position + 1) + (7919 * position) % 997, 10'000 };
+        lengths[k] = formula::Rational { 24'100'000 + 31'700 * position + (3217 * position) % 1009 - 504, 10'000 };
+    }
+    return formula::environment(*formula::MeasuredObservations<Elapsed, 64>::from(times),
+                                *formula::MeasuredObservations<Length, 64>::from(lengths));
+}
+
+/// @p shown as its exact decimal, with its unit.
+template <typename Q>
+std::string decimalText(formula::Measured<Q> const& shown)
+{
+    // Held first: `view()` of a temporary is deleted, since the view would dangle.
+    formula::NumberText const spelled = formula::number_text(shown, formula::NumberStyle::exact_decimal());
+    return std::string { spelled.view() };
+}
 } // namespace
 
 int main()
@@ -400,6 +451,51 @@ int main()
               && agreed->outcome().measurement().value() == formula::Rational { 427, 10 },
           "42.7 g, at the third attempt");
 
+    std::printf("== 7. A line through observations ==\n\n");
+
+    auto const exactLine = formula::explain<Rate>(formula::opaque_output<"slope">(observedFit), observedPoints);
+    std::printf("%s\n", formula::render_trace(exactLine.trace, { .maxSteps = 30 }).c_str());
+    check(exactLine.outcome.measurement().value() == formula::Rational { 285, 7 }, "19/28 mm/s through observations");
+
+    std::printf("%s\n", formula::render(observedSlope).c_str());
+    auto const roundedLine = formula::explain<SlopeRate>(observedSlope, observedPoints);
+    std::printf("%s\n", formula::render_trace(roundedLine.trace, { .maxSteps = 30 }).c_str());
+    check(roundedLine.outcome.measurement().value() == formula::Rational { 3393, 5000 }, "0.6786 mm/s");
+
+    bool const fitAccepted = formula::check(closeEnough, observedPoints).is_satisfied();
+    std::printf("r squared at 4 dp, floored, at least 0.998: %s\n", fitAccepted ? "satisfied" : "not satisfied");
+    check(fitAccepted, "0.9981 is at least 0.998");
+
+    constexpr auto flatLengths = formula::environment(
+        formula::MeasuredObservations<Elapsed, 64>(formula::Rational { 1 }, formula::Rational { 2 },
+                                                   formula::Rational { 4 }, formula::Rational { 7 }),
+        formula::MeasuredObservations<Length, 64>(formula::Rational { 127, 10 }, formula::Rational { 127, 10 },
+                                                  formula::Rational { 127, 10 }, formula::Rational { 127, 10 }));
+    auto const flatLine = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(observedFit), flatLengths);
+    std::printf("flat lengths: %s\n",
+                flatLine.has_value() ? "a line" : std::string { formula::describe(flatLine.error()) }.c_str());
+    check(!flatLine.has_value() && flatLine.error() == formula::ArithmeticError::DomainError, "a flat response has no R²");
+
+    auto const fifty = fiftyReadings();
+    auto const exactFifty = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(observedFit), fifty);
+    std::printf("fifty readings at 4 decimals, exact: %s\n",
+                exactFifty.has_value() ? "a line" : std::string { formula::describe(exactFifty.error()) }.c_str());
+    auto const slopeOfFifty = formula::checked_evaluate<SlopeRate>(observedSlope, fifty);
+    auto const startOfFifty = formula::checked_evaluate<StartLength>(
+        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            observedFit),
+        fifty);
+    auto const qualityOfFifty = formula::checked_evaluate<FitQuality>(
+        formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+            observedFit),
+        fifty);
+    check(slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value(), "fifty readings, rounded");
+    if (slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value())
+        std::printf("fifty readings at 4 decimals, rounded: slope %s, intercept %s, r squared %s\n\n",
+                    decimalText(slopeOfFifty->measurement()).c_str(), decimalText(startOfFifty->measurement()).c_str(),
+                    decimalText(qualityOfFifty->measurement()).c_str());
+    check(slopeOfFifty.has_value() && slopeOfFifty->measurement().value() == formula::Rational { 31707, 10'000 },
+          "3.1707 mm/s");
     std::printf("all checks passed: %s\n", allPassed ? "yes" : "no");
     return allPassed ? 0 : 1;
 }

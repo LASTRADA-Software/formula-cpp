@@ -29,6 +29,9 @@ their figures:
 - a **least-squares line** through readings at 3 decimal places, which
   overflows from 34 points, though not at every size above.
 
+A line through observations reported at declared decimals answers at every
+size measured below; its exact route stops sooner.
+
 The project's decision rule is: **any realistic case under 8 bits of headroom
 recommends wider intermediates**: 128-bit intermediate arithmetic, computing
 each product and sum in 128 bits before reducing. These cases are under it,
@@ -343,6 +346,34 @@ point, where even 256 bits are outgrown. There is no traced fallback in
 `LinearLeastSquares::compute<double>` can be called directly, on numbers
 already in coherent units, but nothing it returns is checked, traced,
 rendered or documented.
+
+### Regression over observations (realistic, and one stress control)
+
+`linear_least_squares` over raw observations, up to 128 of them, is fitted on
+the census's own shapes, read as observations: readings at 3 decimal places
+near 2410 N, readings at 4 decimal places near 2410 mm, and a different
+denominator on every point. Each size from 2 to 128 points is fitted twice:
+through `opaque_output`, exactly, in the wide integers of the regression
+kernel, and through `rounded_output`, the slope to 4 decimal places and R²
+floored at 6. The columns count sizes, not bits: the kernel's wide integers do
+not report to the census, so there is no headroom figure to print, and none is
+implied.
+
+<!-- census:regression -->
+
+| data (invented) | exact route: sizes that overflow | first | rounded route: sizes that overflow | first |
+|---|---|---|---|---|
+| a line through readings at 3 dp near 2410 N (realistic) | 99 of 127 | 29 points | 0 of 127 | none |
+| a line through readings at 4 dp near 2410 mm (realistic) | 122 of 127 | 7 points | 0 of 127 | none |
+| a line through a different denominator on every point (stress control) | 118 of 127 | 11 points | 66 of 127 | 62 points |
+
+<!-- /census:regression -->
+
+**The exact route stops early; the rounded route does not stop on realistic
+data.** A call's outputs answer or fail together, and R²'s exact fraction is
+about twice as wide as the slope's. Reported at declared decimals, the same
+fits answer at every size measured. A different denominator on every point
+outgrows even the wide kernel, and is `Overflow`.
 
 ## Which cases decide
 
