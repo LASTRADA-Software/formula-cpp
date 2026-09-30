@@ -33,7 +33,7 @@ ratios.
 
 ```cpp
 inline constexpr auto determinations = formula::series<Mass, 6>;
-inline constexpr auto mean = formula::sample_mean(determinations);
+inline constexpr auto mean = formula::yields<Mass>(formula::sample_mean(determinations));
 inline constexpr auto count = formula::sample_count(determinations);
 inline constexpr auto variance = formula::sample_variance(determinations);
 inline constexpr auto range = formula::sample_range(determinations);
@@ -94,8 +94,12 @@ square root itself, exactly: `rounded_sqrt` finds the correctly rounded
 decimal without ever forming an inexact root.
 
 ```cpp
-inline constexpr auto spread =
-    formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(variance);
+/// The spread is reported to 2 dp of g.
+inline constexpr formula::DecimalRounding spreadRounding { unit::Gram,
+                                                           formula::DecimalPlaces { 2 },
+                                                           formula::RoundingMode::HalfAwayFromZero };
+/// The spread reported exactly: the variance's square root, rounded to 2 dp of g.
+inline constexpr auto spread = formula::rounded_sqrt<spreadRounding>(variance);
 ```
 
 ```text
@@ -125,11 +129,22 @@ mean again, and repeats until a pass rejects nothing -- a value inside the
 limit at first can be outside it once another has gone.
 
 ```cpp
-inline constexpr auto sixPercent = formula::deviation_from_mean(rat(6, 100) * formula::pass_mean<Mass>);
+template <typename Rejected, typename Kept, typename Sample, typename Criterion>
+[[nodiscard]] constexpr auto rejecting(Sample sample, Criterion criterion)
+{
+    return formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, Rejected, Kept>(
+        sample, criterion, repeatTest, rejectionRule);
+}
+```
+
+The example states what its method fixes once, in `rejecting`, and each
+rejection below names only what differs:
+
+```cpp
+inline constexpr auto sixPercent = formula::deviation_from_mean(0.06_r * formula::pass_mean<Mass>);
 
 inline constexpr auto withoutOutliers =
-    formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<4>>(
-        determinations, sixPercent, repeatTest, rejectionRule);
+    rejecting<formula::AtMost<2>, formula::KeepAtLeast<4>>(determinations, sixPercent);
 ```
 
 Every parameter that shapes the result is required, none defaulted:
@@ -233,7 +248,7 @@ limit² × s² instead, which is the same decision for a limit of zero or more,
 and the trace shows the squares it compared:
 
 ```cpp
-inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::number(rat(7, 4)));
+inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::number(7_r / 4));
 ```
 
 ```text
@@ -254,9 +269,8 @@ limits could not be exceeded by any sample:
 ```cpp
 inline constexpr formula::SampleSizeTable<5> declaredSizes { 3, 4, 5, 6, 8 };
 inline constexpr auto gapLimit = formula::gap_to_range(
-    formula::critical_value<declaredSizes, unit::One>(formula::pass_count,
-                                                      { rat(900), rat(700), rat(30), rat(45), rat(5) })
-    * rat(1, 100));
+    formula::critical_value<declaredSizes, unit::One>(formula::pass_count, { 900, 700, 30, 45, 5 })
+    * 0.01_r);
 ```
 
 ```text
@@ -288,7 +302,7 @@ changes the symbol and the trace's words, never the arithmetic.
 
 ```cpp
 inline constexpr auto limitAtLevel =
-    formula::constant<unit::Gram>(rat(1, 10)) + rat(1, 50) * formula::precision_level<FirstResult>;
+    formula::constant<unit::Gram>(0.1_r) + 0.02_r * formula::precision_level<FirstResult>;
 
 inline constexpr auto agreement = formula::constraint(
     formula::abs(var<FirstResult> - var<SecondResult>)

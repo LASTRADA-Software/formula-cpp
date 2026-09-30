@@ -64,8 +64,8 @@ and spells three names short:
 
 ```cpp
 namespace unit = formula::unit;
-using formula::Rational;
 using formula::var;
+using namespace formula::literals;
 ```
 
 ## Money of its own
@@ -154,11 +154,21 @@ two plain numbers -- the share of the solar yield the household uses itself,
 and the rate of the tax -- are constants:
 
 ```cpp
-inline constexpr Rational selfUseShare { 4, 5 };
-inline constexpr Rational vatRate { 19, 100 };
+inline constexpr auto selfUseShare = 0.8_r;
+inline constexpr auto vatRate = 0.19_r;
 ```
 
-and every other value is defined once, by what it is calculated from:
+The rounding of a bill to whole cents is stated once as well, and every
+rounding of the calculation names it:
+
+```cpp
+// A bill in whole cents: the euro cent's own decimals, rounded half away from
+// zero.
+inline constexpr formula::DecimalRounding wholeCents =
+    formula::declared_rounding(EuroCent, formula::RoundingMode::HalfAwayFromZero);
+```
+
+Every other value is defined once, by what it is calculated from:
 
 ```cpp
 inline constexpr auto bill = formula::calculation(
@@ -167,7 +177,7 @@ inline constexpr auto bill = formula::calculation(
     formula::define<OvenKwh>(var<OvenKw> * var<OvenH>),
     formula::define<HeaterKwh>(var<HeaterKw> * var<HeaterH>),
     formula::define<DailyLoad>(var<FridgeKwh> + var<OvenKwh> + var<HeaterKwh>),
-    formula::define<MonthlyLoad>(var<DailyLoad> * Rational { 30 }),
+    formula::define<MonthlyLoad>(var<DailyLoad> * 30),
     formula::define<SelfUsed>(var<Solar> * selfUseShare),
     formula::define<Exported>(var<Solar> - var<SelfUsed>),
     formula::define<NetDraw>(var<MonthlyLoad> - var<SelfUsed>),
@@ -176,9 +186,7 @@ inline constexpr auto bill = formula::calculation(
     formula::define<EnergyCost>(var<GridCost> - var<FeedInCredit>),
     formula::define<Subtotal>(var<EnergyCost> + var<BaseFee>),
     formula::define<Vat>(var<Subtotal> * vatRate),
-    formula::define<Total>(
-        formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<Subtotal> + var<Vat>)));
+    formula::define<Total>(formula::rounded<wholeCents>(var<Subtotal> + var<Vat>)));
 ```
 
 A definition is an ordinary formula of single values, and may hold what such
@@ -200,12 +208,11 @@ numbers as decimals where that is their exact value
 ([Displaying numbers](display.md)):
 
 ```cpp
-formula::NumberStyle const decimals = formula::NumberStyle::exact_decimal();
+auto const decimals = formula::NumberStyle::exact_decimal();
 ```
 
 ```cpp
-std::printf("the calculation, in the order it calculates:\n%s\n\n",
-            formula::render(bill, formula::DefaultVocabulary {}, { .numbers = decimals }).c_str());
+std::println("the calculation, in the order it calculates:\n{}\n", formula::render(bill, { .numbers = decimals }));
 ```
 
 ```text
@@ -249,12 +256,12 @@ first, in the order the definitions first read them, then the calculated
 values in the order the calculation calculates them:
 
 ```cpp
-std::printf("inputs               : %s\n", listed(formula::inputs_of(bill)).c_str());
-std::printf("calculation order    : %s\n", listed(formula::calculation_order(bill)).c_str());
-std::printf("grid_cost reads      : %s\n", listed(formula::dependencies_of<GridCost>(bill)).c_str());
-std::printf("affected by price    : %s\n", listed(formula::affected_by<Price>(bill)).c_str());
-std::printf("upstream of net_draw : %s\n", listed(formula::upstream_of<NetDraw>(bill)).c_str());
-std::printf("read by self_used    : %s\n", listed(formula::dependents_of<SelfUsed>(bill)).c_str());
+std::println("inputs               : {}", listed(formula::inputs_of(bill)));
+std::println("calculation order    : {}", listed(formula::calculation_order(bill)));
+std::println("grid_cost reads      : {}", listed(formula::dependencies_of<GridCost>(bill)));
+std::println("affected by price    : {}", listed(formula::affected_by<Price>(bill)));
+std::println("upstream of net_draw : {}", listed(formula::upstream_of<NetDraw>(bill)));
+std::println("read by self_used    : {}", listed(formula::dependents_of<SelfUsed>(bill)));
 ```
 
 ```text
@@ -285,7 +292,7 @@ Graphviz, for `dot -Tsvg` to draw, the inputs as boxes and the calculated
 values as ellipses:
 
 ```cpp
-std::printf("its graph:\n%s\n", formula::describe_graph(bill).c_str());
+std::println("its graph:\n{}", formula::describe_graph(bill));
 ```
 
 ```text
@@ -335,7 +342,7 @@ and ends with the arrows into the tax and the total:
 too:
 
 ```cpp
-formula::Documentation const page = formula::document(bill, formula::DefaultVocabulary {}, { .numbers = decimals });
+formula::Documentation const page = formula::document(bill, { .numbers = decimals });
 ```
 
 Its [symbol table](citations.md#the-symbol-table-and-its-ordering-rule),
@@ -364,16 +371,16 @@ exactly the environment a formula is evaluated in
 
 ```cpp
 auto sheet = formula::worksheet(bill,
-                                formula::environment(formula::Measured<FridgeW> { Rational { 200 } },
-                                                     formula::Measured<FridgeH> { Rational { 24 } },
-                                                     formula::Measured<OvenKw> { Rational { 5, 2 } },
-                                                     formula::Measured<OvenH> { Rational { 1 } },
-                                                     formula::Measured<HeaterKw> { Rational { 3, 2 } },
-                                                     formula::Measured<HeaterH> { Rational { 4 } },
-                                                     formula::Measured<Solar> { Rational { 150 } },
-                                                     formula::Measured<Price> { Rational { 8, 25 } },
-                                                     formula::Measured<FeedIn> { Rational { 2, 25 } },
-                                                     formula::Measured<BaseFee> { Rational { 25, 2 } }));
+                                formula::environment(formula::Measured<FridgeW> { 200 },
+                                                     formula::Measured<FridgeH> { 24 },
+                                                     formula::Measured<OvenKw> { 2.5_r },
+                                                     formula::Measured<OvenH> { 1 },
+                                                     formula::Measured<HeaterKw> { 1.5_r },
+                                                     formula::Measured<HeaterH> { 4 },
+                                                     formula::Measured<Solar> { 150 },
+                                                     formula::Measured<Price> { 0.32_r },
+                                                     formula::Measured<FeedIn> { 0.08_r },
+                                                     formula::Measured<BaseFee> { 12.5_r }));
 ```
 
 Every input must be given. One nobody measured is given as
@@ -394,21 +401,21 @@ typed in by hand. Asked for several values at once, it answers with a
 auto const [total, netDraw] = sheet.calculate<Total, NetDraw>();
 ```
 
-The example spells each answer with `std::format` (`format.hpp`).
+The example prints each answer with `std::println` (`format.hpp`).
 `.2HalfAwayFromZero` rounds to two places and pads to them: the total is whole
-cents already, so only the padding shows, and the mode -- which `std::format`
+cents already, so only the padding shows, and the mode -- which `std::println`
 requires on every rounding
 ([Displaying numbers](display.md#rounding-modes-and-why-none-is-assumed)) --
 is the bill's own. `{}` writes the net draw's exact decimal. Each comes with
 its unit:
 
 ```cpp
-std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
-            step,
-            total.measurement(),
-            netDraw.measurement(),
-            counted.recomputed,
-            counted.reused)
+std::println("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
+             step,
+             total,
+             netDraw,
+             counted.recomputed,
+             counted.reused);
 ```
 
 ```text
@@ -445,7 +452,7 @@ is not calculated at all.
 `set(...)` gives an input a new value:
 
 ```cpp
-sheet.set(formula::Measured<Price> { Rational { 1, 4 } });
+sheet.set(formula::Measured<Price> { 0.25_r });
 ```
 
 ```text
@@ -462,7 +469,7 @@ five values, and the total is 95.02 EUR.
 second time marks nothing, and the next question calculates nothing:
 
 ```cpp
-sheet.set(formula::Measured<Price> { Rational { 1, 4 } });
+sheet.set(formula::Measured<Price> { 0.25_r });
 ```
 
 ```text
@@ -472,7 +479,7 @@ the same price again:      total 95.02 EUR, net draw 279 kWh, recomputed 0, reus
 A new base fee reaches three values, the subtotal, the tax and the total:
 
 ```cpp
-sheet.set(formula::Measured<BaseFee> { Rational { 15 } });
+sheet.set(formula::Measured<BaseFee> { 15 });
 ```
 
 ```text
@@ -483,7 +490,7 @@ base fee 15 EUR:           total 98.00 EUR, net draw 279 kWh, recomputed 3, reus
 can be set at once; here the fridge draws twice the power for half the time:
 
 ```cpp
-sheet.set(formula::Measured<FridgeW> { Rational { 400 } }, formula::Measured<FridgeH> { Rational { 12 } });
+sheet.set(formula::Measured<FridgeW> { 400 }, formula::Measured<FridgeH> { 12 });
 ```
 
 ```text
@@ -504,7 +511,7 @@ and all, leaves what reads it alone.
 was asked of as it was:
 
 ```cpp
-auto sunnier = sheet.with(formula::Measured<Solar> { Rational { 200 } });
+auto sunnier = sheet.with(formula::Measured<Solar> { 200 });
 ```
 
 The copy holds everything the worksheet had calculated, so a question to it
@@ -604,7 +611,7 @@ reading, say, in place of the net draw worked out from the appliances. Set it
 with `entered(...)`, as a value typed in:
 
 ```cpp
-sheet.set(formula::entered(formula::Measured<NetDraw> { Rational { 250 } }));
+sheet.set(formula::entered(formula::Measured<NetDraw> { 250 }));
 ```
 
 ```text
@@ -660,9 +667,7 @@ whole cents.
 ```cpp
 inline constexpr auto sharing = formula::calculation(
     formula::define<Share>(var<SharedCost> / var<Occupants>),
-    formula::define<ShareInCents>(
-        formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<Share>)));
+    formula::define<ShareInCents>(formula::rounded<wholeCents>(var<Share>)));
 ```
 
 The bill's total is the second calculation's input -- one calculation's
@@ -676,16 +681,13 @@ number re-wrapped, `Measured<SharedCost> { total.value() }`, would do none of
 that, and would be wrong the moment the two units differ:
 
 ```cpp
-std::expected<formula::Measured<SharedCost>, formula::ArithmeticError> const sharedCost =
-    formula::checked_convert_to<SharedCost>(sheet.calculate<Total>().measurement());
+auto const sharedCost = formula::checked_convert_to<SharedCost>(sheet.calculate<Total>().measurement());
 if (!sharedCost.has_value())
 {
-    std::printf("the total is not a cost to share: %s\n",
-                std::string { formula::describe(sharedCost.error()) }.c_str());
+    std::println("the total is not a cost to share: {}", sharedCost.error());
     return 1;
 }
-auto shares = formula::worksheet(
-    sharing, formula::environment(*sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
+auto shares = formula::worksheet(sharing, formula::environment(*sharedCost, formula::Measured<Occupants> { 3 }));
 ```
 
 ```text
@@ -696,7 +698,7 @@ With nobody to share it, the share divides by zero, and the share in cents,
 which reads it, fails with it:
 
 ```cpp
-shares.set(formula::Measured<Occupants> { Rational { 0 } });
+shares.set(formula::Measured<Occupants> { 0 });
 auto const [share, shareInCents] = shares.checked_calculate<Share, ShareInCents>();
 ```
 
@@ -720,10 +722,10 @@ try
 }
 catch (formula::ArithmeticException const& failure)
 {
-    std::printf("calculate<ShareInCents>() threw: %s\n", failure.what());
+    std::println("calculate<ShareInCents>() threw: {}", failure.what());
     thrown = failure.code() == formula::ArithmeticError::DivisionByZero;
 }
-std::printf("asked again: recomputed %zu\n", shares.recomputed() - failed.recomputed);
+std::println("asked again: recomputed {}", shares.recomputed() - failed.recomputed);
 ```
 
 ```text
@@ -736,8 +738,8 @@ the step that read it:
 
 ```cpp
 auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
-std::printf("\nhow the failure was reached:\n%s",
-            formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }).c_str());
+std::print("\nhow the failure was reached:\n{}",
+           formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }));
 ```
 
 ```text
@@ -842,7 +844,7 @@ static assertion failed: formula: these definitions read one another in a cycle,
 cl 19.51 says the same, at the check's own line:
 
 ```
-include\formula-cpp/calculation.hpp(550): error C2338: static assertion failed: 'formula: these definitions read one another in a cycle, so none of them can be calculated first -- the quantities on the cycle appear in this diagnostic as the template arguments of RequireAcyclicDefinitions'
+include\formula-cpp/calculation.hpp(573): error C2338: static assertion failed: 'formula: these definitions read one another in a cycle, so none of them can be calculated first -- the quantities on the cycle appear in this diagnostic as the template arguments of RequireAcyclicDefinitions'
 ```
 
 **A worksheet missing an input.** Here the environment has no price:

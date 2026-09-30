@@ -39,10 +39,15 @@ table's data, so they are an ordinary runtime member, handed to the factory:
 ```cpp
 [[nodiscard]] constexpr auto sizeFactor()
 {
-    return formula::banded_lookup<unit::Millimetre, SizeBands, unit::Percent>(
-        var<Diameter>, { rat(913, 10), rat(1051, 10), rat(1127, 10) });
+    return formula::yields<SizeCorrection>(
+        formula::banded_lookup<unit::Millimetre, SizeBands, unit::Percent>(var<Diameter>, { 91.3_r, 105.1_r, 112.7_r }));
 }
 ```
+
+`formula::yields<SizeCorrection>` binds the lookup to the quantity it produces,
+so each later render, evaluation and trace of it names no result type (see
+[Expressions](expressions.md)); a formula that uses it as an operand takes its
+`.expression`.
 
 Everything in the **template argument list** — the unit the keys are stated in,
 the bands themselves, the unit the values are stated in — is the method: fixed,
@@ -61,18 +66,20 @@ compile-time template argument is the one place they cannot live.
 ## Banded: a measured value falls in an interval
 
 A band table is declared as `formula::BandTable<N>`, each row a low bound
-(inclusive) and a high bound (exclusive), both as exact numerator/denominator
-pairs:
+(inclusive) and a high bound (exclusive), each an exact number -- a whole
+number, or a decimal written with the `_r` suffix, as in `band(83.7_r, 97.3_r)`:
 
 ```cpp
 inline constexpr formula::BandTable<3> SizeBands {
-    formula::band(0, 1, 127, 1),   // 0 to under 127 mm
-    formula::band(127, 1, 173, 1), // 127 to under 173 mm
-    formula::band(173, 1, 211, 1), // 173 to under 211 mm -- 211 mm itself is NOT in it
+    formula::band(0, 127),   // 0 to under 127 mm
+    formula::band(127, 173), // 127 to under 173 mm
+    formula::band(173, 211), // 173 to under 211 mm -- 211 mm itself is NOT in it
 };
 ```
 
-`int64` pairs rather than `Rational`, for the reason
+`band(low, high)` takes the two numbers as `Rational`s and keeps each as an
+`int64` numerator and denominator (`band(127, 10, 173, 10)` states the pairs
+directly), rather than keeping a `Rational`, for the reason
 [Dimensions and units](dimensions.md) gives for `Unit`'s own magnitude and
 offset fields: `Rational` keeps its members private, so it is not a
 *structural* type and cannot be a non-type template parameter. An aggregate of
@@ -89,11 +96,11 @@ banded:        lookup(d, 0 to under 127 mm gives 913/10 %, 127 to under 173 mm g
 and looking a diameter up in it gives back that row's correction:
 
 ```
-d = 139 mm:    1051/1000
+d = 139 mm:    1.051
 ```
 
-`1051/1000`, exactly: 139 mm falls in the middle band, whose correction the
-table states as `1051/10 %` (105.1 %), converted into the dimensionless unit the
+`1.051`, exactly: 139 mm falls in the middle band, whose correction the
+table states as `105.1 %`, converted into the dimensionless unit the
 result quantity declares. Both sides of a table are converted — the key into the unit the bands
 are stated in, and the value out of the unit the rows are stated in — so a
 table may be written in whatever units the published document uses.
@@ -105,7 +112,7 @@ value sitting exactly on a boundary belongs to the band whose *low* bound it
 is, never the band whose high bound it is:
 
 ```
-d = 127 mm:    1051/1000 (the band above the boundary, never the one below)
+d = 127 mm:    1.051 (the band above the boundary, never the one below)
 ```
 
 A published table that writes one row as "31.7 to 43.9" and the next as "43.9
@@ -123,7 +130,7 @@ to 211 mm inclusive" is written with its high bound at 211.1 mm:
 
 ```cpp
 inline constexpr formula::BandTable<1> TopRowInclusive {
-    formula::band(173, 1, 2111, 10), // 173 to under 211.1 mm -- 211 mm IS in it
+    formula::band(173_r, 211.1_r), // 173 to under 211.1 mm -- 211 mm IS in it
 };
 ```
 
@@ -132,7 +139,7 @@ Both spellings, evaluated at exactly 211 mm, side by side:
 ```
 d = 211 mm:    argument outside the domain of the operation
 inclusive top: lookup(d, 173 to under 2111/10 mm gives 1127/10 %)
-d = 211 mm:    1127/1000
+d = 211 mm:    1.127
 ```
 
 The first table's last row stops under 211 mm, so 211 mm is in no band and
@@ -153,7 +160,9 @@ claim). Both are refused at compile time.
 This is not a claim about the library; it is a file in it.
 `test/negative/lookup_band_gap.cpp` declares a four-row table with a gap in its
 *middle* pair — a defect at either end is the easy case — and CI asserts both
-that it fails to build and that it fails for the stated reason:
+that it fails to build and that it fails for the stated reason. The test spells
+the bounds as integer pairs, which is what `band(0, 127)` stores; it is written
+the long way on purpose, to exercise that overload:
 
 ```cpp
     inline constexpr formula::BandTable<4> GappedTable {
@@ -178,10 +187,10 @@ compiler), with the rest of the instantiation backtrace below these lines:
 ```
 In file included from test\negative\lookup_band_gap.cpp:10:
 In file included from include\formula-cpp/lookup.hpp:474:
-include\formula-cpp/band.hpp(219,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{103, 1, 197, 1}, formula::Band{241, 1, 331, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
-  219 |     static_assert(bands_are_adjacent(First, Second),
+include\formula-cpp/band.hpp(257,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{103, 1, 197, 1}, formula::Band{241, 1, 331, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
+  257 |     static_assert(bands_are_adjacent(First, Second),
       |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-include\formula-cpp/band.hpp(260,29): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{103, 1, 197, 1}, Band{241, 1, 331, 1}>' requested here
+include\formula-cpp/band.hpp(298,29): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{103, 1, 197, 1}, Band{241, 1, 331, 1}>' requested here
 ```
 
 The message names **both offending rows**, as the values you typed: the one
@@ -485,7 +494,8 @@ key varies per specimen is a *function of the key*:
 ```cpp
 [[nodiscard]] constexpr auto shapeFactor(LookupExampleShape shape)
 {
-    return formula::exact_lookup<ShapeKeys, unit::Percent>(shape, { rat(1013, 10), rat(863, 10), rat(931, 10) });
+    return formula::yields<SizeCorrection>(
+        formula::exact_lookup<ShapeKeys, unit::Percent>(shape, { 101.3_r, 86.3_r, 93.1_r }));
 }
 ```
 
@@ -519,7 +529,7 @@ interpolating: interpolate(d, at 127 mm gives 913/10 %, at 173 mm gives 1051/10 
 and between two rows it produces a number that appears in neither:
 
 ```
-d = 139 mm:    949/1000 (between two rows -- in neither of them)
+d = 139 mm:    0.949 (between two rows -- in neither of them)
 ```
 
 Every step of that is `Rational`'s own checked arithmetic — `y0 + (x - x0)(y1 -
@@ -542,7 +552,7 @@ breakpoint is included.** Evaluated at the very same 211 mm:
 d = 211 mm:    argument outside the domain of the operation
 ```
 ```
-d = 211 mm:    1127/1000 (the last row, reached -- where the band table missed)
+d = 211 mm:    1.127 (the last row, reached -- where the band table missed)
 ```
 
 This is not an inconsistency and it is not an oversight. A band's high bound is
@@ -588,8 +598,8 @@ method actually applies.
 ```cpp
 [[nodiscard]] constexpr auto classFactor()
 {
-    return formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(sizeCurveFactor(),
-                                                                            { rat(919, 10), rat(1013, 10), rat(1087, 10) });
+    return formula::yields<SizeCorrection>(formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(
+        sizeCurveFactor().expression, { 91.9_r, 101.3_r, 108.7_r }));
 }
 ```
 
@@ -603,7 +613,7 @@ nested:        lookup(interpolate(d, at 127 mm gives 913/10 %, at 173 mm gives 1
 it evaluates, the inner answer becoming the outer key:
 
 ```
-d = 139 mm:    919/1000 (curve gives 94.9 %, which falls in the 83.7-to-under-97.3 % band)
+d = 139 mm:    0.919 (curve gives 94.9 %, which falls in the 83.7-to-under-97.3 % band)
 ```
 
 it documents, the symbol table reaching through both tables to the one quantity
@@ -667,13 +677,14 @@ it wraps anything else — there is nothing special to do:
 ```cpp
 [[nodiscard]] constexpr auto correctedStrength(LookupExampleShape shape)
 {
-    return formula::documented(var<MeasuredStrength> * sizeFactor() * shapeFactor(shape),
-                               { .title = "Corrected compressive strength",
-                                 .reference = "Example Standard 8:2020",
-                                 .section = "7.3",
-                                 .equation = "(5)",
-                                 .text = "The measured strength is corrected for specimen size and for specimen "
-                                         "shape, each factor taken from the table the method publishes for it." });
+    return formula::yields<CorrectedStrength>(
+        formula::documented(var<MeasuredStrength> * sizeFactor().expression * shapeFactor(shape).expression,
+                            { .title = "Corrected compressive strength",
+                              .reference = "Example Standard 8:2020",
+                              .section = "7.3",
+                              .equation = "(5)",
+                              .text = "The measured strength is corrected for specimen size and for specimen "
+                                      "shape, each factor taken from the table the method publishes for it." }));
 }
 ```
 
@@ -764,20 +775,24 @@ misses throws `formula::ArithmeticException` — carrying
 `argument outside the domain of the operation` — instead of handing back the
 derivation that says why it missed. (Measured, with the other direction as a
 control: the same `explain()` call over a value the table *does* cover returns
-normally.) Build the sink yourself:
+normally.) Use `formula::checked_explain()` instead. It returns a
+`std::expected`: the outcome and its trace on success, and on a miss the
+`ArithmeticError` together with the trace recorded up to it, in `error()`:
 
 ```cpp
-template <typename Result, typename N, typename Env>
-[[nodiscard]] std::string tracedEvaluation(N const& node, Env const& environment)
+auto const at211Missed = formula::checked_explain(sizeFactor(), diameter211);
+if (at211Missed)
 {
-    formula::Trace<> trace {};
-    formula::RecordingSink<> sink { trace };
-    [[maybe_unused]] auto const outcome = formula::checked_evaluate<Result>(node, environment, sink);
-    return formula::render_trace(trace, { .maxSteps = 10 });
+    std::println("d = 211 mm: the band table gave a value, where it must miss");
+    return 1;
 }
 ```
 
-`checked_evaluate` reports the miss in its return value and leaves you the
+```cpp
+std::print("{}", formula::render_trace(at211Missed.error().trace, { .maxSteps = 10 }));
+```
+
+`checked_explain` reports the miss in its return value and leaves you the
 trace, which is the whole point of having one.
 
 ## One representation: `Rational`

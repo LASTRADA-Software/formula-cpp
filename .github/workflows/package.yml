@@ -24,6 +24,11 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with: { arch: x64 }
 
+      # The library supports only the newest GCC, the same one build.yml pins.
+      - name: Install GCC 14
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y g++-14 && echo "CXX=g++-14" >> "$GITHUB_ENV"
+
       # Configured exactly as the vcpkg port does: tests and examples OFF. If the
       # library ever needs Catch2 in order to CONFIGURE, this step fails -- which
       # is the point, because that failure is the port breaking, caught here.

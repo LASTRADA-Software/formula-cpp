@@ -13,6 +13,7 @@
 /// public fields; the convenient types appear at the point of use.
 
 #include <formula-cpp/dimension.hpp>
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
 
@@ -84,6 +85,33 @@ struct Unit
 
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(Unit const&) const noexcept = default;
+};
+
+/// A rounding to decimal places, named once and used wherever a method rounds
+/// the same way: which unit the places are of, how many, and which way to go.
+/// `constexpr DecimalRounding tenthMpa { unit::Megapascal, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };`
+/// then `rounded<tenthMpa>(x)`, `rounding_rule<tenthMpa>()`. Every factory
+/// that takes the three arguments separately also takes this.
+struct DecimalRounding
+{
+    /// The unit the places are counted in.
+    Unit unit;
+    /// How many decimal places of `unit` to keep.
+    DecimalPlaces places;
+    /// Which way to break ties, and which way to go.
+    RoundingMode mode;
+};
+
+/// A rounding to significant digits, named once -- `DecimalRounding`'s
+/// counterpart for `rounded_to_digits`.
+struct SignificantRounding
+{
+    /// The unit the digits are counted in.
+    Unit unit;
+    /// How many significant digits to keep.
+    SignificantDigits digits;
+    /// Which way to break ties, and which way to go.
+    RoundingMode mode;
 };
 
 /// Named units. The `decimals` values are ordinary engineering defaults, not
@@ -619,6 +647,12 @@ enum class BoundsCheck : std::uint8_t
     return "unknown bounds outcome";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<BoundsCheck> = true;
+} // namespace detail
+
 /// Checks @p magnitude, expressed in @p unitOfValue, against that unit's bounds.
 [[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(Rational magnitude,
                                                                                           Unit unitOfValue) noexcept
@@ -652,6 +686,15 @@ enum class BoundsCheck : std::uint8_t
 [[nodiscard]] constexpr DecimalPlaces declared_decimals(Unit unitOfValue) noexcept
 {
     return DecimalPlaces { unitOfValue.decimals };
+}
+
+/// A rounding to the decimal places @p roundedIn declares, under @p roundingMode.
+/// A unit whose declared decimals lie outside -18 to 18 is not refused here:
+/// `checked_round` returns `ArithmeticError::Overflow` for that many places, so
+/// evaluating the rounding does.
+[[nodiscard]] constexpr DecimalRounding declared_rounding(Unit roundedIn, RoundingMode roundingMode) noexcept
+{
+    return DecimalRounding { roundedIn, declared_decimals(roundedIn), roundingMode };
 }
 
 /// Rounds @p magnitude to the precision its unit declares.

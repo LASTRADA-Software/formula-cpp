@@ -17,10 +17,14 @@
 /// vocabulary that produces them arrives with constraints, and nothing in this
 /// header needs to know it.
 
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/rational.hpp>
 
 #include <cstdint>
+#include <expected>
+#include <optional>
 #include <string_view>
 
 namespace formula
@@ -39,6 +43,27 @@ enum class ValueSource : std::uint8_t
     ManuallyEntered,
 };
 
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(ValueSource valueSource) noexcept
+{
+    switch (valueSource)
+    {
+        case ValueSource::Derived:
+            return "derived";
+        case ValueSource::Measured:
+            return "measured";
+        case ValueSource::ManuallyEntered:
+            return "manually entered";
+    }
+    return "unknown value source";
+}
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<ValueSource> = true;
+} // namespace detail
+
 /// Which alternative an `Outcome` holds.
 ///
 /// There is deliberately no `Overridden` alternative: an override is the `Value`
@@ -52,6 +77,29 @@ enum class OutcomeKind : std::uint8_t
     Verdict,
     Invalid,
 };
+
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(OutcomeKind held) noexcept
+{
+    switch (held)
+    {
+        case OutcomeKind::Value:
+            return "value";
+        case OutcomeKind::Empty:
+            return "empty";
+        case OutcomeKind::Verdict:
+            return "verdict";
+        case OutcomeKind::Invalid:
+            return "invalid";
+    }
+    return "unknown outcome kind";
+}
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<OutcomeKind> = true;
+} // namespace detail
 
 /// A decision rather than a number: "reject the specimen", "repeat the test".
 struct Verdict
@@ -193,5 +241,41 @@ class Outcome
     Verdict _verdict {};
     InvalidReason _reason {};
 };
+
+/// The number @p measured holds, or nothing when it is absent.
+template <Described Q>
+[[nodiscard]] constexpr std::optional<Rational> number_of(Measured<Q> const& measured) noexcept
+{
+    return measured.stored();
+}
+
+/// The number @p produced holds when it is a value -- derived, measured or
+/// entered -- and nothing for an empty, a verdict or an invalid outcome,
+/// which `kind()` tells apart.
+template <Described Q>
+[[nodiscard]] constexpr std::optional<Rational> number_of(Outcome<Q> const& produced) noexcept
+{
+    if (!produced.is_value())
+        return std::nullopt;
+    Measured<Q> const held = produced.measurement();
+    return held.stored();
+}
+
+/// @p held itself: what `Evaluated<Rational>` holds on success.
+[[nodiscard]] constexpr std::optional<Rational> number_of(std::optional<Rational> const& held) noexcept
+{
+    return held;
+}
+
+/// The number a successful @p checked holds, or nothing on failure -- so
+/// `formula::number_of(checked_evaluate<Q>(...)) == 0.5_r` is a complete check.
+template <typename T, typename E>
+    requires requires(T const& succeeded) { number_of(succeeded); }
+[[nodiscard]] constexpr std::optional<Rational> number_of(std::expected<T, E> const& checked) noexcept
+{
+    if (!checked.has_value())
+        return std::nullopt;
+    return number_of(*checked);
+}
 
 } // namespace formula

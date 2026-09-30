@@ -77,6 +77,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 
 namespace formula
@@ -108,6 +109,43 @@ struct Band
                                    std::int64_t highDenominator) noexcept
 {
     return { lowNumerator, lowDenominator, highNumerator, highDenominator };
+}
+
+/// Builds a `Band` from its low (inclusive) and high (exclusive) bound as
+/// exact numbers: `band(83.7_r, 97.3_r)`, `band(0, 127)`.
+[[nodiscard]] constexpr Band band(Rational lowBound, Rational highBound) noexcept
+{
+    return { lowBound.numerator(), lowBound.denominator(), highBound.numerator(), highBound.denominator() };
+}
+
+namespace detail
+{
+    /// Fails to compile when a band's bound is given as a floating-point value,
+    /// which the integer overload would silently truncate.
+    template <typename T>
+    struct RequireExactBandBound
+    {
+        static_assert(!std::is_floating_point_v<T>,
+                      "formula: a band's bounds are exact numbers, and this is a floating-point value that "
+                      "would be truncated; write band(12.7_r, 17.3_r) or band(127, 10, 173, 10)");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// Refused: a floating-point numerator or denominator -- see
+/// `detail::RequireExactBandBound`.
+/// Only a floating-point type is refused; every other arithmetic type converts as it
+/// did before.
+template <typename A, typename B, typename C, typename D>
+    requires(std::is_floating_point_v<A> || std::is_floating_point_v<B> || std::is_floating_point_v<C> || std::is_floating_point_v<D>)
+[[nodiscard]] constexpr Band band(A, B, C, D) noexcept
+{
+    static_assert(detail::RequireExactBandBound<
+                      std::conditional_t<std::is_floating_point_v<A>,
+                                         A,
+                                         std::conditional_t<std::is_floating_point_v<B>, B, std::conditional_t<std::is_floating_point_v<C>, C, D>>>>::value);
+    return {};
 }
 
 /// A table of bands, declared in ascending order. An alias template, not a

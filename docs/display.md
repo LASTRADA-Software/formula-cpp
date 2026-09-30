@@ -17,7 +17,8 @@ The four ways a number reaches text, each covered below:
 - **`number_text()`** and **`decimal_text()`**, which need neither `<format>`
   nor an allocation;
 - **`std::format`**, for a `Rational` or a `Measured<Q>`, once
-  `<formula-cpp/format.hpp>` is included.
+  `<formula-cpp/format.hpp>` is included -- which also formats an
+  `Outcome<Q>`, a `Unit`, a `Dimension` and an enumeration's words.
 
 The worked example is `examples/display.cpp`: a soil specimen's moisture
 content, from its wet and dried masses in a dish. **Program output** on this
@@ -60,33 +61,40 @@ dish's 25.5 g taken off:
 
 ```cpp
 inline constexpr auto moistureContent =
-    (var<WetMass> - var<DryMass>) / (var<DryMass> - formula::constant<unit::Gram>(rat(51, 2)));
+    (var<WetMass> - var<DryMass>) / (var<DryMass> - formula::constant<unit::Gram>(25.5_r));
 
 inline constexpr auto specimen =
-    formula::environment(formula::Measured<WetMass> { rat(787, 5) }, formula::Measured<DryMass> { rat(144) });
+    formula::environment(formula::Measured<WetMass> { 157.4_r }, formula::Measured<DryMass> { 144 });
 ```
 
-`rat(n, d)` is the example's shorthand for `Rational { n, d }`. The example
-evaluates the formula and records every step into a `Trace`
-([Tracing](tracing.md)):
+`25.5_r` is the exact number its digits spell, 51/2
+(`using namespace formula::literals;`,
+[Writing an exact decimal](numbers.md#writing-an-exact-decimal)).
+`checked_explain` evaluates the formula and returns a `std::expected`: the
+outcome together with a `Trace` of every step ([Tracing](tracing.md)), or the
+arithmetic error with the steps recorded up to it. The example checks it
+before reading either, as it checks every `std::expected` on this page:
 
 ```cpp
-formula::Trace<> trace {};
-auto const moisture =
-    formula::checked_evaluate<MoistureContent>(moistureContent, specimen, formula::RecordingSink<> { trace });
+auto const moisture = formula::checked_explain<MoistureContent>(moistureContent, specimen);
+if (!moisture)
+{
+    std::println("moisture content: {}", moisture.error().error);
+    return 1;
+}
 ```
 
 `render_trace` takes the style in `TraceRenderOptions::numbers`. One trace,
 four ways:
 
 ```cpp
-NumberStyle const exactStyle = NumberStyle::exact_decimal();
-NumberStyle const roundedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
-NumberStyle const paddedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded);
-std::string const fractions = formula::render_trace(trace, { .maxSteps = 20 });
-std::string const exactDecimals = formula::render_trace(trace, { .maxSteps = 20, .numbers = exactStyle });
-std::string const rounded = formula::render_trace(trace, { .maxSteps = 20, .numbers = roundedStyle });
-std::string const padded = formula::render_trace(trace, { .maxSteps = 20, .numbers = paddedStyle });
+auto const exactStyle = NumberStyle::exact_decimal();
+auto const roundedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
+auto const paddedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded);
+std::string const fractions = formula::render_trace(moisture->trace, { .maxSteps = 20 });
+std::string const exactDecimals = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = exactStyle });
+std::string const rounded = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = roundedStyle });
+std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = paddedStyle });
 ```
 
 ```text
@@ -179,7 +187,7 @@ mean of three weighings in grams, is computed in kilograms:
 
 ```cpp
 // The mean of three weighings: their sum times a typed 1/3, which has no exact decimal.
-inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) * formula::number(rat(1, 3));
+inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) * formula::number(Rational { 1, 3 });
 ```
 
 Its trace, rendered in the rounded and padded style:
@@ -286,10 +294,11 @@ would.
 
 ## Decimals in a rendered formula and its documentation
 
-`render()` and `document()` take the style in `RenderOptions`, beside the
+`render()` and `document()` take the style in `RenderOptions`, after the
 [vocabulary](citations.md#whose-symbols-a-jurisdictions-vocabulary) that says
-how each quantity's symbol is written (`DefaultVocabulary {}` renames nothing).
-They take it for a formula and for a
+how each quantity's symbol is written, or in its place: `render(x, options)`
+and `document(x, options)` write every symbol as its quantity declares it, as
+`DefaultVocabulary {}` does. They take it for a formula and for a
 [calculation](calculations.md#defining-named-values) alike:
 `render(calculation, vocabulary, options)` writes each definition's numbers in
 it, and `document(calculation, vocabulary, options)` its formula and each
@@ -300,10 +309,9 @@ For the moisture content:
 ```cpp
 formula::RenderOptions const decimals { .numbers = NumberStyle::exact_decimal() };
 std::string const defaultText = formula::render(moistureContent);
-std::string const decimalText = formula::render(moistureContent, formula::DefaultVocabulary {}, decimals);
-std::string const latexText =
-    formula::render<formula::Dialect::LaTeX>(moistureContent, formula::DefaultVocabulary {}, decimals);
-formula::Documentation const page = formula::document(moistureContent, formula::DefaultVocabulary {}, decimals);
+std::string const decimalText = formula::render(moistureContent, decimals);
+std::string const latexText = formula::render<formula::Dialect::LaTeX>(moistureContent, decimals);
+formula::Documentation const page = formula::document(moistureContent, decimals);
 ```
 
 ```text
@@ -331,7 +339,7 @@ inline constexpr auto dishMean = formula::sample_mean(
                               formula::AtMost<1>,
                               formula::KeepAtLeast<2>>(
         formula::series<DishWeighing, 3>,
-        formula::deviation_from_mean(rat(1, 30) * formula::pass_mean<DishWeighing>),
+        formula::deviation_from_mean(Rational { 1, 30 } * formula::pass_mean<DishWeighing>),
         formula::Verdict { "weigh the dish again" }));
 ```
 
@@ -339,8 +347,8 @@ Under the rounding style, both stay fractions:
 
 ```cpp
 formula::RenderOptions const rounding { .numbers = roundedStyle };
-std::string const dishFormula = formula::render(dishMass, formula::DefaultVocabulary {}, rounding);
-formula::Documentation const dishPage = formula::document(dishMean, formula::DefaultVocabulary {}, rounding);
+std::string const dishFormula = formula::render(dishMass, rounding);
+formula::Documentation const dishPage = formula::document(dishMean, rounding);
 ```
 
 ```text
@@ -394,8 +402,8 @@ The example spells the specimen's moisture content, `w`, and a moisture
 content nobody measured:
 
 ```cpp
-formula::Measured<MoistureContent> const w = moisture->measurement();
-formula::Measured<MoistureContent> const notMeasured = formula::Measured<MoistureContent>::absent();
+formula::Measured<MoistureContent> const w = moisture->outcome.measurement();
+formula::Measured<MoistureContent> const notMeasured {};
 formula::NumberText const measuredText = formula::number_text(w, roundedStyle);
 formula::NumberText const absentText = formula::number_text(notMeasured, roundedStyle);
 formula::NumberText const twoPlaces =
@@ -408,18 +416,17 @@ not measured: (not measured)
 two places:   11.31
 ```
 
-A `Measured` value that is absent reads `(not measured)`, in every style.
+A `Measured` value that is absent -- here one constructed with nothing, `{}`
+-- reads `(not measured)`, in every style.
 
-A `NumberText`'s characters are read through `view()`, on a named object --
-`view()` on a temporary does not compile, since the view would outlive the
-buffer. The example prints each one so:
+A `NumberText`'s characters are read through `view()`, a `std::string_view`,
+on a named object -- `view()` on a temporary does not compile, since the view
+would outlive the buffer. The example prints each one so:
 
 ```cpp
-/// Prints @p label and @p spelled, a number `number_text` or `decimal_text` wrote.
-void print_spelled(char const* label, formula::NumberText const& spelled)
-{
-    std::printf("%s%.*s\n", label, static_cast<int>(spelled.view().size()), spelled.view().data());
-}
+std::println("measured:     {}", measuredText.view());
+std::println("not measured: {}", absentText.view());
+std::println("two places:   {}\n", twoPlaces.view());
 ```
 
 **When a number cannot be spelled.** `decimal_text` throws
@@ -451,14 +458,16 @@ so that a report and its trace spell each value alike. Reach for
 `formula.hpp` does not include it: it includes `<format>`, which a consumer
 who only evaluates numbers should not compile in every translation unit.
 **Include it in every translation unit that formats a `Rational` or a
-`Measured`, or asks whether it can** (`std::formattable`). The header declares
-explicit specialisations of `std::formatter`, and an explicit specialisation
-must be seen before any use that would otherwise instantiate the primary
-template; translation units that disagree about it make the program
-ill-formed, with no diagnostic required. **The library owns these two
-specialisations** -- `std::formatter<formula::Rational, char>` and
-`std::formatter<formula::Measured<Q>, char>` -- so a consumer must not
-specialise them too. Only `char` is supported: a unit's symbol is UTF-8.
+`Measured`, or asks whether it can** (`std::formattable`) -- and the same holds
+for the outcomes, units, dimensions and enumerations it also formats
+([below](#formatting-outcomes-units-dimensions-and-enumerations)). The header
+declares specialisations of `std::formatter`, and a specialisation must be
+seen before any use that would otherwise instantiate the primary template;
+translation units that disagree about it make the program ill-formed, with no
+diagnostic required. **The library owns these specialisations** --
+`std::formatter<formula::Rational, char>` and
+`std::formatter<formula::Measured<Q>, char>` among them -- so a consumer must
+not specialise them too. Only `char` is supported: a unit's symbol is UTF-8.
 
 ### The spec
 
@@ -467,9 +476,9 @@ In the table and the reference below, `w` is the specimen's moisture content,
 section; `wetMass`, `oven` and `grain` are measured here:
 
 ```cpp
-formula::Measured<WetMass> const wetMass { rat(787, 5) };
-formula::Measured<OvenTemperature> const oven { rat(583, 10) };
-formula::Measured<GrainSize> const grain { rat(217) };
+formula::Measured<WetMass> const wetMass { 157.4_r };
+formula::Measured<OvenTemperature> const oven { 58.3_r };
+formula::Measured<GrainSize> const grain { 217 };
 ```
 
 | Spec | Meaning | Example | Output |
@@ -583,8 +592,8 @@ before the call stack of the evaluation:
 
 ```
 test\negative\format_places_without_mode.cpp(17): error C7595: 'std::basic_format_string<char,formula::Rational>::basic_format_string': call to immediate function is not a constant expression
-include\formula-cpp/format.hpp(333): note: failure was caused by call of undefined function or one not declared 'constexpr'
-include\formula-cpp/format.hpp(333): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
+include\formula-cpp/format.hpp(344): note: failure was caused by call of undefined function or one not declared 'constexpr'
+include\formula-cpp/format.hpp(344): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
 ```
 
 clang and g++ name the same function, in their own words.
@@ -602,7 +611,7 @@ try
 }
 catch (std::format_error const& refusal)
 {
-    std::printf("\nstd::vformat(\"{:.2}\", ...) throws std::format_error:\n%s\n\n", refusal.what());
+    std::println("\nstd::vformat(\"{{:.2}}\", ...) throws std::format_error:\n{}\n", refusal.what());
     check(std::string_view { refusal.what() }.starts_with("formula: "), "the refusal starts formula: ");
 }
 ```
@@ -626,3 +635,67 @@ thousands. Write `{:~.0HalfEven}` instead to round it to whole units -- a
 rounding to 0 to 18 places is spelled by long division, which cannot
 overflow, so `from_double_exact(0.1)` reads `≈0` -- or `{:/}` for its exact
 fraction, or catch the `std::format_error`.
+
+## Formatting outcomes, units, dimensions and enumerations
+
+The same header formats four more kinds of value, so that a report prints the
+library's own values rather than taking them apart: an `Outcome<Q>`, a `Unit`,
+a `Dimension`, and every enumeration of the library that has a `describe()`.
+**Include `<formula-cpp/format.hpp>` in every translation unit that formats
+one of them, or asks whether it can**, for the reason
+[Opting in](#opting-in) gives. That holds for an enumeration too:
+`std::formattable<formula::RoundingMode, char>` is true only where the header
+is included. The library owns these specialisations as well: a consumer's own
+`std::formatter` for `Outcome<Q>`, `Unit`, `Dimension` or one of these
+enumerations defines it twice, and a generic one for every enumeration is
+ambiguous for them.
+
+`moisture->outcome` is the moisture content's outcome from the first section,
+read after its check. The example adds a verdict as a rejection yields it,
+built directly here with `Outcome<DishMass>::verdict`, and an empty outcome:
+
+```cpp
+// A verdict as a rejection of the dish's weighings yields it when it cannot
+// settle, built directly here, and a dish nobody weighed.
+auto const reweigh = formula::Outcome<DishMass>::verdict({ "weigh the dish again" });
+auto const unweighed = formula::Outcome<DishMass>::empty();
+```
+
+An output is quoted, in the table and in the program's output below, where a
+leading or trailing space would be missed.
+
+| Value | Written as | Example | Output |
+|---|---|---|---|
+| an `Outcome` holding a value | its `Measured`, in the same spec | `std::format("{:~HalfEven}", moisture->outcome)` | `≈11.3 %` |
+| an empty `Outcome` | `(not measured)`, whatever the body | `std::format("{}", unweighed)` | `(not measured)` |
+| a verdict or an invalid `Outcome` | its label, right-aligned by default | `std::format("{:22}", reweigh)` | `"  weigh the dish again"` |
+| a `Unit` | its symbol, left-aligned by default | `std::format("{:4}", unit::Gram)` | `"g   "` |
+| a `Dimension` | its exponents, `(dimensionless)` for a pure number | `std::format("{}", unit::Gram.dimension)` | `M^1` |
+| an enumeration | its `describe()` words | `std::format("{}", RoundingMode::HalfEven)` | `nearest, ties to even` |
+
+The example prints every row, and checks each against the text in its
+source:
+
+```text
+std::format("{}", moisture->outcome)                           2680/237 %
+std::format("{:~HalfEven}", moisture->outcome)                 ≈11.3 %
+std::format("{}", unweighed)                                   (not measured)
+std::format("{:22}", reweigh)                                  "  weigh the dish again"
+std::format("{:4}", unit::Gram)                                "g   "
+std::format("{}", unit::Gram.dimension)                        M^1
+std::format("{}", unit::Percent.dimension)                     (dimensionless)
+std::format("{}", moisture->outcome.source())                  derived
+std::format("{}", RoundingMode::HalfEven)                      nearest, ties to even
+```
+
+- **An `Outcome<Q>`** takes the spec of a `Measured<Q>`. A value is written as
+  its `Measured` is, rounding included, and an empty outcome reads
+  `(not measured)`. A verdict writes its label, and an invalid outcome the
+  reason's; a rounding in the spec does not apply to words, but the fill, the
+  alignment and the width do, and the label is **right-aligned by default**,
+  as a number is.
+- **A `Unit`** writes its symbol, **a `Dimension`** its exponents as
+  [Dimensions and units](dimensions.md) prints them, and **an enumeration** its
+  `describe()` words -- `ValueSource`, `OutcomeKind`, `RoundingMode`,
+  `ArithmeticError`, `BoundsCheck` and the others that have one. These take a
+  string's spec, and are **left-aligned by default**, as a string is.

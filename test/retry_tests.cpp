@@ -1343,3 +1343,27 @@ TEST_CASE("the attempt's environment has neither hook when the specimen's has ne
     CHECK(formula::render_trace(explained.trace, { .maxSteps = 60 }).find("s_w = 152/25 g, entered by hand\n")
           != std::string::npos);
 }
+
+TEST_CASE("number_of a retry is the accepted value, and nothing for its verdict", "[retry]")
+{
+    constexpr auto four =
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, settled, repeat, cite);
+    constexpr auto three =
+        formula::retry<Estimate, 3, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, settled, repeat, cite);
+    constexpr auto accepted = formula::checked_evaluate_retry(four, nothing);
+    constexpr auto exhausted = formula::checked_evaluate_retry(three, nothing);
+    // The accepted 11.4 g, not the exhausted run's last value, 10.64 g.
+    STATIC_REQUIRE(formula::number_of(*accepted) == rat(57, 5));
+    STATIC_REQUIRE(formula::number_of(accepted) == rat(57, 5));
+    STATIC_REQUIRE(!formula::number_of(*exhausted).has_value());
+}
+
+TEST_CASE("retry ends describe themselves in lowercase words", "[retry]")
+{
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::Accepted) == "accepted");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::Exhausted) == "exhausted");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::NotJudgeable) == "not judgeable");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::NotRecorded) == "not recorded");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::Failed) == "failed");
+    STATIC_REQUIRE(formula::describe(formula::RetryEnd::ManuallyEntered) == "manually entered");
+}

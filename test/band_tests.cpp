@@ -266,3 +266,16 @@ TEST_CASE("RequireBandWellFormed accepts a well-formed band", "[band]")
 {
     STATIC_REQUIRE(formula::RequireBandWellFormed<band(0, 1, 103, 1)>::value);
 }
+
+TEST_CASE("band: bounds given as exact numbers", "[band]")
+{
+    using namespace formula::literals;
+    STATIC_REQUIRE(formula::band(83.7_r, 97.3_r) == formula::band(837, 10, 973, 10));
+    STATIC_REQUIRE(formula::band(0, 127) == formula::band(0, 1, 127, 1));
+}
+
+TEST_CASE("band: integer bounds still take the integer overload", "[band]")
+{
+    STATIC_REQUIRE(formula::band(0, 1, 127, 1) == formula::Band { 0, 1, 127, 1 });
+    STATIC_REQUIRE(formula::band(837, 10, 973, 10).highDenominator == 10);
+}

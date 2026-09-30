@@ -12,9 +12,10 @@
 // either absent input makes the result absent, in a result quantity the
 // caller names rather than one inherited from either operand.
 
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 
-#include <cstdio>
+#include <print>
 #include <type_traits>
 
 namespace
@@ -73,75 +74,72 @@ int main()
     using formula::Measured;
     using formula::Rational;
     using formula::RoundingMode;
+    using namespace formula::literals;
 
     // ---- 1. Declaring two quantities and reading their metadata through Describe ----
-    std::printf("WaterVolume: symbol=%s description=\"%s\" unit=%s\n",
-                Describe<WaterVolume>::symbol.data(),
-                Describe<WaterVolume>::description.data(),
-                formula::view(Describe<WaterVolume>::unit.symbolText).data());
-    std::printf("SpecimenMass: symbol=%s description=\"%s\" unit=%s\n",
-                Describe<SpecimenMass>::symbol.data(),
-                Describe<SpecimenMass>::description.data(),
-                formula::view(Describe<SpecimenMass>::unit.symbolText).data());
+    std::println("WaterVolume: symbol={} description=\"{}\" unit={}",
+                 Describe<WaterVolume>::symbol,
+                 Describe<WaterVolume>::description,
+                 Describe<WaterVolume>::unit);
+    std::println("SpecimenMass: symbol={} description=\"{}\" unit={}",
+                 Describe<SpecimenMass>::symbol,
+                 Describe<SpecimenMass>::description,
+                 Describe<SpecimenMass>::unit);
 
     bool const metadataReadsBackAsDeclared =
-        Describe<WaterVolume>::symbol == std::string_view { "V_w" }
-        && Describe<WaterVolume>::description == std::string_view { "volume of water added" }
-        && Describe<WaterVolume>::unit == unit::Litre && Describe<SpecimenMass>::symbol == std::string_view { "m" }
-        && Describe<SpecimenMass>::description == std::string_view { "mass of the specimen" }
-        && Describe<SpecimenMass>::unit == unit::Kilogram;
-    std::printf("metadata reads back exactly as declared: %s\n", metadataReadsBackAsDeclared ? "yes" : "no");
+        Describe<WaterVolume>::symbol == "V_w" && Describe<WaterVolume>::description == "volume of water added"
+        && Describe<WaterVolume>::unit == unit::Litre && Describe<SpecimenMass>::symbol == "m"
+        && Describe<SpecimenMass>::description == "mass of the specimen" && Describe<SpecimenMass>::unit == unit::Kilogram;
+    std::println("metadata reads back exactly as declared: {}", metadataReadsBackAsDeclared ? "yes" : "no");
 
     // ---- 2. Two quantities alike in symbol, description and unit, distinct in type ----
     bool const metadataCoincides = Describe<WaterVolume>::symbol == Describe<CementVolume>::symbol
                                    && Describe<WaterVolume>::description == Describe<CementVolume>::description
                                    && Describe<WaterVolume>::unit == Describe<CementVolume>::unit;
     bool const tagKeepsThemDistinct = !std::is_same_v<WaterVolume, CementVolume>;
-    std::printf("WaterVolume and CementVolume share symbol, description and unit: %s\n", metadataCoincides ? "yes" : "no");
-    std::printf("...but the tag keeps them different types: %s\n", tagKeepsThemDistinct ? "yes" : "no");
+    std::println("WaterVolume and CementVolume share symbol, description and unit: {}", metadataCoincides ? "yes" : "no");
+    std::println("...but the tag keeps them different types: {}", tagKeepsThemDistinct ? "yes" : "no");
 
     // ---- 3. A foreign type, joined by specialising Describe ----
-    std::printf("ForeignTemperature: symbol=%s dimension is temperature: %s\n",
-                Describe<ForeignTemperature>::symbol.data(),
-                Describe<ForeignTemperature>::dimension == formula::dim::Temperature ? "yes" : "no");
+    std::println("ForeignTemperature: symbol={} dimension is temperature: {}",
+                 Describe<ForeignTemperature>::symbol,
+                 Describe<ForeignTemperature>::dimension == formula::dim::Temperature ? "yes" : "no");
     bool const foreignTypeJoinsTheSameWay = formula::Described<ForeignTemperature>
-                                            && Describe<ForeignTemperature>::symbol == std::string_view { "theta" }
+                                            && Describe<ForeignTemperature>::symbol == "theta"
                                             && Describe<ForeignTemperature>::dimension == formula::dim::Temperature;
 
     // ---- 4. A present measurement, converted exactly between quantities (450 l to m3) ----
-    Measured<WaterVolume> const presentVolume { *Rational::from_decimal(450, 0) };
-    auto const convertedPresent = formula::checked_convert_to<VolumeInCubicMetres>(presentVolume);
-    Rational const convertedValue = convertedPresent->value();
-    std::printf("450 l converted to m3 = %lld/%lld\n",
-                static_cast<long long>(convertedValue.numerator()),
-                static_cast<long long>(convertedValue.denominator()));
-    bool const presentValueConvertsExactly =
-        convertedPresent.has_value() && convertedPresent->has_value() && convertedValue == *Rational::make(9, 20);
+    //
+    // A conversion, a rounding and a bounds check each return a std::expected
+    // -- the value, or the arithmetic error that stopped it. These run over
+    // constants, so a static_assert checks each and an error would stop the
+    // build.
+    constexpr Measured<WaterVolume> presentVolume { 450 };
+    constexpr auto convertedPresent = formula::checked_convert_to<VolumeInCubicMetres>(presentVolume);
+    static_assert(convertedPresent.has_value());
+    std::println("{} converted to {} = {}", presentVolume, Describe<VolumeInCubicMetres>::unit, *convertedPresent);
+    bool const presentValueConvertsExactly = formula::number_of(convertedPresent) == 0.45_r;
 
     // ---- 5. An absent measurement surviving conversion, rounding and a bounds check ----
-    Measured<WaterVolume> const absentVolume {};
-    auto const convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
-    auto const roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
-    auto const boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+    constexpr Measured<WaterVolume> absentVolume {};
+    constexpr auto convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
+    constexpr auto roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
+    constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+    static_assert(convertedAbsent.has_value() && roundedAbsent.has_value() && boundsOfAbsent.has_value());
 
-    std::printf("an absent measurement, converted: %s\n",
-                convertedAbsent.has_value() && convertedAbsent->is_absent() ? "still absent" : "a number");
-    std::printf("an absent measurement, rounded: %s\n",
-                roundedAbsent.has_value() && roundedAbsent->is_absent() ? "still absent" : "a number");
-    std::printf("an absent measurement, bounds-checked: %s\n",
-                boundsOfAbsent.has_value() ? formula::describe(*boundsOfAbsent).data() : "conversion failed");
+    std::println("an absent measurement, converted: {}", *convertedAbsent);
+    std::println("an absent measurement, rounded: {}", *roundedAbsent);
+    std::println("an absent measurement, bounds-checked: {}", *boundsOfAbsent);
 
-    bool const absenceSurvivesEveryOperation = convertedAbsent.has_value() && convertedAbsent->is_absent()
-                                               && roundedAbsent.has_value() && roundedAbsent->is_absent()
-                                               && boundsOfAbsent.has_value() && *boundsOfAbsent == BoundsCheck::NotMeasured;
+    bool const absenceSurvivesEveryOperation = convertedAbsent->is_absent() && roundedAbsent->is_absent()
+                                               && *boundsOfAbsent == BoundsCheck::NotMeasured;
 
     // ---- 6. combine: absent if EITHER input is, not only if both are, and the
     //         RESULT is named by the caller, not inherited from either operand ----
     Measured<SpecimenMass> const absentMass {};
-    Measured<Density> const combinedWithAnAbsentInput = formula::combine<Density>(
+    auto const combinedWithAnAbsentInput = formula::combine<Density>(
         presentVolume, absentMass, [](Rational volume, Rational mass) { return volume * mass; });
-    std::printf("a present volume combined with an absent mass: %s\n",
-                combinedWithAnAbsentInput.is_absent() ? "absent" : "a number");
+    std::println("a present volume combined with an absent mass: {}", combinedWithAnAbsentInput);
     bool const combineIsAbsentWhenEitherInputIs = combinedWithAnAbsentInput.is_absent();
     // The static TYPE is Measured<Density> -- neither the volume's nor the
     // mass's own quantity. An earlier signature deduced the result as the
@@ -157,6 +155,6 @@ int main()
     bool const allChecksPassed = metadataReadsBackAsDeclared && metadataCoincides && tagKeepsThemDistinct
                                  && foreignTypeJoinsTheSameWay && presentValueConvertsExactly
                                  && absenceSurvivesEveryOperation && combineIsAbsentWhenEitherInputIs;
-    std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

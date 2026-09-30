@@ -20,13 +20,20 @@ That is not a rare edge case; it is what binary floating point does with
 decimal input in general. A quantity such as 450 millilitres, stored as
 0,45 litres in a `double` and converted back, is not reliably 450 again --
 the round trip is lossy because 0,45 is not exactly representable in base 2.
-`Rational` makes that round trip exact:
+`Rational` makes that round trip exact. From `examples/exact_numbers.cpp`
+(`_r` is the exact-decimal literal of [Writing an exact
+decimal](#writing-an-exact-decimal)):
 
 ```cpp
-Rational const volumeInMillilitres = *Rational::from_decimal(45, 1);       // 450/1
-Rational const volumeInLitres = volumeInMillilitres / Rational { 1000 };   // 9/20
-Rational const roundTripped = volumeInLitres * Rational { 1000 };
-// roundTripped == volumeInMillilitres, exactly
+using namespace formula::literals;
+
+// 450 millilitres, written exactly. 450_r is the number 450, never a double.
+Rational const volumeInMillilitres = 450_r;
+
+// Convert to litres by an exact integer factor: multiply, then divide.
+// 450 ml -> 9/20 l, and back to 450 ml with nothing lost.
+Rational const volumeInLitres = volumeInMillilitres / 1000;
+Rational const roundTripped = volumeInLitres * 1000;
 ```
 
 The second reason is more fundamental than accumulated error: rounding rules
@@ -44,22 +51,31 @@ is the only place precision is deliberately given up.
 |---|---|---|
 | an integer | `Rational { 7 }` | 7/1 |
 | a fraction | `Rational { 3, 4 }` | 3/4 |
-| an exact decimal | `Rational::from_decimal(45, -2)` | 9/20 |
-| a whole number of tens | `Rational::from_decimal(45, 1)` | 450/1 |
+| an exact decimal | `0.45_r` | 9/20 |
+| an exact decimal from digits known only at run time | `Rational::from_decimal(45, -2)` | 9/20 |
+| a whole number of tens, the same way | `Rational::from_decimal(45, 1)` | 450/1 |
 | the exact value of a `double` | `Rational::from_double_exact(0.45)` | a power-of-two denominator |
 | a measured `double` on a known scale | `rational_from_double(0.45, DecimalPlaces { 2 }, mode)` | 9/20 |
 
 Spelled out, as runnable code:
 
 ```cpp
+using namespace formula::literals;
+
 Rational const a { 7 };                                              // 7/1
 Rational const b { 3, 4 };                                           // 3/4
-Rational const c = *Rational::from_decimal(45, -2);                  // 9/20
-Rational const d = *Rational::from_decimal(45, 1);                   // 450/1
-Rational const e = *Rational::from_double_exact(0.45);               // a power-of-two denominator
-Rational const f =
+Rational const c = 0.45_r;                                           // 9/20
+Rational const d = *Rational::from_decimal(45, -2);                  // 9/20
+Rational const e = *Rational::from_decimal(45, 1);                   // 450/1
+Rational const f = *Rational::from_double_exact(0.45);               // a power-of-two denominator
+Rational const g =
     *formula::rational_from_double(0.45, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero); // 9/20
 ```
+
+`0.45_r` is read from its spelling at compile time
+([Writing an exact decimal](#writing-an-exact-decimal)). `from_decimal`
+writes the same number from a mantissa and a power of ten that may be known
+only at run time.
 
 `from_decimal`, `from_double_exact` and `rational_from_double` all return
 `std::expected<Rational, ArithmeticError>` because the conversion can fail --
@@ -74,6 +90,42 @@ fires, with a message pointing at `from_decimal`, `from_double_exact` and
 so silently converting one to a `Rational` would make `0.45` mean
 8106479329266893 / 2^54, not 9/20 -- exactly the confusion this type exists to
 prevent.
+
+## Writing an exact decimal
+
+`Rational::from_decimal(273, -1)` is exact but hard to read. The literal `_r`
+writes the same value the way it is written on paper:
+
+```cpp
+using namespace formula::literals;
+
+Rational const a = 27.3_r;   // 273/10, not the double nearest 27.3
+Rational const b = 0.47_r;   // 47/100
+Rational const c = 1.5e-3_r; // 3/2000
+Rational const d = -27.3_r;  // -273/10
+```
+
+A literal has to be a `_r` literal rather than a `double` for the reason given
+under *Why not `double`*: `0.47` as a `double` is not 47/100, and a `Rational`
+made from it would carry that error. `0.47_r` is read from its spelling, so
+nothing is rounded on the way in. An exponent scales exactly, digit separators
+(`1'000.5_r`) are ignored, and a minus sign is `Rational`'s own negation.
+
+The literal is evaluated at compile time, so a spelling it cannot honour does not
+compile. The diagnostic names the function that was reached:
+
+| Spelling | Why it is refused | Named in the diagnostic |
+|---|---|---|
+| `9'223'372'036'854'775'808_r` | more significant digits than `Rational`'s 64-bit numerator holds | `formula_rational_literal_out_of_range` |
+| `0.0000000000000000001_r` | a denominator of 10^19 does not fit either | `formula_rational_literal_out_of_range` |
+| `0x1F_r`, `0b101_r` | not a decimal | `formula_rational_literal_not_a_decimal` |
+| `017_r` | C++ reads a leading zero as octal, so it is not the decimal 17 | `formula_rational_literal_not_a_decimal` |
+
+Trailing zeros after the point cost nothing: `4.210_r` is 421/100, and a
+literal with two dozen places still works when most of them are zeros.
+
+The literal is for decimals. A fraction such as one third is still
+`Rational { 1, 3 }`, or `1_r / 3`.
 
 ## Exact or nothing
 
@@ -150,8 +202,10 @@ Rational::Int const nearest = formula::round_to_int(Rational { 7, 4 }, RoundingM
 Beyond rounding to a whole number, three forms round to a place:
 
 ```cpp
+using namespace formula::literals;
+
 // Decimal places: 45,67 rounded to one decimal place is 45,7, i.e. 457/10.
-Rational const value = *Rational::from_decimal(4567, -2);
+Rational const value = 45.67_r;
 Rational const toOneDecimal = formula::round(value, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero);
 
 // Significant digits: the same 45,67 rounded to two significant digits is 46 -- a
@@ -159,13 +213,15 @@ Rational const toOneDecimal = formula::round(value, DecimalPlaces { 1 }, Roundin
 Rational const toTwoSignificant = formula::round(value, SignificantDigits { 2 }, RoundingMode::HalfAwayFromZero);
 
 // Rounding to an arbitrary step, the primitive the two forms above are built on.
-Rational const snapped = formula::round_to_multiple(Rational { 7 }, Rational { 5 }, RoundingMode::HalfAwayFromZero); // 5
+Rational const snapped = formula::round_to_multiple(7, 5, RoundingMode::HalfAwayFromZero); // 5
 ```
 
 A `Rational` is written as text as a fraction by default. To write it as a
 decimal -- exactly where it has one, rounded in a mode you name and marked `≈`
-where it does not -- in a trace, a rendered formula, `number_text()` or
-`std::format`, see [Displaying numbers](display.md).
+where it does not -- in a trace, a rendered formula or `number_text()`, see
+[Displaying numbers](display.md). `std::format` is the other way round: `{}`
+writes the exact decimal where there is one and the fraction where there is
+not, and `{:/}` always the fraction.
 
 ## Rounding is part of the calculation
 
@@ -177,13 +233,11 @@ methods, and a library that rounds only on output cannot express the
 difference:
 
 ```cpp
-Rational const mean = Rational { 302, 3 }; // 100,666...
+Rational const mean { 302, 3 }; // 100,666...
 
-Rational const roundedFirst =
-    formula::round(mean, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero) * Rational { 2 }; // 202
+Rational const roundedFirst = formula::round(mean, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero) * 2; // 202
 
-Rational const roundedLast =
-    formula::round(mean * Rational { 2 }, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero); // 201
+Rational const roundedLast = formula::round(mean * 2, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero); // 201
 
 // roundedFirst != roundedLast
 ```

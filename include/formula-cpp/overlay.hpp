@@ -729,16 +729,31 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
     return RoundingOverride<U, Places, Mode> { source };
 }
 
+/// Replaces the rounding rule as `with_rounding<U, Places, Mode>(source)` does,
+/// with the rounding @p R names, cited as @p citedAs: `with_rounding<hundredthMpa>(citation)`.
+template <DecimalRounding R>
+[[nodiscard]] constexpr RoundingOverride<R.unit, R.places, R.mode> with_rounding(Citation citedAs) noexcept
+{
+    return RoundingOverride<R.unit, R.places, R.mode> { citedAs };
+}
+
 /// Refuses a rounding rule with no citation, as `with_constant`'s overload
 /// refuses a constant.
 template <Unit U, DecimalPlaces Places, RoundingMode Mode, bool Stated = false>
 [[nodiscard]] constexpr RoundingOverride<U, Places, Mode> with_rounding() noexcept
 {
     static_assert(Stated,
-                  "formula: with_rounding<U, Places, Mode>() was given no citation; a rounding rule is a "
-                  "jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that "
-                  "states it");
+                  "formula: with_rounding<...>() was given no citation; a rounding rule is a jurisdiction's "
+                  "decision, and a trace must say whose -- pass the Citation of the clause that states it");
     return RoundingOverride<U, Places, Mode> {};
+}
+
+/// Refuses a rounding rule with no citation, as the three-argument overload
+/// does.
+template <DecimalRounding R, bool Stated = false>
+[[nodiscard]] constexpr RoundingOverride<R.unit, R.places, R.mode> with_rounding() noexcept
+{
+    return with_rounding<R.unit, R.places, R.mode, Stated>();
 }
 
 /// The operation `replace_variant<Tag>(expression, source)` builds: replace the

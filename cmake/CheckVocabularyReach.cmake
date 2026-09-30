@@ -25,7 +25,17 @@
 #    the default vocabulary has thrown away the one it was given;
 #  - a one-argument `render<...>(x)` call, outside the public plain-text
 #    overloads that forward to their dialect counterparts -- a
-#    sub-expression rendered that way is in the declared symbols.
+#    sub-expression rendered that way is in the declared symbols;
+#  - `symbol_of<...>()` with no argument, which reads `Describe<Q>::symbol`
+#    through the default vocabulary and ignores the one the surface was given
+#    (angle brackets and one level of parentheses inside the template argument
+#    are matched, as in `Wrapper<Q>` and `decltype(x)`; deeper parentheses, as
+#    in `decltype(f(x))`, are not caught, and nor is a template argument split
+#    across lines, since the match stops at a line's end);
+#  - a two-argument `render<...>(x, renderOptions)` or
+#    `document<...>(x, renderOptions)` call, outside the public overloads that
+#    forward `RenderOptions` -- it names no vocabulary, so it resolves the
+#    default one.
 #
 # What it cannot see: a spelling none of these match. That is why it is not
 # the guarantee.
@@ -50,8 +60,9 @@ foreach(file IN LISTS surfaces)
     # Whole-line comments: the doc comments in these headers name
     # `Describe<Q>::symbol` and one-argument calls freely.
     string(REGEX REPLACE "\n[ \t]*//[^\n]*" "\n" code "${contents}")
-    # The public forwarding overloads, each exactly one line of this shape.
-    string(REGEX REPLACE "\n[ \t]*return (render|document)<[A-Za-z:]+>[(]node, DefaultVocabulary {}[)];" "\n" code
+    # The public forwarding overloads, each exactly one line of this shape --
+    # the ones that take `RenderOptions` pass them on.
+    string(REGEX REPLACE "\n[ \t]*return (render|document)<[A-Za-z:]+>[(]node, DefaultVocabulary {}(, renderOptions)?[)];" "\n" code
                          "${code}")
     string(REGEX REPLACE "\n[ \t]*return render<Dialect::Plain>[(]node[)];" "\n" code "${code}")
 
@@ -66,6 +77,12 @@ foreach(file IN LISTS surfaces)
     endif()
     if(code MATCHES "[^_A-Za-z0-9]render<[^<>()]*>[(][^,()]*[)]")
         string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- rendered without the vocabulary")
+    endif()
+    if(code MATCHES "symbol_of<([^();{}\n]|[(][^();{}\n]*[)])*>[(][ \t]*[)]")
+        string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- a symbol read through the default vocabulary")
+    endif()
+    if(code MATCHES "[^_A-Za-z0-9](render|document)(<[^<>()]*>)?[(][^,()]*, renderOptions[)]")
+        string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- rendered without naming the vocabulary")
     endif()
 endforeach()
 

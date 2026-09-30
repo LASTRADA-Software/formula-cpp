@@ -21,6 +21,7 @@
 /// by `documented()`.
 
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/sink.hpp>
@@ -30,6 +31,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -56,6 +58,29 @@ enum class ConstraintOutcomeKind : std::uint8_t
     /// Evaluating the predicate raised an arithmetic error.
     Invalid,
 };
+
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(ConstraintOutcomeKind judged) noexcept
+{
+    switch (judged)
+    {
+        case ConstraintOutcomeKind::Satisfied:
+            return "satisfied";
+        case ConstraintOutcomeKind::Violated:
+            return "violated";
+        case ConstraintOutcomeKind::NotChecked:
+            return "not checked";
+        case ConstraintOutcomeKind::Invalid:
+            return "invalid";
+    }
+    return "unknown constraint outcome";
+}
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<ConstraintOutcomeKind> = true;
+} // namespace detail
 
 /// What checking a `Constraint` produced.
 ///

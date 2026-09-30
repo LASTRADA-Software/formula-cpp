@@ -12,6 +12,12 @@ this page formatted as program output is copied verbatim from that program's
 actual output, the same way [Tracing and audit trails](tracing.md) does for
 `examples/tracing.cpp`.
 
+The snippets on this page are written the way the example writes them, with
+`namespace unit = formula::unit;`, `using formula::var;` and `using
+formula::DecimalPlaces`, `RoundingMode` and `SignificantDigits` in effect: a
+unit is `unit::Millimetre`, a variable is `var<Diameter>`, and every other
+name the library offers keeps its `formula::` prefix.
+
 `RoundingMode`, `DecimalPlaces`, `SignificantDigits` and the plain-`Rational`
 `formula::round()` free function already exist -- [Exact numbers](numbers.md)
 covers them, including the intermediate-versus-final rounding argument made
@@ -28,10 +34,8 @@ places, or `Digits` significant digits, of the unit `U`, under the tie-break
 rule `Mode`:
 
 ```cpp
-constexpr auto coarseInput =
-    formula::rounded<unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(var<Diameter>);
-constexpr auto toTwoSignificantDigits =
-    formula::rounded_to_digits<unit::Millimetre, SignificantDigits { 2 }, RoundingMode::HalfAwayFromZero>(var<Diameter>);
+formula::rounded<unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(var<Diameter>)
+formula::rounded_to_digits<unit::Millimetre, SignificantDigits { 2 }, RoundingMode::HalfAwayFromZero>(var<Diameter>)
 ```
 
 The unit is not decoration. "To one decimal place" means nothing about a
@@ -48,6 +52,62 @@ library is one.
 (see [Numbers](numbers.md)), and a rounding node is simply that mode exposed as
 a position in the tree rather than a call you make on a number you already hold.
 
+## Naming a rounding once
+
+A method that rounds the same way in several places repeats the same three
+arguments each time. `DecimalRounding` (`unit.hpp`) names them once: which unit
+the places are counted in, how many, and which way to go.
+
+The example names the two it uses for decimal places, then uses them:
+
+```cpp
+constexpr formula::DecimalRounding wholeMillimetre { unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero };
+constexpr formula::DecimalRounding tenthMillimetre { unit::Millimetre, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };
+```
+
+`rounded<tenthMillimetre>(var<Diameter>)` is the very node `rounded<unit::Millimetre,
+DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero>(var<Diameter>)` builds --
+the same type, not an equivalent one. Every factory that takes the three
+arguments separately also takes the named value: `rounded_to_digits` takes a
+`SignificantRounding`, and `rounding_rule`, `with_rounding`, `rounded_output`,
+`rounded_sqrt` and `rounded_elementwise` take a `DecimalRounding`.
+
+A `SignificantRounding` names a unit, a count of significant digits and a tie
+rule, the way a `DecimalRounding` names a unit, a count of places and a tie
+rule. The example states two significant digits of a millimetre once, and
+`rounded_to_digits` takes it as it would the three arguments:
+
+```cpp
+constexpr formula::SignificantRounding twoDigitsOfMillimetre {
+    unit::Millimetre, SignificantDigits { 2 }, RoundingMode::HalfAwayFromZero
+};
+```
+
+```cpp
+constexpr auto toTwoSignificantDigits = formula::rounded_to_digits<twoDigitsOfMillimetre>(var<Diameter>);
+```
+
+The other factories take the named rounding the same way:
+
+```cpp
+constexpr auto rule = formula::rounding_rule<tenthMillimetre>();
+constexpr auto rootedEdge = formula::rounded_sqrt<tenthMillimetre>(var<Diameter> * var<Diameter>);
+```
+
+`declared_rounding(unit, mode)` builds a `DecimalRounding` from the places a
+unit itself declares, so a rounding "to what a millimetre is shown to" does not
+restate the number:
+
+```cpp
+constexpr auto asDeclared = formula::declared_rounding(unit::Millimetre, RoundingMode::HalfAwayFromZero);
+```
+
+A unit that does not measure the operand's dimension is refused as it is when
+the arguments are written out: `rounded<wholeGrams>(var<Diameter>)`, with
+`wholeGrams` in `unit::Gram`, draws the rounding node's one message.
+`rounded_elementwise<tenthMillimetre>(...)` rounds every element of a series to
+the same places; a `PlacesTable` still gives each element its own.
+
 ## The reason this is a node at all
 
 A method may specify "round the diameter to the nearest millimetre before
@@ -59,11 +119,9 @@ all; it can only ever give you the second answer, silently, regardless of
 which one the method actually calls for.
 
 ```cpp
-constexpr auto coarseInput =
-    formula::rounded<unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(var<Diameter>);
+constexpr auto coarseInput = formula::rounded<wholeMillimetre>(var<Diameter>);
 constexpr auto roundThenDouble = coarseInput + coarseInput;
-constexpr auto doubleThenRound = formula::rounded<unit::Millimetre, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero>(
-    var<Diameter> + var<Diameter>);
+constexpr auto doubleThenRound = formula::rounded<tenthMillimetre>(var<Diameter> + var<Diameter>);
 ```
 
 `roundThenDouble` rounds the input to a whole millimetre first and doubles
@@ -73,8 +131,8 @@ one addition -- and, on 12.50 mm:
 
 ```
 rendered: round(d + d, to 1 dp of mm)
-12.50 mm, round to 0 dp then double = 26.000000 mm
-12.50 mm, double then round to 1 dp = 25.000000 mm
+12.50 mm, round to 0 dp then double = 26 mm
+12.50 mm, double then round to 1 dp = 25 mm
 ```
 
 26 and 25 are not close-enough-to-agree; they are two different numbers, from
@@ -89,7 +147,7 @@ decimal places -- the two can and do disagree, exactly as
 [Exact numbers](numbers.md) already shows for plain `Rational` values:
 
 ```
-12.34 mm to 2 significant digits    = 12.000000 mm
+12.34 mm to 2 significant digits    = 12 mm
 ```
 
 ## A numeric threshold selects between two formulas
@@ -116,18 +174,19 @@ formula rather than in an `if`/`else` a caller has to remember to apply the
 same way every time:
 
 ```cpp
-constexpr auto sizeAdjustedDiameter =
-    formula::when(var<Diameter> > formula::constant<unit::Millimetre>(formula::Rational { 173, 10 }),
-                 formula::rounded<unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(var<Diameter>),
-                 formula::rounded<unit::Millimetre, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero>(var<Diameter>));
+constexpr auto sizeAdjustedDiameter = formula::yields<Diameter>(formula::when(
+    var<Diameter> > formula::constant<unit::Millimetre>(17.3_r), coarseInput, formula::rounded<tenthMillimetre>(var<Diameter>)));
 ```
 
-which renders, and evaluates on both sides of its own threshold, as:
+`formula::yields<Diameter>` binds the formula to the quantity it produces, so
+that the example can render, evaluate and explain it without naming `Diameter`
+again at each call (see [Expressions](expressions.md)). The formula renders,
+and evaluates on both sides of its own threshold, as:
 
 ```
 rendered: if d > 173/10 mm then round(d, to 0 dp of mm) else round(d, to 1 dp of mm)
-12.34 mm, size-adjusted rounding    = 12.300000 mm
-25.40 mm, size-adjusted rounding    = 25.000000 mm
+12.34 mm, size-adjusted rounding    = 12.3 mm
+25.40 mm, size-adjusted rounding    = 25 mm
 ```
 
 One caveat worth knowing before it surprises you: `document()` walks **both**
@@ -237,19 +296,19 @@ without ever converting it back, because converting it back is exactly what
 it is built not to do.
 
 ```cpp
-constexpr auto empiricalCorrection =
+constexpr auto empiricalCorrection = formula::yields<CorrectionFactor>(
     formula::numeric_value_of<unit::Megapascal,
                               "Example Standard 9:2020 states this empirical coefficient over the numeric "
                               "value of strength in MPa">(var<Strength>)
-        * formula::Rational { 213, 10000 }
-    - formula::Rational { 1043, 1000 };
+        * 0.0213_r
+    - 1.043_r);
 ```
 
 which renders and traces as:
 
 ```
 rendered: numeric(f, in MPa) * 213/10000 - 1043/1000
-empirical correction factor at 70 MPa = 0.448000
+empirical correction factor at 70 MPa = 0.448
 1. f = 70 MPa
 2. numeric(#1, in MPa) = 70 (Example Standard 9:2020 states this empirical coefficient over the numeric value of strength in MPa)
 3. 213/10000

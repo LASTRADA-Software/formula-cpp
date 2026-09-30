@@ -24,11 +24,15 @@
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
 // and its predicate, and of formulas an overlay fixed, derived and replaced;
-// `render_trace`; `check` and `check_all`; `evaluate_method` of an original
+// `render_trace`; `traced`, `trace_of`, `trace_of_si`, `explain_conformity`,
+// `explain_method`, `explain_check_method`, `explain_check` and
+// `explain_check_all`;
+// `check` and `check_all`; `evaluate_method` of an original
 // and of a replaced variant, and `check_method`, with `RecordingSink` and
 // with a sink of its own; `apply` with every overlay operation; `Outcome`'s
 // factories; `checked_convert_to`, `checked_within_bounds`,
-// `checked_round_to_declared`, `transform` and `combine`; `entered`,
+// `checked_round_to_declared`, their throwing twins `convert_to`,
+// `within_bounds` and `round_to_declared`, `transform` and `combine`; `entered`,
 // `Environment::get` and `source_of`;
 // `measured_series`, `entered` of a series, `Environment::get_series` and
 // `checked_evaluate_series` of a series variable, derived and entered;
@@ -38,12 +42,14 @@
 // from either end, a per-element rounding and `sum`, inside a method an
 // overlay's constant rewrote, evaluated, rendered, documented and traced; a
 // conformity check against a limit envelope, a snap, and curves -- a declared
-// domain, a pairing, a splice and an interpolation -- on the same surfaces;
+// domain, a pairing, a splice and an interpolation -- on the same surfaces,
+// with `explain_curve`;
 // raw observations, `from` and `get_observations`, binned into classes and
 // divided by their sum, on the same surfaces;
 // a sample's count, mean, variance and range, and a rounded root of the
-// variance, on the same surfaces; a rejection of outliers, evaluated alone
-// and under a mean, on the same surfaces, and one by gap to range; a mean
+// variance, on the same surfaces; a rejection of outliers, evaluated alone,
+// with `explain_rejection` and under a mean, on the same surfaces, and one by
+// gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
 // opaque operation's output, evaluated exactly and in double, and rounded
 // where it is used, traced, rendered and documented; a least-squares fit,
@@ -73,7 +79,15 @@
 // a measured value spelled by `number_text` in each notation, with
 // `checked_number_text`, `decimal_text`, `fraction_text` and
 // `exact_decimal_text`; a `Rational` and a measured value written by
-// `std::format`, aligned and rounded; and a quantity declared by alias at
+// `std::format`, aligned and rounded, and an `Outcome`, a `Unit`, a
+// `Dimension` and an enumeration written the same way; `symbol_of` with no
+// vocabulary, and `render` and `document` given `RenderOptions` and none;
+// `yields` of the formula touching every node kind, and `evaluate`,
+// `checked_evaluate`, `explain`, `checked_explain`, `trace_of`, `render`, `document` and
+// `define` of what it binds, and `checked_evaluate_series`,
+// `explain_series`, `checked_evaluate_rejection` and `explain_rejection` of
+// a series and a rejection bound the same way;
+// and a quantity declared by alias at
 // global scope, so that its tag is one more global. A template it does
 // not reach is not guarded by it.
 // `consumer_globals_run_tests.cpp` checks that each of these computed what
@@ -205,6 +219,7 @@ int index;
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>
 
 // A quantity declared by alias at global scope, as a consumer would: the
 // elaborated type specifier declares its tag, `AliasEdgeTag`, as one more
@@ -588,6 +603,10 @@ ConsumerGlobalsProbe probe_consumer_globals()
     auto const summed = formula::combine<EdgeX>(
         edge, edge, [](formula::Rational augend, formula::Rational addend) { return augend + addend; });
     probe.checks.push_back(inMetres.has_value() && withinBounds.has_value() && declared.has_value());
+    auto const convertedEdge = formula::convert_to<EdgeX>(edge);
+    auto const roundedEdge = formula::round_to_declared(edge, formula::RoundingMode::HalfAwayFromZero);
+    probe.checks.push_back(convertedEdge == *inMetres && roundedEdge == *declared
+                           && formula::within_bounds(edge) == *withinBounds);
     probe.checks.push_back(doubled.value() == formula::Rational { 300 } && summed.value() == formula::Rational { 300 });
 
     // A series: built, entered, read from an environment and evaluated both
@@ -664,6 +683,25 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                       .find("[1 satisfied, 150 mm (from 139 to 163 mm); "
                                             "2 violated, 103 mm (at least 127 mm): reject the edge]")
                                   != std::string::npos);
+    // Tracing any evaluation, and two of the explain twins: the same outcome
+    // and the same steps as the hand-built sink above.
+    auto const tracedEdgeCheck = formula::traced(
+        [&](auto recordingSink) { return formula::check_conformity(edgeCheck, bothScreens, recordingSink); }, north);
+    auto const explainedEdgeCheck = formula::explain_conformity(edgeCheck, bothScreens, north);
+    auto const explainedStrength = formula::explain_method<Cube>(overlaid, specimen, north);
+    probe.checks.push_back(tracedEdgeCheck.outcome == edgeOutcomes && !tracedEdgeCheck.trace.empty());
+    probe.checks.push_back(explainedEdgeCheck.outcome == edgeOutcomes
+                           && formula::render_trace(explainedEdgeCheck.trace, { .maxSteps = 20 })
+                                  == formula::render_trace(conformityTrace, { .maxSteps = 20 }));
+    probe.checks.push_back(explainedStrength.outcome == strength && !explainedStrength.trace.empty());
+    // The constraint twins and the method's: each the outcome of its untraced
+    // verb above, with the steps it recorded.
+    auto const explainedLimit = formula::explain_check(forceLimit, specimen, north);
+    auto const explainedLimits = formula::explain_check_all(formula::constraints(forceLimit), specimen, north);
+    auto const explainedVerdicts = formula::explain_check_method(overlaid, specimen, north);
+    probe.checks.push_back(explainedLimit.outcome == checkedLimit && !explainedLimit.trace.empty());
+    probe.checks.push_back(explainedLimits.outcome == setOutcomes && !explainedLimits.trace.empty());
+    probe.checks.push_back(explainedVerdicts.outcome == verdicts && !explainedVerdicts.trace.empty());
     // A snap: 150 mm among 137, 149 and 151 mm is a tie, decided toward the
     // higher.
     auto const snappedEdge = formula::snapped<unit::Millimetre, EdgeSnapSet, formula::SnapTie::TowardHigher>(var<EdgeX>);
@@ -697,6 +735,8 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::document<formula::Dialect::LaTeX>(readEdge).formula.find("interpolate") != std::string::npos
         && formula::document(edgeCurve, north).symbols.empty()
         && formula::render_trace(curveTrace, { .maxSteps = 40 }).find("[between 139 and 161 mm]") != std::string::npos);
+    auto const explainedCurve = formula::explain_curve<EdgeX, EdgeX>(edgeCurve, specimen, north);
+    probe.checks.push_back(explainedCurve.outcome == splicedEdge && !explainedCurve.trace.empty());
     // Raw observations, from a span, binned into two classes: 163 mm sits on
     // the boundary and is counted in the upper class.
     std::array<formula::Rational, 3> const edgeReadings { formula::Rational { 103 },
@@ -771,6 +811,12 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::document(formula::sample_mean(trimmed), north).rejections.size() == 1
                            && formula::render_trace(trimmedTrace, { .maxSteps = 20 }).find("settled: 0 rejected, 2 remain")
                                   != std::string::npos);
+    auto const explainedRejection = formula::explain_rejection<EdgeX>(trimmed, bothScreens, north);
+    probe.checks.push_back(
+        explainedRejection.outcome.has_value() && trimmedOutcome.has_value()
+        && explainedRejection.outcome->outcome() == trimmedOutcome->outcome()
+        && formula::render_trace(explainedRejection.trace, { .maxSteps = 20 }).find("settled: 0 rejected, 2 remain")
+               != std::string::npos);
     // Gap to range at 3/4: 150 and 103 mm are each other's neighbour, a gap
     // of the whole range, so both are past it -- and rejecting both would
     // leave none of at least 1, so it aborts with the verdict.
@@ -1224,5 +1270,153 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(std::format("{}", formula::Rational { 3, 5 }) == "0.6"
                            && std::format("{:>10~HalfEven}", thirdEdge) == " \xe2\x89\x88" "150.7 mm"
                            && std::format("{:/}", thirdEdge) == "452/3 mm");
+
+    // An outcome, a unit, a dimension and an enumeration written by
+    // std::format, and the default vocabulary and render options taken
+    // without a vocabulary.
+    probe.checks.push_back(
+        std::format("{}", formula::Outcome<EdgeX>::value(thirdEdge, formula::ValueSource::Derived)) == "452/3 mm"
+        && std::format("{:>17}", formula::Outcome<EdgeX>::verdict({ "repeat the test" })) == "  repeat the test"
+        && std::format("{}", formula::unit::Millimetre) == "mm"
+        && std::format("{}", formula::dim::Density) == "L^-3 M^1"
+        && std::format("{}", formula::ArithmeticError::Overflow) == "overflow in exact arithmetic");
+    probe.checks.push_back(
+        formula::symbol_of<EdgeX>() == formula::Describe<EdgeX>::symbol
+        && formula::render(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                           formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() })
+               == formula::render(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                                  formula::DefaultVocabulary {},
+                                  formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() }));
+    probe.checks.push_back(
+        formula::document(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                          formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() })
+            .formula
+        == formula::document(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                             formula::DefaultVocabulary {},
+                             formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() })
+               .formula);
+
+    // The words of the enumerations a constraint, a retry and a series
+    // failure report, called qualified: this checks that they answer, and
+    // that the header declaring them compiles beside the consumer's globals.
+    probe.checks.push_back(formula::describe(formula::ConstraintOutcomeKind::Violated) == "violated"
+                           && !formula::describe(formula::RetryEnd::Accepted).empty()
+                           && !formula::describe(formula::FailureSite::ResultElement).empty());
+
+    // The exact decimal literal: 27.3 is 273/10, not the double nearest it.
+    {
+        using namespace formula::literals;
+        probe.checks.push_back(27.3_r == formula::Rational { 273, 10 });
+    }
+
+    // Plain numbers and not_measured in a series, and exact numbers for a
+    // band's bounds and a breakpoint's key.
+    {
+        using namespace formula::literals;
+        auto const suppliedSeries = formula::measured_series<EdgeX>(127, 10.3_r, formula::not_measured);
+        probe.checks.push_back(suppliedSeries.size() == 3 && suppliedSeries.element(0).value() == formula::Rational { 127 }
+                               && suppliedSeries.element(1).value() == formula::Rational { 103, 10 }
+                               && suppliedSeries.element(2).is_absent()
+                               && formula::band(83.7_r, 97.3_r) == formula::band(837, 10, 973, 10)
+                               && formula::breakpoint(12.7_r) == formula::breakpoint(127, 10));
+    }
+    // The number a result holds, or nothing: a value's, a retry's accepted
+    // value, and an error's nothing.
+    probe.checks.push_back(formula::number_of(plain).has_value()
+                           && formula::number_of(plain) == plain.measurement().value()
+                           && formula::number_of(checked) == formula::number_of(plain)
+                           && formula::number_of(edgesRetried) == formula::Rational { 163 }
+                           && !formula::number_of(std::expected<formula::Outcome<Strength>, formula::ArithmeticError> {
+                                   std::unexpected { formula::ArithmeticError::Overflow } })
+                                   .has_value());
+    // A rounding named once, and one that takes the places a unit declares:
+    // 12.36 mm is 12.4 to the tenth of a millimetre a millimetre declares.
+    {
+        constexpr formula::DecimalRounding declaredMillimetre =
+            formula::declared_rounding(unit::Millimetre, formula::RoundingMode::HalfAwayFromZero);
+        auto const declaredEdge = formula::evaluate<EdgeX>(
+            formula::rounded<declaredMillimetre>(var<EdgeX>),
+            formula::environment(formula::Measured<EdgeX> { formula::Rational { 1'236, 100 } }));
+        probe.checks.push_back(declaredEdge.is_value() && declaredEdge.measurement().value() == formula::Rational { 62, 5 }
+                               && declaredMillimetre.places == formula::DecimalPlaces { 1 });
+    }
+    // Every other spelling that takes a rounding named once, beside its
+    // three-argument form.
+    {
+        constexpr formula::DecimalRounding tenthEdge { unit::Millimetre,
+                                                       formula::DecimalPlaces { 1 },
+                                                       formula::RoundingMode::HalfAwayFromZero };
+        constexpr formula::SignificantRounding twoFigureEdge { unit::Millimetre,
+                                                               formula::SignificantDigits { 2 },
+                                                               formula::RoundingMode::HalfAwayFromZero };
+        constexpr formula::DecimalRounding hundredthPlain { unit::One,
+                                                            formula::DecimalPlaces { 2 },
+                                                            formula::RoundingMode::HalfAwayFromZero };
+        auto const namedEnvironment = formula::environment(formula::Measured<EdgeX> { formula::Rational { 1'236, 100 } });
+        // 12.36 mm to two significant digits is 12 mm.
+        auto const inFigures = formula::evaluate<EdgeX>(formula::rounded_to_digits<twoFigureEdge>(var<EdgeX>), namedEnvironment);
+        probe.checks.push_back(inFigures.is_value() && inFigures.measurement().value() == formula::Rational { 12 });
+        probe.checks.push_back(
+            std::is_same_v<decltype(formula::rounding_rule<tenthEdge>()),
+                           decltype(formula::rounding_rule<unit::Millimetre,
+                                                           formula::DecimalPlaces { 1 },
+                                                           formula::RoundingMode::HalfAwayFromZero>())>
+            && std::is_same_v<decltype(formula::with_rounding<tenthEdge>(formula::Citation { .reference = "Example Standard 3" })),
+                              decltype(formula::with_rounding<unit::Millimetre,
+                                                              formula::DecimalPlaces { 1 },
+                                                              formula::RoundingMode::HalfAwayFromZero>(
+                                  formula::Citation { .reference = "Example Standard 3" }))>);
+        // The span of 163 and 127 mm is 36 mm, whole under a tenth's rounding.
+        auto const namedSpan = formula::checked_evaluate<EdgeX>(
+            formula::rounded_output<"span", tenthEdge>(
+                formula::opaque<EdgeSpan>({ .reference = "Example Standard 3" }, formula::series<EdgeX, 2>)),
+            spanEdges);
+        probe.checks.push_back(namedSpan.has_value() && namedSpan->measurement().value() == formula::Rational { 36 });
+        // The root of 2 to 0.01 is 1.41.
+        auto const namedRoot = formula::evaluate<Factor>(
+            formula::rounded_sqrt<hundredthPlain>(var<Factor> * formula::Rational { 2 }), specimen);
+        probe.checks.push_back(namedRoot.is_value() && namedRoot.measurement().value() == formula::Rational { 141, 100 });
+        auto const everyEdge = formula::rounded_elementwise<tenthEdge>(formula::series<EdgeX, 2>);
+        probe.checks.push_back(formula::checked_evaluate_series<EdgeX>(everyEdge, spanEdges).has_value()
+                               && std::is_same_v<std::remove_const_t<decltype(everyEdge)>,
+                                                 decltype(formula::rounded_elementwise<
+                                                          unit::Millimetre,
+                                                          formula::PlacesTable<2> { formula::DecimalPlaces { 1 },
+                                                                                    formula::DecimalPlaces { 1 } },
+                                                          formula::RoundingMode::HalfAwayFromZero>(
+                                                     formula::series<EdgeX, 2>))>);
+    }
+    // The formula touching every node kind, bound to its result quantity
+    // once, then evaluated, checked, traced, rendered, documented and defined
+    // without naming the quantity again.
+    {
+        constexpr auto boundStrength = formula::yields<Strength>(everything);
+        probe.checks.push_back(formula::evaluate(boundStrength, specimen) == plain
+                               && formula::checked_evaluate(boundStrength, specimen) == checked);
+        probe.checks.push_back(formula::explain(boundStrength, specimen, north).outcome == explained.outcome
+                               && formula::render(boundStrength, north) == formula::render(everything, north)
+                               && formula::document(boundStrength).formula == formula::document(everything).formula);
+        constexpr auto boundDefinition = formula::define(boundStrength);
+        probe.checks.push_back(
+            std::is_same_v<std::remove_const_t<decltype(boundDefinition)>, decltype(formula::define<Strength>(everything))>);
+        // The other verbs that name a result: the checked trace, and the
+        // series and the rejection above, each evaluated and traced.
+        auto const checkedBound = formula::checked_explain(boundStrength, specimen, north);
+        probe.checks.push_back(checkedBound.has_value() && checkedBound->outcome == explained.outcome);
+        // Just the trace: of the formula, of the bound formula, and in SI units.
+        probe.checks.push_back(!formula::trace_of<Strength>(everything, specimen, north).empty());
+        probe.checks.push_back(!formula::trace_of(boundStrength, specimen, north).empty());
+        probe.checks.push_back(!formula::trace_of_si(everything, specimen, north).empty());
+        constexpr auto boundScreens = formula::yields<EdgeX>(formula::series<EdgeX, 2>);
+        probe.checks.push_back(formula::checked_evaluate_series(boundScreens, seriesInputs) == readSeries
+                               && formula::explain_series(boundScreens, seriesInputs, north).outcome
+                                      == explainedSeries.outcome);
+        auto const boundTrimmed = formula::yields<EdgeX>(trimmed);
+        auto const trimmedAgain = formula::checked_evaluate_rejection(boundTrimmed, bothScreens);
+        auto const trimmedExplained = formula::explain_rejection(boundTrimmed, bothScreens, north);
+        probe.checks.push_back(trimmedAgain.has_value() && trimmedAgain->outcome() == trimmedOutcome->outcome()
+                               && trimmedExplained.outcome.has_value()
+                               && trimmedExplained.outcome->outcome() == trimmedOutcome->outcome());
+    }
     return probe;
 }

@@ -708,3 +708,15 @@ TEST_CASE("rounded output: a step built by hand without its row still says the i
     CHECK(formula::render_trace(recorded, { .maxSteps = 5 })
           == "1. round(an opaque output, to 4 dp) = (not measured) [nearest, ties away from zero] [inside not shown]\n");
 }
+
+TEST_CASE("DecimalRounding: the same rounded output as the three arguments it names", "[rounded-output]")
+{
+    constexpr formula::DecimalRounding tenthGram { unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven };
+    using ByValue = decltype(formula::rounded_output<"span", tenthGram>(spanCall));
+    using ByTriple =
+        decltype(formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+            spanCall));
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+    constexpr formula::DecimalRounding hundredthGram { unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven };
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::rounded_output<"span", hundredthGram>(spanCall)), ByValue>);
+}

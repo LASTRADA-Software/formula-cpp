@@ -234,7 +234,8 @@ does not need the exact fraction: it needs the decimal that fraction rounds
 to. `rounded_output` states that precision, as `rounded<>` does. For
 `linear_least_squares`, which computes in wider integers, the library
 computes that decimal exactly, even where the exact fit leaves `Rational`'s
-range:
+range. The example names the slope's precision once, the unit's own decimals,
+because it rounds the slope in three places:
 
 ```cpp
 constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocity,
@@ -242,9 +243,9 @@ constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocit
                                               .magnitudeDenominator = 1000,
                                               .symbolText = formula::symbol("mm/s"),
                                               .decimals = 4 };
-constexpr auto roundedSlope =
-    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
-        fit);
+constexpr formula::DecimalRounding slopeRounding =
+    formula::declared_rounding(millimetrePerSecond, formula::RoundingMode::HalfEven);
+constexpr auto roundedSlope = formula::rounded_output<"slope", slopeRounding>(fit);
 ```
 
 ```text
@@ -338,9 +339,8 @@ explains values the exact layer cannot hold. The example declares the slope
 this way:
 
 ```cpp
-constexpr auto observedSlope =
-    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
-        observedFit);
+constexpr auto observedLine = formula::yields<Rate>(formula::opaque_output<"slope">(observedFit));
+constexpr auto observedSlope = formula::yields<SlopeRate>(formula::rounded_output<"slope", slopeRounding>(observedFit));
 ```
 
 ```text
@@ -368,7 +368,7 @@ rounding never lift a fit over the line:
 ```cpp
 constexpr auto closeEnough = formula::constraint(
     formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(observedFit)
-        >= formula::constant<unit::One>(formula::Rational { 998, 1000 }),
+        >= formula::constant<unit::One>(0.998_r),
     formula::Verdict { "repeat the readings" });
 ```
 
@@ -426,7 +426,7 @@ constexpr auto lengthAtZeroCelsius =
     formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
         formula::opaque_output<"constant">(byTemperatureAndContent)
         + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
-              * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
+              * formula::constant<unit::Kelvin>(273.15_r));
 ```
 
 ```text
@@ -487,19 +487,30 @@ most 0.76 g. The sequence rises, so the acceptance is written
 `w(k-1) - w(k) >= -0.76 g`:
 
 ```cpp
-constexpr auto halving = formula::constant<unit::Gram>(formula::Rational { 152, 25 })
-                         + formula::previous_attempt<Estimate> / formula::Rational { 2 };
+constexpr auto halving = formula::constant<unit::Gram>(6.08_r) + formula::previous_attempt<Estimate> / 2;
 constexpr auto settled = formula::previous_attempt<Estimate> - formula::this_attempt<Estimate>
-                         >= formula::constant<unit::Gram>(formula::Rational { -19, 25 });
-constexpr auto fromZero = formula::starting_from(formula::constant<unit::Gram>(formula::Rational { 0 }));
+                         >= formula::constant<unit::Gram>(-0.76_r);
+constexpr auto fromZero = formula::starting_from(formula::constant<unit::Gram>(0));
 constexpr formula::Verdict repeatDetermination { "repeat the determination" };
 constexpr formula::Citation settledCitation { .title = "Settled estimate",
                                               .reference = "Example Standard 12",
                                               .section = "6" };
 
-constexpr auto fourAttempts = formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(
-    fromZero, halving, settled, repeatDetermination, settledCitation);
+/// The method's retry of the estimate: at most @p Max attempts, judged from the
+/// first, the determination repeated when none is settled.
+template <std::size_t Max, typename... Steps>
+constexpr auto estimating(Steps... steps)
+{
+    return formula::retry<Estimate, Max, formula::FirstJudged::AtFirstAttempt>(
+        steps..., repeatDetermination, settledCitation);
+}
+
+constexpr auto fourAttempts = estimating<4>(fromZero, halving, settled);
 ```
+
+`estimating` states what the example's retries share -- the estimate, the
+first attempt judged, the verdict and the citation -- so each retry names only
+its attempts and its steps.
 
 - **`previous_attempt<R>`** is the attempt before, or the starting value at
   the first attempt; **`this_attempt<R>`** is the value just produced, and is
@@ -547,17 +558,17 @@ A retry ends in exactly one of six ways (`RetryEnd`), and the example runs
 each. Each line below says how it ended, and the line its trace ends with:
 
 ```text
-allowed four: Accepted after 4 attempt(s)
+allowed four: accepted after 4 attempt(s)
   42. w = retry: accepted at attempt 4 of 4 = 57/5 g [Settled estimate, Example Standard 12, 6]
-allowed three: Exhausted after 3 attempt(s)
+allowed three: exhausted after 3 attempt(s)
   32. w = retry: exhausted after 3 of 3: repeat the determination [Settled estimate, Example Standard 12, 6]
-tolerance not measured: NotJudgeable after 1 attempt(s)
+tolerance not measured: not judgeable after 1 attempt(s)
   14. w = retry: not judgeable at attempt 1 [Settled estimate, Example Standard 12, 6]
-third determination missing: NotRecorded after 3 attempt(s)
+third determination missing: not recorded after 3 attempt(s)
   12. d_a = retry: attempt 3 not recorded [Agreed determination, Example Standard 12, 7]
-divides by k - 1: Failed, division by zero at attempt 1
+divides by k - 1: failed, division by zero at attempt 1
   12. w = retry: failed at attempt 1: division by zero [Settled estimate, Example Standard 12, 6]
-typed in by a person: ManuallyEntered after 0 attempt(s); nothing traced
+typed in by a person: manually entered after 0 attempt(s); nothing traced
 ```
 
 - **Accepted:** the acceptance held; the outcome is that attempt's value.
@@ -605,7 +616,7 @@ within 1.27 g" compares the absolute difference, written with `abs`. A
 
 ```cpp
 constexpr auto agree = formula::abs(formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>)
-                       <= formula::constant<unit::Gram>(formula::Rational { 127, 100 });
+                       <= formula::constant<unit::Gram>(1.27_r);
 
 constexpr auto successive = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
     formula::attempt_input<Determination>,
@@ -616,7 +627,7 @@ constexpr auto successive = formula::retry<Agreed, 4, formula::FirstJudged::AtSe
 
 ```text
 up to 4 attempts: d_a(k) = d(k); accept from attempt 2 when abs(d_a(k) - d_a(k-1)) <= 127/100 g; otherwise: repeat the test
-41.3, 43.9, 42.7, 45.7 g: Accepted after 3 attempt(s)
+41.3, 43.9, 42.7, 45.7 g: accepted after 3 attempt(s)
   17. d_a = retry: accepted at attempt 3 of 4 = 427/10 g [Agreed determination, Example Standard 12, 7]
 ```
 

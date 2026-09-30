@@ -275,6 +275,12 @@ enum class Monotone : std::uint8_t
     return "unknown direction";
 }
 
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<Monotone> = true;
+} // namespace detail
+
 /// The rule a curve broke where it failed, as its trace step names it.
 enum class CurveBreak : std::uint8_t
 {
@@ -453,7 +459,7 @@ struct InterpolateAlongNode: NodeBase
 };
 
 /// The value of @p curveExpression at @p at: `interpolate_at(curve(screens,
-/// passing), constant<unit::Millimetre>(rat(42, 10)))`.
+/// passing), constant<unit::Millimetre>(4.2_r))`.
 template <CurveExpression C, Node At>
 [[nodiscard]] constexpr InterpolateAlongNode<C, At> interpolate_at(C curveExpression, At at) noexcept
 {

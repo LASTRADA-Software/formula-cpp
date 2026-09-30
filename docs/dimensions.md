@@ -284,8 +284,13 @@ range (`bounds`), and both apply to a *computed* value, not just to a literal:
 
 ```cpp
 Rational const computedMass = genericDensity * volumeInCubicMetres;
-Rational const roundedMass =
-    *formula::checked_round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
+auto const roundedMass =
+    formula::checked_round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
+if (!roundedMass)
+{
+    std::println("rounding the computed mass: {}", roundedMass.error());
+    return 1;
+}
 ```
 
 ```text
@@ -297,14 +302,17 @@ rounded to kg's declared precision (3 places) = 64.286 kg
 type, not a bare `int`, so it plugs directly into `formula::round` /
 `formula::checked_round` (see [`docs/numbers.md`](numbers.md)).
 `checked_round_to_declared` is the two calls composed, and returns a
-`std::expected` like every other `checked_` function here;
-`round_to_declared` is the same thing spelled to throw, as `convert` is to
-`checked_convert`.
+`std::expected` like every other `checked_` function here: the rounded value,
+or the `ArithmeticError` that stopped it, which `{}` writes in words. The
+example checks it before reading the value. `round_to_declared` is the same
+thing spelled to throw, as `convert` is to `checked_convert`.
 
 `formula::checked_within_bounds` checks a value, in the unit's own scale,
-against that unit's declared `bounds`, and returns one of five
-`BoundsCheck` values: `WithinBounds`, `BelowMinimum`, `AboveMaximum`,
-`NotChecked`, or `NotMeasured`. **`NotChecked` is deliberately not the same thing as
+against that unit's declared `bounds`, and returns, in a `std::expected` the
+example checks before reading it, one of five `BoundsCheck` values:
+`WithinBounds`, `BelowMinimum`, `AboveMaximum`, `NotChecked`, or
+`NotMeasured` -- or an `ArithmeticError`, for a unit whose declared range is
+malformed. **`NotChecked` is deliberately not the same thing as
 `WithinBounds`.** A unit that declares no bounds at all has not validated
 anything, and reporting it as "within bounds" would make an unvalidated value
 indistinguishable from one that was actually checked and passed:
@@ -344,10 +352,13 @@ tariff (EUR / energy) = L^-2 M^-1 T^2 EUR^1
 tariff * energy = EUR^1
 ```
 
-The example prints a named base after the seven SI exponents, by its name. A
-tariff is euros over an energy -- `L^-2 M^-1 T^2` from the joule, `EUR^1` from
-the base -- and times an energy it is euros again: the same value as
-`base_dimension("EUR")` itself, which the example checks.
+The example prints every dimension with `std::println`. `{}` of a `Dimension`
+(`<formula-cpp/format.hpp>`) writes each exponent that is not zero, in the
+order L, M, T, I, Theta, N, J, and then each named base by its name; a pure
+number reads `(dimensionless)`. A tariff is euros over an energy --
+`L^-2 M^-1 T^2` from the joule, `EUR^1` from the base -- and times an energy
+it is euros again: the same value as `base_dimension("EUR")` itself, which the
+example checks.
 
 **Identity is the name, byte for byte.** Two parts of a program, or two
 libraries, that both write `base_dimension("EUR")` get the same dimension --

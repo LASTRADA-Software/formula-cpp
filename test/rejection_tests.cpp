@@ -427,6 +427,41 @@ TEST_CASE("a rejection over a unit with no symbol reads its means and deviations
              "7. settled: 1 rejected, 3 remain\n");
 }
 
+TEST_CASE("explain_rejection: the rejection's outcome and the trace a RecordingSink records", "[rejection][trace]")
+{
+    // rejectionA settles after two rejections; rejectionA1 is stopped by its
+    // limit after one, so the outcome and the steps differ between the two.
+    formula::Trace<> handBuilt {};
+    auto const direct =
+        formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA, formula::RecordingSink<> { handBuilt });
+    REQUIRE(direct.has_value());
+    auto const explained = formula::explain_rejection<Mass>(rejectionA, fixtureA);
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->outcome() == direct->outcome());
+    CHECK(explained.outcome->rejected().size() == 2);
+    CHECK(explained.outcome->rejected().size() == direct->rejected().size());
+    CHECK(explained.outcome->passes() == direct->passes());
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+
+    auto const stopped = formula::explain_rejection<Mass>(rejectionA1, fixtureA);
+    REQUIRE(stopped.outcome.has_value());
+    CHECK(stopped.outcome->rejected().size() == 1);
+    CHECK(formula::render_trace(stopped.trace, { .maxSteps = 100 }) != formula::render_trace(explained.trace, { .maxSteps = 100 }));
+}
+
+TEST_CASE("explain_rejection writes its trace in the vocabulary it is given", "[rejection][trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<Mass>("m_s"));
+    formula::Trace<> handBuilt {};
+    (void) formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA, formula::RecordingSink { handBuilt, south });
+    auto const renamed = formula::explain_rejection<Mass>(rejectionA, fixtureA, south);
+    auto const plain = formula::explain_rejection<Mass>(rejectionA, fixtureA);
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).starts_with("1. m_s = "));
+    CHECK(formula::render_trace(plain.trace, { .maxSteps = 100 }).find("m_s") == std::string::npos);
+}
+
 TEST_CASE("only the library builds a RejectionOutcome", "[rejection]")
 {
     using Built = formula::RejectionOutcome<Mass, 6>;
@@ -1457,4 +1492,13 @@ TEST_CASE("an observation that cannot be read fails a rejection at its own posit
         formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 3>(sixPercent), unreadable);
     STATIC_REQUIRE(failed.error().error == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(*failed.error().element == 1);
+}
+
+TEST_CASE("number_of a rejection is the mean of the survivors, and nothing for its verdict", "[rejection]")
+{
+    constexpr auto settled = formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA);
+    constexpr auto aborted = formula::checked_evaluate_rejection<Mass>(rejectionA1, fixtureA);
+    STATIC_REQUIRE(formula::number_of(*settled) == rat(321, 8));
+    STATIC_REQUIRE(formula::number_of(settled) == rat(321, 8));
+    STATIC_REQUIRE(!formula::number_of(*aborted).has_value());
 }

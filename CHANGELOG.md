@@ -6,6 +6,114 @@ change is recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `convert_to<R>`, `round_to_declared` and `within_bounds` for a `Measured<Q>`: the throwing twins
+  of `checked_convert_to`, `checked_round_to_declared` and `checked_within_bounds`, for callers who
+  would only rethrow. They throw `ArithmeticException` where the `checked_` form returns an error.
+  Every earlier spelling stays.
+- `_r`, an exact decimal literal: `27.3_r` is the `Rational` 273/10, where `27.3` is the double
+  nearest it. It reads integers, fractions, a leading or trailing point (`.5_r`, `5._r`), an
+  exponent (`1.5e-3_r` is 3/2000) and digit separators, and a minus sign is `Rational`'s own
+  negation. A spelling `Rational` cannot hold, and one that is not a decimal (`0x1F_r`, and `017_r`,
+  which C++ reads as octal), fails to compile.
+- `measured_series<Q>` takes plain numbers and `not_measured` beside `Measured<Q>`:
+  `measured_series<Retained>(127, 10.3_r, not_measured)`. An element that is none of these draws
+  one message. `band(low, high)` takes its bounds, and `breakpoint(key)` its key, as exact numbers:
+  `band(83.7_r, 97.3_r)`, `breakpoint(12.7_r)`. Every earlier spelling stays.
+- `number_of(x)`, the number a result holds or nothing, as a `std::optional<Rational>`. It reads a
+  `Measured`, an `Outcome`, a `checked_evaluate` result, an `Evaluated<Rational>`, a
+  `RetryOutcome` and a `RejectionOutcome`, and is empty for an absent number, an error, a verdict
+  and an invalid result, so `number_of(checked_evaluate<Q>(...)) == 0.5_r` is a complete check.
+- `describe` of a `ConstraintOutcomeKind`, a `RetryEnd`, a `ValueSource`, an `OutcomeKind` and a
+  `FailureSite`: a lowercase phrase with no trailing punctuation, as `describe` of an
+  `ArithmeticError` already gave -- `satisfied`, `not checked`, `manually entered`, `verdict`,
+  `result element`.
+- `std::format` writes an `Outcome<Q>`, a `Unit`, a `Dimension` and every enumeration that has a
+  `describe()`, with `<formula-cpp/format.hpp>` included. An `Outcome` takes a `Measured`'s spec and
+  writes a value as it does, an empty one as `(not measured)`, and a verdict or an invalid one as
+  its label, padded by the spec's fill, alignment and width. A `Unit` is its symbol (`kJ`); a
+  `Dimension` its exponents (`L^2 M^-3`, `L^(1/2)`, `(dimensionless)`); an enumeration its words
+  (`overflow in exact arithmetic`), aligned as a string is.
+- `symbol_of<Q>()` without a vocabulary is `Describe<Q>::symbol`, and `render(x, options)`,
+  `render<D>(x, options)`, `document(x, options)` and `document<D>(x, options)` take
+  `RenderOptions` without a vocabulary that renames nothing.
+- `traced(evaluation)`, which runs any evaluation that takes a sink with a `RecordingSink` and
+  returns `{ outcome, trace }`: what it returned, failure included, and every step it recorded.
+  `explain_method<Tag>`, `explain_check_method`, `explain_curve<DomainQ, ValueQ>`,
+  `explain_rejection<Q>`, `explain_check`, `explain_check_all` and `explain_conformity` are the
+  traced twins of `evaluate_method`, `check_method`, `checked_evaluate_curve`,
+  `checked_evaluate_rejection`, `check`, `check_all` and `check_conformity`, each with the
+  vocabulary as an optional last argument. `explain_series` and `explain_retry` return the same
+  shape as before.
+- `trace_of<Q>(expression, env)`, `trace_of(boundFormula, env)` and `trace_of_si(expression, env)`:
+  the trace of an evaluation in one call, whether it succeeds or fails, for code that only shows how
+  a number was reached. They return no outcome; read that with `checked_evaluate` or
+  `checked_explain` where it is used. Each takes the vocabulary as an optional last argument.
+- `DecimalRounding` and `SignificantRounding` name a rounding once -- a unit, how many places or
+  digits, and a `RoundingMode` -- where the three arguments were repeated at every use:
+  `constexpr DecimalRounding tenthMpa { unit::Megapascal, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };`
+  then `rounded<tenthMpa>(x)`. `rounded`, `rounded_to_digits`, `rounding_rule`, `with_rounding`,
+  `rounded_output`, `rounded_sqrt` and `rounded_elementwise` each take one, and build the same
+  type as the three arguments do. `rounded_elementwise<R>(series)` rounds every element to the same
+  places. Every earlier spelling stays.
+- `declared_rounding(unit, mode)`, a `DecimalRounding` in the places `unit` declares.
+- `yields<Q>(expression)` names a formula's result quantity once, where the formula is written:
+  `constexpr auto ratio = yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);` then
+  `evaluate(ratio, environment)`. `evaluate`, `checked_evaluate`, `checked_evaluate_series`,
+  `checked_evaluate_rejection`, `explain`, `checked_explain`, `explain_series`, `explain_rejection`
+  and `define` take it, and return what they return for the formula it holds and `Q`; `render` and
+  `document` write the formula. The result is still never deduced from the expression: `Q` is
+  checked against the dimension the expression computes where it is written, with
+  `checked_evaluate`'s message, and a result named at the call as well is accepted only when it is
+  `Q`. Nest `documented()` inside it, and reuse the formula in another through `.expression`; a
+  `yields` around a bound formula is refused where it is written. A bound series, rejection of
+  outliers, retry or whole opaque call handed to a verb that answers with one value is refused in
+  words that name the verbs that take it, and a bound formula used as an operand or compared is
+  refused in favour of its `.expression`. Every earlier spelling stays.
+
+### Changed
+
+- A floating-point key given to `breakpoint`, or a floating-point bound given to the
+  four-argument `band`, used to be truncated silently (`breakpoint(1.5)` was `breakpoint(1)`). It is
+  now refused at compile time, with a message that names the exact spelling for that call:
+  `12.7_r` or `Rational { 127, 10 }` for `breakpoint`, `breakpoint(127, 10)`, `band(12.7_r, 17.3_r)`
+  or `band(127, 10, 173, 10)`.
+- GCC 14 is the oldest supported GCC; older GCC is not supported. The install-and-consume check
+  now builds with it on Linux.
+- `<formula-cpp/format.hpp>` now specialises `std::formatter` for `formula::Outcome<Q>`,
+  `formula::Unit`, `formula::Dimension` and every enumeration that has a `describe()`, as it
+  already did for `Rational` and `Measured<Q>`. A program that defines its own `std::formatter`
+  for one of these types now defines it twice, and a generic `std::formatter` for every
+  enumeration is ambiguous for them; remove it and use the library's.
+- `checked_convert_to` refuses a conversion between measured quantities of different dimensions
+  where the call is written, with or without a value present. Code that converted, say, a volume
+  into a mass, or euros into yen, used to compile and get `ArithmeticError::DomainError` at run
+  time; it no longer compiles, and the message names the two quantities. A conversion between
+  quantities of one dimension is unchanged.
+- An unqualified call with arguments of this library's types now also finds, by argument-dependent
+  lookup, the functions this release adds, among them: `describe` of a `ConstraintOutcomeKind`, a
+  `RetryEnd`, a `ValueSource`, an `OutcomeKind` or a `FailureSite`; `number_of`, `convert_to`,
+  `round_to_declared` and `within_bounds`; `traced`, `trace_of` and `trace_of_si`; the `explain_*`
+  twins above; `yields`, given an expression; and `declared_rounding`, given a `Unit`. A consumer's
+  own function of one of these names, visible where the call is written, meets the library's in one
+  of three ways. A function template of the same name and shape -- a
+  `template <typename R, typename Q> Measured<R> convert_to(Measured<Q>)` helper, say -- is
+  displaced **silently**: the library's is more constrained, so it is chosen, the helper no longer
+  runs, and where the helper returned an absent value on failure the library's `convert_to` throws
+  `ArithmeticException`. A function of another shape -- a non-template beside the library's
+  non-template `describe`, such as a `describe(ConstraintOutcomeKind)` helper, or a template taking
+  its argument by value, such as `template <typename Q> Rational number_of(Measured<Q>)` -- makes
+  the call ambiguous. A non-template taking exactly a library template's parameter types is
+  preferred over it and keeps working. Where a helper is displaced or a call is ambiguous, rename
+  the helper, remove it where the library's does the same (as `examples/constraints.cpp`'s
+  `describe` was removed), or call it by a qualified name such as `::convert_to`. And since `_r` is
+  declared in an inline namespace of `formula`, `using namespace formula;` now brings it into scope,
+  where a consumer's own `_r` is ambiguous with it.
+- The refusal of `with_rounding` with no citation now opens
+  `formula: with_rounding<...>() was given no citation`, for either spelling, the three arguments or
+  a `DecimalRounding`; it opened `formula: with_rounding<U, Places, Mode>() was given no citation`.
+
 ## [0.2.0] - 2026-09-30
 
 The second release. It adds calculations -- quantities defined by formulas, with a dependency graph

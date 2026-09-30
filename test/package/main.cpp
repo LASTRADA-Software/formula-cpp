@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <formula-cpp/formula.hpp>
 
-#include <cstdio>
+#include <print>
 
 // Proves cxx_std_23 propagated from the exported target: `if consteval` is C++23.
 constexpr int probe(int value) noexcept
@@ -28,9 +28,9 @@ int main()
     formula::Rational const rounded =
         formula::round(measured, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero);
 
-    std::printf("formula-cpp %s consumed successfully: %lld/%lld\n",
-                FORMULA_VERSION_STRING,
-                static_cast<long long>(rounded.numerator()),
-                static_cast<long long>(rounded.denominator()));
+    std::println("formula-cpp {} consumed successfully: {}/{}",
+                 FORMULA_VERSION_STRING,
+                 rounded.numerator(),
+                 rounded.denominator());
     return 0;
 }

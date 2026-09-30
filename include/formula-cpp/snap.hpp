@@ -20,6 +20,7 @@
 /// `RequireValidBreakpointTable` -- strictly ascending, every key a number --
 /// plus one refusal of its own: it must not be empty.
 
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/lookup.hpp>
@@ -60,6 +61,9 @@ enum class SnapTie : std::uint8_t
 
 namespace detail
 {
+    template <>
+    inline constexpr bool formats_by_describe<SnapTie> = true;
+
     /// Fails to compile when a snap's permitted set is empty: there is nothing
     /// to snap to, and every value would miss. Named so the table prints.
     template <BreakpointTable Permitted>

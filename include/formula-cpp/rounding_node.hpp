@@ -104,11 +104,25 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
     return RoundNode<U, Places, Mode, Operand> { {}, operand };
 }
 
+/// `operand` rounded as @p R names: `rounded<tenthMpa>(var<Strength>)`.
+template <DecimalRounding R, Node Operand>
+[[nodiscard]] constexpr auto rounded(Operand toRound) noexcept
+{
+    return rounded<R.unit, R.places, R.mode>(toRound);
+}
+
 /// `operand` rounded to `Digits` significant digits of `U`.
 template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
 [[nodiscard]] constexpr auto rounded_to_digits(Operand operand) noexcept
 {
     return RoundSignificantNode<U, Digits, Mode, Operand> { {}, operand };
+}
+
+/// `operand` rounded as @p S names: `rounded_to_digits<threeFigures>(var<Strength>)`.
+template <SignificantRounding S, Node Operand>
+[[nodiscard]] constexpr auto rounded_to_digits(Operand toRound) noexcept
+{
+    return rounded_to_digits<S.unit, S.digits, S.mode>(toRound);
 }
 
 /// Rounding per representation, including the unit conversion it needs.

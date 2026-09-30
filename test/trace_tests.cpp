@@ -2,6 +2,7 @@
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -10,6 +11,7 @@
 #include <expected>
 #include <limits>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -1985,4 +1987,134 @@ TEST_CASE("explain_series keeps a failure and its element, and the step that fai
     CHECK(explained.outcome.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1 });
     REQUIRE(explained.trace.steps.size() == 1);
     CHECK(explained.trace.steps[0].failedElement == std::optional<std::size_t> { 1 });
+}
+
+TEST_CASE("traced returns what the evaluation returned with the steps it recorded", "[trace]")
+{
+    constexpr auto density = var<Mass> / var<Volume>;
+    auto const environmentGiven = environmentOf(6, 3);
+
+    auto const recordedRun = formula::traced([&](auto recordingSink)
+                                             { return formula::checked_evaluate<Density>(density, environmentGiven, recordingSink); });
+    REQUIRE(recordedRun.outcome.has_value());
+    CHECK(recordedRun.outcome == formula::checked_evaluate<Density>(density, environmentGiven));
+    CHECK(recordedRun.outcome->measurement().value() == formula::Rational { 2 });
+
+    // The steps are the ones a hand-built sink records: m, V, then the division.
+    formula::Trace<> handBuilt {};
+    (void) formula::checked_evaluate<Density>(density, environmentGiven, formula::RecordingSink<> { handBuilt });
+    REQUIRE(recordedRun.trace.steps.size() == 3);
+    CHECK(recordedRun.trace.steps[2].kind == formula::StepKind::Divide);
+    CHECK(formula::render_trace(recordedRun.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+
+    // Another evaluation gives another value and another trace.
+    auto const other = formula::traced([&](auto recordingSink)
+                                       { return formula::checked_evaluate<Density>(density, environmentOf(9, 3), recordingSink); });
+    CHECK(other.outcome != recordedRun.outcome);
+    CHECK(formula::render_trace(other.trace, { .maxSteps = 100 }) != formula::render_trace(recordedRun.trace, { .maxSteps = 100 }));
+
+    // Every symbol is written as the vocabulary given says, the default one otherwise.
+    auto const renamed = formula::traced(
+        [&](auto recordingSink) { return formula::checked_evaluate<Density>(density, environmentGiven, recordingSink); },
+        formula::vocabulary(formula::renames<Mass>("M")));
+    CHECK(renamed.trace.steps[0].symbol == "M");
+    CHECK(recordedRun.trace.steps[0].symbol == "m");
+}
+
+TEST_CASE("traced keeps a failure in the outcome and the steps up to it in the trace", "[trace]")
+{
+    constexpr auto bad = var<Mass> / formula::number(formula::Rational { 0 });
+    auto const environmentGiven = environmentOf(6, 3);
+
+    auto const failed = formula::traced([&](auto recordingSink)
+                                        { return formula::checked_evaluate<Mass>(bad, environmentGiven, recordingSink); });
+    REQUIRE(!failed.outcome.has_value());
+    CHECK(failed.outcome.error() == formula::ArithmeticError::DivisionByZero);
+    REQUIRE(!failed.trace.empty());
+    CHECK(failed.trace.steps[failed.trace.root()].kind == formula::StepKind::Divide);
+    CHECK(failed.trace.steps[failed.trace.root()].error == formula::ArithmeticError::DivisionByZero);
+}
+
+namespace
+{
+/// Doubled strength, a formula whose result is also a quantity it reads.
+constexpr auto doubledStrength = var<Strength> * formula::Rational { 2 };
+constexpr auto boundDoubled = formula::yields<Strength>(doubledStrength);
+
+[[nodiscard]] std::string shown(formula::Trace<> const& recorded)
+{
+    return formula::render_trace(recorded, { .maxSteps = 100 });
+}
+} // namespace
+
+TEST_CASE("trace_of is the trace traced records, for a success and for a failure", "[trace]")
+{
+    auto const environmentGiven = strengthOf(formula::Rational { 30 });
+    auto const viaTraced = formula::traced([&](auto recordingSink)
+                                           { return formula::checked_evaluate<Strength>(doubledStrength, environmentGiven, recordingSink); })
+                               .trace;
+    auto const direct = formula::trace_of<Strength>(doubledStrength, environmentGiven);
+    CHECK(!direct.empty());
+    CHECK(shown(direct) == shown(viaTraced));
+    // Another environment, another trace: a stub returning a fixed trace fails here.
+    CHECK(shown(formula::trace_of<Strength>(doubledStrength, strengthOf(formula::Rational { 31 }))) != shown(direct));
+
+    // A failure still gives the trace, and the failing step is its last.
+    constexpr auto bad = var<Mass> / formula::number(formula::Rational { 0 });
+    auto const massGiven = environmentOf(6, 3);
+    auto const failedVia = formula::traced([&](auto recordingSink)
+                                           { return formula::checked_evaluate<Mass>(bad, massGiven, recordingSink); })
+                               .trace;
+    auto const failed = formula::trace_of<Mass>(bad, massGiven);
+    REQUIRE(!failed.empty());
+    CHECK(shown(failed) == shown(failedVia));
+    CHECK(failed.steps.back().kind == formula::StepKind::Divide);
+    CHECK(failed.steps.back().error == formula::ArithmeticError::DivisionByZero);
+}
+
+TEST_CASE("trace_of a bound formula is trace_of for the quantity it names, named or not", "[trace][yields]")
+{
+    auto const environmentGiven = strengthOf(formula::Rational { 30 });
+    auto const expected = shown(formula::trace_of<Strength>(doubledStrength, environmentGiven));
+    CHECK(!expected.empty());
+    CHECK(shown(formula::trace_of(boundDoubled, environmentGiven)) == expected);
+    CHECK(shown(formula::trace_of<Strength>(boundDoubled, environmentGiven)) == expected);
+}
+
+TEST_CASE("trace_of_si is the trace of the evaluation in SI units, whatever was entered for a result", "[trace]")
+{
+    constexpr auto density = var<Mass> / var<Volume>;
+    auto const derived = environmentOf(6, 3);
+    auto const viaTraced = formula::traced([&](auto recordingSink)
+                                           { return formula::checked_evaluate_si<formula::Rational>(density, derived, recordingSink); })
+                               .trace;
+    auto const inSi = formula::trace_of_si(density, derived);
+    REQUIRE(!inSi.empty());
+    CHECK(shown(inSi) == shown(viaTraced));
+    CHECK(shown(inSi) == shown(formula::trace_of<Density>(density, derived)));
+
+    // A density typed in for the result is not derived: the evaluation for
+    // `Density` returns it and records nothing, where the SI evaluation has no
+    // result to read it for and still derives the quotient. That tells the two
+    // verbs apart, which a trace_of_si that named a result would not.
+    auto const overridden = formula::environment(formula::Measured<Mass> { formula::Rational { 6 } },
+                                                 formula::Measured<Volume> { formula::Rational { 3 } },
+                                                 formula::entered(formula::Measured<Density> { formula::Rational { 999 } }));
+    CHECK(formula::trace_of<Density>(density, overridden).empty());
+    auto const stillDerived = formula::trace_of_si(density, overridden);
+    CHECK(shown(stillDerived) == shown(inSi));
+}
+
+TEST_CASE("trace_of writes every symbol as the vocabulary it is given says", "[trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<Strength>("f_s"));
+    auto const environmentGiven = strengthOf(formula::Rational { 30 });
+    auto const plain = shown(formula::trace_of<Strength>(doubledStrength, environmentGiven));
+    CHECK(plain.find("f_s") == std::string::npos);
+
+    auto const named = shown(formula::trace_of<Strength>(doubledStrength, environmentGiven, south));
+    CHECK(named.starts_with("1. f_s = "));
+    CHECK(shown(formula::trace_of(boundDoubled, environmentGiven, south)) == named);
+    CHECK(shown(formula::trace_of_si(doubledStrength, environmentGiven, south)).starts_with("1. f_s = "));
+    CHECK(shown(formula::trace_of_si(doubledStrength, environmentGiven)).find("f_s") == std::string::npos);
 }

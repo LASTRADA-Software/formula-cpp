@@ -63,6 +63,15 @@ enum class ArithmeticError : std::uint8_t
     return "unknown arithmetic error";
 }
 
+namespace detail
+{
+/// An enumeration listed here is written by `std::format` through its `describe()`.
+template <typename E>
+inline constexpr bool formats_by_describe = false;
+template <>
+inline constexpr bool formats_by_describe<ArithmeticError> = true;
+} // namespace detail
+
 /// Thrown by the operator layer when the corresponding `checked_` operation fails.
 class ArithmeticException: public std::exception
 {

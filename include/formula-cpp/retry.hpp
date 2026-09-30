@@ -54,6 +54,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -108,6 +109,33 @@ enum class RetryEnd : std::uint8_t
     /// A person entered the result; no attempt ran.
     ManuallyEntered,
 };
+
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(RetryEnd ended) noexcept
+{
+    switch (ended)
+    {
+        case RetryEnd::Accepted:
+            return "accepted";
+        case RetryEnd::Exhausted:
+            return "exhausted";
+        case RetryEnd::NotJudgeable:
+            return "not judgeable";
+        case RetryEnd::NotRecorded:
+            return "not recorded";
+        case RetryEnd::Failed:
+            return "failed";
+        case RetryEnd::ManuallyEntered:
+            return "manually entered";
+    }
+    return "unknown retry end";
+}
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<RetryEnd> = true;
+} // namespace detail
 
 /// The most attempts a retry may allow. The methods this shape exists for
 /// repeat a step a few times; a larger count is almost always a typo, and 64
@@ -1246,6 +1274,13 @@ class RetryOutcome
     std::optional<std::size_t> _acceptedAt;
 };
 
+/// The number the outcome a retry ended with holds -- see `number_of(Outcome)`.
+template <Described R>
+[[nodiscard]] constexpr std::optional<Rational> number_of(RetryOutcome<R> const& ended) noexcept
+{
+    return number_of(ended.outcome());
+}
+
 namespace detail
 {
     /// The one place a `RetryOutcome` is made.
@@ -1641,6 +1676,13 @@ namespace detail
                       "value can carry");
 
         static constexpr bool value = true;
+    };
+
+    /// A bound retry handed to a verb that answers with one value
+    /// (`yields.hpp`): refused as `checked_evaluate` refuses a retry.
+    template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+    struct RequireSingleValueBound<Retry<R, Max, J, Start, A, P>>: RequireRetryAtTop<Retry<R, Max, J, Start, A, P>>
+    {
     };
 
     /// What arithmetic over a retry gives, once refused: a node of the

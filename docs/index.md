@@ -6,10 +6,6 @@ Write a formula once, with ordinary operators. Get back a number, a rendering, a
 documentation page — from the same declaration.
 
 ```cpp
-#include <formula-cpp/formula.hpp>
-#include <formula-cpp/document.hpp>
-#include <formula-cpp/render.hpp>
-
 namespace unit = formula::unit;
 using formula::var;
 
@@ -18,25 +14,42 @@ using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective w
 using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
 using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
 
-// The formula, and where it comes from, declared together.
+// The formula and its citation, declared together: documented() attaches the
+// citation to the division, and forwards that division's dimension unchanged.
 constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
                                            { .title = "Water/cement ratio",
                                              .reference = "Example Standard 1:2020",
                                              .section = "5.4.2",
-                                             .equation = "(3)" });
+                                             .equation = "(3)",
+                                             .text = "Ratio of water content to cement content." });
 ```
 
 One declaration, four answers:
 
 ```cpp
-formula::render(ratio);                          // "V_w / V_c"
-formula::render<formula::Dialect::LaTeX>(ratio); // "\frac{V_w}{V_c}"
-formula::document(ratio);                        // text, citation and symbol table together
-
-auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                              formula::Measured<CementVolume> { formula::Rational { 300 } });
-formula::evaluate<WaterCementRatio>(ratio, environment);   // 0.6, and it knows it computed it
+std::string const plain = formula::render(ratio);
+std::string const latex = formula::render<formula::Dialect::LaTeX>(ratio);
+formula::Documentation const documentation = formula::document(ratio);
+auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                         formula::Measured<CementVolume> { 300 });
+auto const result = formula::checked_evaluate<WaterCementRatio>(ratio, inputs);
 ```
+
+`examples/citations.cpp` prints them:
+
+```
+plain: V_w / V_c
+latex: \frac{V_w}{V_c}
+symbol: V_w = effective water content [l]
+symbol: V_c = cement content [l]
+citation: Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)
+w/c = 0.6 (derived)
+```
+
+`0.6` is exact, and `derived` says the library computed it rather than a
+person typing it in. The text comes from `render.hpp` and `document.hpp`, and
+the printing from `format.hpp`; the umbrella header `formula.hpp` holds the
+rest.
 
 A quantity can also be declared as a struct deriving from `formula::Quantity`,
 `struct WaterVolume: formula::Quantity<WaterVolume, ...> {};`. Both spellings

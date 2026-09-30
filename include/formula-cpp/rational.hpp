@@ -18,7 +18,9 @@
 
 #include <bit>
 #include <compare>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <expected>
 #include <limits>
 #include <optional>
@@ -514,6 +516,111 @@ constexpr Rational& operator/=(Rational& leftOperand, Rational rightOperand)
 /// than computed so that every caller gets the same number and the trace can
 /// state which number it was.
 inline constexpr Rational Pi { 245'850'922, 78'256'779 };
+
+namespace detail
+{
+    /// A `_r` literal whose exact value `Rational` cannot hold: too many
+    /// significant digits, or a denominator above `Int`'s range. Deliberately
+    /// not `constexpr`, like `formula_exponent_out_of_range`
+    /// (`dimension.hpp`): the literal operator is `consteval`, so reaching
+    /// this fails to compile and the diagnostic names it.
+    [[noreturn]] inline void formula_rational_literal_out_of_range()
+    {
+        std::abort();
+    }
+
+    /// A `_r` literal spelled as something other than a decimal: a
+    /// hexadecimal or binary integer, or an integer with a leading zero,
+    /// which C++ reads as octal. Same mechanism as above.
+    [[noreturn]] inline void formula_rational_literal_not_a_decimal()
+    {
+        std::abort();
+    }
+
+    /// The exact value of a decimal literal's spelling: digits, an optional
+    /// fraction, an optional exponent, and digit separators.
+    consteval Rational rational_from_spelling(char const* spelling)
+    {
+        std::size_t at = 0;
+        // Also true for an exponent: that is how `0x1E` gets past the leading guard, to be refused at its `x`.
+        bool const hasPoint = [&] {
+            for (std::size_t probe = 0; spelling[probe] != '\0'; ++probe)
+                if (spelling[probe] == '.' || spelling[probe] == 'e' || spelling[probe] == 'E')
+                    return true;
+            return false;
+        }();
+        if (spelling[0] == '0' && spelling[1] != '\0' && !hasPoint)
+            formula_rational_literal_not_a_decimal(); // 017, 0x1F, 0b101
+        Int mantissa = 0;
+        int decimalScale = 0;  // decimal exponent the digits carry
+        int pendingZeros = 0;  // fractional zeros not yet multiplied in
+        bool inFraction = false;
+        for (; spelling[at] != '\0' && spelling[at] != 'e' && spelling[at] != 'E'; ++at)
+        {
+            char const symbolAt = spelling[at];
+            if (symbolAt == '\'')
+                continue;
+            if (symbolAt == '.')
+            {
+                inFraction = true;
+                continue;
+            }
+            if (symbolAt < '0' || symbolAt > '9') // the only refusal of a hexadecimal spelling holding e or E, such as 0x1E
+                formula_rational_literal_not_a_decimal();
+            int const digitValue = symbolAt - '0';
+            if (inFraction && digitValue == 0)
+            {
+                ++pendingZeros;
+                continue;
+            }
+            for (int zero = 0; zero <= pendingZeros; ++zero) // the zeros, then this digit's place
+            {
+                int const placed = zero == pendingZeros ? digitValue : 0;
+                if (mantissa > (IntMax - placed) / 10)
+                    formula_rational_literal_out_of_range();
+                mantissa = mantissa * 10 + placed;
+            }
+            if (inFraction)
+                decimalScale -= pendingZeros + 1;
+            pendingZeros = 0;
+        }
+        if (spelling[at] == 'e' || spelling[at] == 'E')
+        {
+            ++at;
+            bool const negative = spelling[at] == '-';
+            if (spelling[at] == '-' || spelling[at] == '+')
+                ++at;
+            int written = 0;
+            for (; spelling[at] != '\0'; ++at)
+            {
+                if (spelling[at] == '\'')
+                    continue;
+                written = written * 10 + (spelling[at] - '0');
+                if (written > 1'000)
+                    formula_rational_literal_out_of_range();
+            }
+            decimalScale += negative ? -written : written;
+        }
+        std::expected<Rational, ArithmeticError> const made = Rational::from_decimal(mantissa, decimalScale);
+        if (!made)
+            formula_rational_literal_out_of_range();
+        return *made;
+    }
+} // namespace detail
+
+inline namespace literals
+{
+    /// An exact decimal: `27.3_r` is 273/10, never the `double` nearest it.
+    /// An exponent scales exactly (`1.5e-3_r` is 3/2000); `-27.3_r` is
+    /// `Rational`'s own negation. A spelling `Rational` cannot hold, or one
+    /// that is not a decimal (`0x1F_r`, and `017_r`, which C++ reads as
+    /// octal), fails to compile, naming `formula_rational_literal_out_of_range`
+    /// or `formula_rational_literal_not_a_decimal`.
+    consteval Rational operator""_r(char const* spelling)
+    {
+        return detail::rational_from_spelling(spelling);
+    }
+} // namespace literals
 
 namespace detail
 {

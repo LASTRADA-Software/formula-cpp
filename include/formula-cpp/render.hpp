@@ -61,6 +61,7 @@
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -2122,6 +2123,25 @@ template <Dialect D, typename Operand, Vocabulary V>
     return "(refused)";
 }
 
+/// A refused retry in arithmetic or a comparison (`detail::RefusedRetryValue`,
+/// `retry.hpp`) renders as a refused series does, as nothing a reader could
+/// take for a formula. A program holding one never compiles; this only keeps
+/// a `render` of it from adding a second, compiler-worded error.
+template <Dialect D, Dimension Dim, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedRetryValue<Dim> const&, V const&)
+{
+    return "(refused)";
+}
+
+/// A refused bound formula used as an operand (`detail::RefusedBoundValue`,
+/// `yields.hpp`) renders as a refused retry does; this only keeps a `render`
+/// of it from adding a second, compiler-worded error.
+template <Dialect D, Dimension Dim, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedBoundValue<Dim> const&, V const&)
+{
+    return "(refused)";
+}
+
 namespace detail
 {
     /// Renders @p node through the `render_node` it has, and refuses a node of
@@ -2379,6 +2399,16 @@ template <Predicate P>
 [[nodiscard]] std::string render(Constraint<P> const& node)
 {
     return render<Dialect::Plain>(node);
+}
+
+/// Renders the formula @p boundFormula holds (`yields.hpp`) as
+/// `render<D>(boundFormula.expression, vocabulary)` does: plain text unless a
+/// dialect is named, every symbol as @p vocabulary says. The result quantity
+/// is not written -- rendering names no result.
+template <Dialect D = Dialect::Plain, Described Q, typename E, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::string render(Yields<Q, E> const& boundFormula, V const& vocabulary = V {})
+{
+    return render<D>(boundFormula.expression, vocabulary);
 }
 
 namespace detail
@@ -2770,5 +2800,15 @@ template <Dialect D = Dialect::Plain, typename X, Vocabulary V>
 [[nodiscard]] std::string render(X const& node, V const& vocabulary, RenderOptions renderOptions)
 {
     return render<D>(node, detail::styled(vocabulary, renderOptions.numbers));
+}
+
+/// Renders @p node as `render<D>(node, DefaultVocabulary {}, renderOptions)`
+/// does: every symbol as `Describe<Q>::symbol` says and every number as
+/// @p renderOptions says, without naming a vocabulary that renames nothing.
+template <Dialect D = Dialect::Plain, typename X>
+    requires requires(X const& written, DefaultVocabulary const& byDefault) { render<D>(written, byDefault); }
+[[nodiscard]] std::string render(X const& node, RenderOptions renderOptions)
+{
+    return render<D>(node, DefaultVocabulary {}, renderOptions);
 }
 } // namespace formula

@@ -51,14 +51,14 @@ using EdgeY = formula::Quantity<struct EdgeYTag, "y_m", "measured edge", unit::M
 ```
 
 ```cpp
-constexpr auto here = formula::environment(formula::Measured<Strength> { formula::Rational { 30 } },
-                                           formula::Measured<Force> { formula::Rational { 579'630 } },
-                                           formula::Measured<EdgeX> { formula::Rational { 139 } },
-                                           formula::Measured<EdgeY> { formula::Rational { 139 } });
-constexpr auto there = formula::environment(formula::entered(formula::Measured<Strength> { formula::Rational { 20 } }),
-                                            formula::Measured<Force> { formula::Rational { 386'420 } },
-                                            formula::Measured<EdgeX> { formula::Rational { 139 } },
-                                            formula::Measured<EdgeY> { formula::Rational { 139 } });
+constexpr auto here = formula::environment(formula::Measured<Strength> { 30 },
+                                           formula::Measured<Force> { 579'630 },
+                                           formula::Measured<EdgeX> { 139 },
+                                           formula::Measured<EdgeY> { 139 });
+constexpr auto there = formula::environment(formula::entered(formula::Measured<Strength> { 20 }),
+                                            formula::Measured<Force> { 386'420 },
+                                            formula::Measured<EdgeX> { 139 },
+                                            formula::Measured<EdgeY> { 139 });
 ```
 
 The formula that divides this specimen's strength by the reference's reads

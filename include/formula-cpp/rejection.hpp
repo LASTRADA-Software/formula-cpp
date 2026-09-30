@@ -6,10 +6,12 @@
 /// declared criterion finds too far from the rest, re-running the mean until
 /// nothing more is rejected or a declared bound aborts it.
 ///
+///     using namespace formula::literals;
+///
 ///     formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep,
 ///                               formula::AtMost<2>, formula::KeepAtLeast<4>>(
 ///         formula::series<Mass, 6>,
-///         formula::deviation_from_mean(formula::rat(6, 100) * formula::pass_mean<Mass>),
+///         formula::deviation_from_mean(0.06_r * formula::pass_mean<Mass>),
 ///         formula::Verdict { "discard the determinations and repeat the test" },
 ///         formula::Citation { .title = "Example Standard", .section = "7.4" })
 ///
@@ -84,6 +86,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/statistics.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -146,7 +149,7 @@ enum class CriterionKind : std::uint8_t
 // ------------------------------------------------------------ placeholders
 
 /// The current pass's mean, read inside a rejection's limit expression: a
-/// relative tolerance is `rat(6, 100) * pass_mean<Mass>`. `Q` names the
+/// relative tolerance is `0.06_r * pass_mean<Mass>`. `Q` names the
 /// quantity the mean is a value of.
 template <Described Q>
 struct PassMeanNode: NodeBase
@@ -220,14 +223,14 @@ struct GapToRange
     static constexpr CriterionKind kind = CriterionKind::GapToRange;
 };
 
-/// abs(x - pass mean) against @p limitExpression: `deviation_from_mean(rat(6, 100) * pass_mean<Mass>)`.
+/// abs(x - pass mean) against @p limitExpression: `deviation_from_mean(0.06_r * pass_mean<Mass>)`.
 template <Node Limit>
 [[nodiscard]] constexpr DeviationFromMean<Limit> deviation_from_mean(Limit limitExpression) noexcept
 {
     return DeviationFromMean<Limit> { limitExpression };
 }
 
-/// abs(x - pass mean) / s against @p limitExpression: `deviation_in_stddevs(rat(7, 4))`.
+/// abs(x - pass mean) / s against @p limitExpression: `deviation_in_stddevs(number(1.75_r))`.
 template <Node Limit>
 [[nodiscard]] constexpr DeviationInStddevs<Limit> deviation_in_stddevs(Limit limitExpression) noexcept
 {
@@ -235,7 +238,7 @@ template <Node Limit>
 }
 
 /// gap / range for the two extremes against @p limitExpression:
-/// `gap_to_range(critical_value<Sizes, unit::One>(pass_count, {...}) * rat(1, 100))`.
+/// `gap_to_range(critical_value<Sizes, unit::One>(pass_count, {...}) * 0.01_r)`.
 template <Node Limit>
 [[nodiscard]] constexpr GapToRange<Limit> gap_to_range(Limit limitExpression) noexcept
 {
@@ -608,6 +611,32 @@ namespace detail
     template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
     inline constexpr bool is_rejection_node<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>> = true;
 
+    /// Fails to compile when a rejection is handed, bound to its result
+    /// quantity (`yields.hpp`), to a verb that answers with one value. Its
+    /// result is more than a value -- the survivors' mean, or the author's
+    /// verdict, with what was rejected and the passes that ran -- and has
+    /// verbs of its own. Named so the rejection prints.
+    template <typename Rejection>
+    struct RequireRejectionAsSuch
+    {
+        static_assert(!std::is_same_v<Rejection, Rejection>,
+                      "formula: this is a rejection of outliers, not a single value; evaluate it with "
+                      "checked_evaluate_rejection, trace it with explain_rejection, or reduce it to one value first "
+                      "(sample_mean) -- the rejection appears in this diagnostic as the template argument of "
+                      "RequireRejectionAsSuch");
+
+        /// Always true: the refusal is the `static_assert` above.
+        static constexpr bool value = true;
+    };
+
+    /// A bound rejection handed to a verb that answers with one value: see
+    /// `RequireRejectionAsSuch`.
+    template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    struct RequireSingleValueBound<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>:
+        RequireRejectionAsSuch<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>
+    {
+    };
+
     /// Fails to compile when `without_outliers` is given a single value.
     template <typename Operand>
     struct RequireRejectionOfSample
@@ -740,6 +769,14 @@ class RejectionOutcome
     std::size_t _survivorCount = 0;
     std::size_t _passes = 0;
 };
+
+/// The number the outcome of a rejection holds -- the mean of the survivors --
+/// or nothing for a verdict or an empty result; see `number_of(Outcome)`.
+template <Described Q, std::size_t C>
+[[nodiscard]] constexpr std::optional<Rational> number_of(RejectionOutcome<Q, C> const& rejected) noexcept
+{
+    return number_of(rejected.outcome());
+}
 
 namespace detail
 {
@@ -1458,6 +1495,48 @@ checked_evaluate_rejection(RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criteri
         return std::unexpected { SeriesFailure { inDeclaredUnit.error(), std::nullopt } };
     return detail::RejectionOutcomeAccess::build(
         Outcome<Result>::value(Measured<Result> { *inDeclaredUnit }, ValueSource::Derived), run);
+}
+
+/// `checked_evaluate_rejection<Q>(boundFormula.expression, environmentGiven,
+/// recordingSink)`, `Q` taken from the `Yields` (`yields.hpp`). `Result` is
+/// `Q`'s place for a caller who names it anyway; any other quantity is
+/// refused.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          PerPass P,
+          OnLimit L,
+          typename AtMostT,
+          typename KeepAtLeastT,
+          typename S,
+          typename Criterion,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<RejectionOutcome<Q, detail::sample_capacity<S>>, SeriesFailure>
+checked_evaluate_rejection(Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>> const& boundFormula,
+                           Env const& environmentGiven,
+                           Sink recordingSink = {}) noexcept
+{
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q>
+                  || !Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>::valid)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }; // refused already
+    else
+        return checked_evaluate_rejection<Q>(boundFormula.expression, environmentGiven, recordingSink);
+}
+
+/// A bound formula around a bound formula, refused where it is written
+/// (`detail::RequireFormulaNotBound`, `yields.hpp`). Taken here only so that
+/// the refusal is the one message; what it returns is never seen.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          Described Inner,
+          typename E,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<RejectionOutcome<Q, 1>, SeriesFailure> checked_evaluate_rejection(
+    Yields<Q, Yields<Inner, E>> const&, Env const&, Sink = {}) noexcept
+{
+    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
 }
 
 } // namespace formula

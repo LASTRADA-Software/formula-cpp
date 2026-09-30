@@ -607,17 +607,18 @@ namespace detail
 /// public aggregate with public members, so
 ///
 ///     inline constexpr ExactLookupNode<ThreeKeys, unit::One> node {
-///         {}, { rat(781, 1000) }, Shape::Prism };
+///         {}, { 0.781_r }, Shape::Prism };
 ///
-/// compiled, linked, and evaluated the two rows nobody typed as `0` -- checked
-/// against the installed package on all three node kinds, all three of which
-/// did it. The factory's parameter type cannot see that call, because there is
-/// no call. Making the member itself a `Corrections<N>` is what closes it: the
-/// braced list now initialises this type, a short one selects the
-/// arity-mismatch constructor below, and its `static_assert` names both counts
-/// at the offending line. `lookup_short_corrections_no_factory.cpp` and its
-/// two siblings pin exactly that, one per node kind, and reverting any one
-/// member to a raw array fails that kind's case alone.
+/// compiled (it is now refused), linked, and evaluated the two rows nobody
+/// typed as `0` -- checked against the installed package on all three node
+/// kinds, all three of which did it. The factory's parameter type cannot see
+/// that call, because there is no call. Making the member itself a
+/// `Corrections<N>` is what closes it: the braced list now initialises this
+/// type, a short one selects the arity-mismatch constructor below, and its
+/// `static_assert` names both counts at the offending line.
+/// `lookup_short_corrections_no_factory.cpp` and its two siblings pin exactly
+/// that, one per node kind, and reverting any one member to a raw array fails
+/// that kind's case alone.
 ///
 /// Nodes therefore declare `Corrections<N> corrections;` with **no default
 /// member initialiser**, and that omission is load bearing: `{}` for a table
@@ -806,7 +807,7 @@ struct BandedLookupNode: NodeBase
 };
 
 /// Declares a banded lookup: `banded_lookup<unit::Millimetre, Bands,
-/// unit::One>(var<Diameter>, { rat(863, 1000), rat(1043, 1000), rat(1127, 1000) })`.
+/// unit::One>(var<Diameter>, { 0.863_r, 1.043_r, 1.127_r })`.
 ///
 /// `KeyUnit`, `Bands` and `ResultUnit` are deliberately not deduced -- the
 /// same reason `rounded<U, Places, Mode>` (`rounding_node.hpp`) leaves its
@@ -1158,7 +1159,7 @@ struct RequireValidKeyTable: detail::KeyChecks<Keys, std::make_index_sequence<Ke
 /// so a caller can declare one **without ever calling the factory** --
 ///
 ///     inline constexpr ExactLookupNode<Duplicated, unit::One> node {
-///         {}, { rat(1127, 1000), rat(863, 1000), rat(1043, 1000) }, Shape::Cube };
+///         {}, { 1.127_r, 0.863_r, 1.043_r }, Shape::Cube };
 ///
 /// -- and only a `static_assert` in the class body refuses that. With the
 /// asserts in the factory it compiles, links, and carries a silently
@@ -1207,7 +1208,7 @@ struct ExactLookupNode: NodeBase
 };
 
 /// Declares an exact lookup: `exact_lookup<Shapes, unit::One>(shape,
-/// { rat(1043, 1000), rat(863, 1000), rat(781, 1000) })`.
+/// { 1.043_r, 0.863_r, 0.781_r })`.
 ///
 /// `Keys` and `ResultUnit` are deliberately not deduced, for the reason
 /// `banded_lookup` leaves its structural parameters unstated at the argument
@@ -1324,6 +1325,51 @@ struct Breakpoint
 [[nodiscard]] constexpr Breakpoint breakpoint(std::int64_t keyNumerator, std::int64_t keyDenominator = 1) noexcept
 {
     return { keyNumerator, keyDenominator };
+}
+
+/// Builds a `Breakpoint` from its key as an exact number: `breakpoint(12.7_r)`.
+/// An integer still takes the overload above, so `breakpoint(127)` is unchanged.
+[[nodiscard]] constexpr Breakpoint breakpoint(Rational keyValue) noexcept
+{
+    return { keyValue.numerator(), keyValue.denominator() };
+}
+
+namespace detail
+{
+    /// Fails to compile when a breakpoint's key is given as a floating-point
+    /// value, which the integer overloads would silently truncate.
+    template <typename T>
+    struct RequireExactBreakpointKey
+    {
+        static_assert(!std::is_floating_point_v<T>,
+                      "formula: a breakpoint's key is an exact number, and this is a floating-point value that "
+                      "would be truncated; write 12.7_r, Rational { 127, 10 } or breakpoint(127, 10)");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// Refused: a floating-point key -- see `detail::RequireExactBreakpointKey`.
+/// Only a floating-point type is refused; every other arithmetic type converts as it
+/// did before.
+template <typename T>
+    requires std::is_floating_point_v<T>
+[[nodiscard]] constexpr Breakpoint breakpoint(T) noexcept
+{
+    static_assert(detail::RequireExactBreakpointKey<T>::value);
+    return {};
+}
+
+/// Refused: a floating-point numerator or denominator -- see
+/// `detail::RequireExactBreakpointKey`.
+/// Only a floating-point type is refused; every other arithmetic type converts as it
+/// did before.
+template <typename N, typename D>
+    requires(std::is_floating_point_v<N> || std::is_floating_point_v<D>)
+[[nodiscard]] constexpr Breakpoint breakpoint(N, D) noexcept
+{
+    static_assert(detail::RequireExactBreakpointKey<std::conditional_t<std::is_floating_point_v<N>, N, D>>::value);
+    return {};
 }
 
 /// A table of breakpoints, declared in strictly ascending order. An alias
@@ -1772,7 +1818,7 @@ struct InterpolatingLookupNode: NodeBase
 };
 
 /// Declares an interpolating lookup: `interpolating_lookup<unit::Millimetre,
-/// Points, unit::One>(var<Diameter>, { rat(873, 1000), rat(1043, 1000), rat(1217, 1000) })`.
+/// Points, unit::One>(var<Diameter>, { 0.873_r, 1.043_r, 1.217_r })`.
 ///
 /// `KeyUnit`, `Points` and `ResultUnit` are deliberately not deduced, for the
 /// reason `banded_lookup` leaves its structural parameters unstated at the

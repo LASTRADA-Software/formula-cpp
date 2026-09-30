@@ -402,7 +402,7 @@ struct SampleSizeLookupNode: NodeBase
 };
 
 /// Declares a critical-value lookup:
-/// `critical_value<Sizes, unit::One>(var<Specimens>, { rat(10), rat(30), ... })`.
+/// `critical_value<Sizes, unit::One>(var<Specimens>, { 10, 30, ... })`.
 ///
 /// `Sizes` and `ResultUnit` are not deduced, for the reason `banded_lookup`
 /// gives: a table's structure is the author's declared intent. `corrections`

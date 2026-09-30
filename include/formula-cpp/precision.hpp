@@ -834,8 +834,8 @@ struct PrecisionLimitNode: NodeBase
 };
 
 /// A precision limit evaluated at the level of the results it checks:
-/// `precision_limit<PrecisionKind::Repeatability>((var<A> + var<B>) / rat(2),
-/// constant<unit::Gram>(rat(1, 10)) + rat(1, 50) * precision_level<A>)`.
+/// `precision_limit<PrecisionKind::Repeatability>((var<A> + var<B>) / 2,
+/// constant<unit::Gram>(0.1_r) + 0.02_r * precision_level<A>)`.
 template <PrecisionKind K, Node Level, Node Limit>
 [[nodiscard]] constexpr auto precision_limit(Level levelExpression, Limit limitExpression) noexcept
 {

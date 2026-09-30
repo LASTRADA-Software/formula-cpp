@@ -266,20 +266,68 @@ density: a wrong label on a right number, worse than a wrong number because
 it looks authoritative. Write `formula::combine<Density>(mass, volume,
 [](Rational m, Rational v) { return m / v; })` instead. From the worked
 example, a present volume combined with an absent mass, into a `Density`
-that shares neither operand's tag, symbol or unit:
+that shares neither operand's tag, symbol or unit, printed as `std::format`
+writes an absent `Measured`:
 
 ```
-a present volume combined with an absent mass: absent
+a present volume combined with an absent mass: (not measured)
 ```
 
 `formula::checked_convert_to<R>` converts a `Measured<Q>` into a
 `Measured<R>` and keeps this rule too -- an absent input converts to an
-absent output, and the dimension check runs regardless, so a conversion
-nobody could perform is refused even when there was no value to get wrong:
+absent output. The two dimensions are checked where the call is written,
+with or without a value: converting a volume into a mass, or euros into yen,
+does not compile, and it draws one message, so a conversion nobody could
+perform cannot look like it succeeded merely because there was no value to
+get wrong. (Before this check moved to compile time, such a call compiled
+and returned `ArithmeticError::DomainError`.) With no value present the
+result is absent. The worked example converts a constant, so it checks the
+`std::expected` with a `static_assert`, and an error would stop the build:
+
+```cpp
+constexpr auto convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
+constexpr auto roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
+constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+static_assert(convertedAbsent.has_value() && roundedAbsent.has_value() && boundsOfAbsent.has_value());
+```
 
 ```
-an absent measurement, converted: still absent
+an absent measurement, converted: (not measured)
 ```
+
+## Supplying values
+
+A measurement is written with the number it holds, not with `Rational`
+spelled out around it. An integer is a value as it stands, and `_r`
+(`using namespace formula::literals;`) is an exact decimal:
+
+```cpp
+using namespace formula::literals;
+
+formula::Measured<WaterVolume> const whole { 139 };
+formula::Measured<WaterVolume> const fractional { 10.3_r };
+```
+
+`10.3_r` is exactly 103/10. A plain `10.3` is refused with a message that
+says why -- it is the double nearest 10.3, not 10.3 -- and so is an unsigned
+integer wide enough to hold values a `Rational` cannot.
+
+`formula::measured_series<Q>` takes the same spellings, mixed freely, and
+`formula::not_measured` for a point that was not measured. It is the same
+as `Measured<Q>::absent()`, and either may stand in one series:
+
+```cpp
+constexpr auto screens = formula::measured_series<WaterVolume>(127, 10.3_r, formula::not_measured, 139);
+```
+
+The series has four elements and the third is absent, not zero. Each element
+may still be a `Measured<WaterVolume>`; a `Measured` of another quantity is
+refused, and only one message says so.
+
+A band's bounds and a breakpoint's key are numbers in the same way:
+`formula::band(83.7_r, 97.3_r)` and `formula::breakpoint(12.7_r)` are the
+bands and breakpoints that `band(837, 10, 973, 10)` and `breakpoint(127, 10)`
+spell as numerator over denominator, and those spellings stay.
 
 ## Bounds, precision and conversion
 
@@ -289,7 +337,7 @@ are overloaded for `Measured<Q>` alongside the `Rational`-and-`Unit` forms of
 rounding an absent measurement leaves it absent,
 
 ```
-an absent measurement, rounded: still absent
+an absent measurement, rounded: (not measured)
 ```
 
 and checking an absent measurement against its unit's declared bounds
@@ -304,7 +352,7 @@ substitutes for the other.** `NotChecked` means the unit declares no bounds
 at all -- there is a value, but nothing to check it against. `NotMeasured`
 means there is no value in the first place, regardless of whether the unit
 declares bounds. A reading nobody took and a range nobody declared are
-different facts. `test/measured_tests.cpp:198-227` pins all five
+different facts. `test/measured_tests.cpp:206-268` pins all five
 `BoundsCheck` outcomes side by side -- `WithinBounds`, `BelowMinimum` and
 `AboveMaximum` for present values against a bounded unit, `NotMeasured` for
 an absent value regardless of whether its unit declares bounds, and
@@ -316,8 +364,19 @@ unit rather than needing one passed alongside it. From the worked example,
 450 l converted to m³:
 
 ```
-450 l converted to m3 = 9/20
+450 l converted to m3 = 0.45 m3
 ```
+
+The conversion, the rounding and the bounds check each have a throwing twin,
+for callers who would only rethrow the error: `formula::convert_to<R>`,
+`formula::round_to_declared` and `formula::within_bounds`, which take the
+same arguments and return the value itself, and throw `ArithmeticException`
+where the `checked_` form returns an error. Absence behaves as above -- an
+absent measurement converts and rounds to an absent one and is `NotMeasured`
+for its bounds -- and a conversion across dimensions does not compile in
+either spelling. The worked example keeps the `checked_` forms, and checks
+each result before it reads it, as shown [above](#measurements-that-may-be-absent)
+for the conversion.
 
 ## Limits
 

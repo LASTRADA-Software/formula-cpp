@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <formula-cpp/formula.hpp>
+#include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -231,4 +233,81 @@ TEST_CASE("constraint set: a not-checked constraint does not suppress a violated
         REQUIRE(outcomes[1].verdict().has_value());
         CHECK(outcomes[1].verdict()->label == std::string_view { "reject the specimen" });
     }
+}
+
+// ------------------------------------------------------ tracing a check
+
+TEST_CASE("explain_check: the constraint's outcome and the trace a RecordingSink records", "[constraint][trace]")
+{
+    // 20 violates minimumStrength and 45 satisfies it, so a twin that checked
+    // another constraint or dropped the trace differs on one of the two.
+    formula::Trace<> handBuilt {};
+    auto const direct = formula::check(minimumStrength, strengthOf(20), formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_check(minimumStrength, strengthOf(20));
+    CHECK(explained.outcome == direct);
+    CHECK(explained.outcome.is_violated());
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+    CHECK(explained.trace.steps.back().kind == formula::StepKind::Constraint);
+
+    auto const satisfied = formula::explain_check(minimumStrength, strengthOf(45));
+    CHECK(satisfied.outcome.is_satisfied());
+    CHECK(formula::render_trace(satisfied.trace, { .maxSteps = 100 })
+          != formula::render_trace(explained.trace, { .maxSteps = 100 }));
+}
+
+TEST_CASE("explain_check_all: every constraint's outcome, in order, and the trace a RecordingSink records",
+          "[constraint][trace]")
+{
+    auto const bothViolated = strengthAndDiameter(20, 163);
+    auto const set = formula::constraints(minimumStrength, maximumDiameter);
+    formula::Trace<> handBuilt {};
+    auto const direct = formula::check_all(set, bothViolated, formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_check_all(set, bothViolated);
+    CHECK(explained.outcome == direct);
+    REQUIRE(explained.outcome.size() == 2);
+    REQUIRE(explained.outcome[0].verdict().has_value());
+    REQUIRE(explained.outcome[1].verdict().has_value());
+    CHECK(explained.outcome[0].verdict()->label == std::string_view { "reject the specimen" });
+    CHECK(explained.outcome[1].verdict()->label == std::string_view { "specimen exceeds diameter tolerance" });
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+
+    // Declared the other way around, the outcomes and the trace swap too.
+    auto const reversed = formula::explain_check_all(formula::constraints(maximumDiameter, minimumStrength), bothViolated);
+    CHECK(reversed.outcome[0] == explained.outcome[1]);
+    CHECK(formula::render_trace(reversed.trace, { .maxSteps = 100 })
+          != formula::render_trace(explained.trace, { .maxSteps = 100 }));
+}
+
+TEST_CASE("explain_check and explain_check_all write their trace in the vocabulary they are given",
+          "[constraint][trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<Strength>("f_s"));
+    auto const set = formula::constraints(minimumStrength, maximumDiameter);
+
+    formula::Trace<> singleByHand {};
+    (void) formula::check(minimumStrength, strengthOf(20), formula::RecordingSink { singleByHand, south });
+    auto const single = formula::explain_check(minimumStrength, strengthOf(20), south);
+    CHECK(formula::render_trace(single.trace, { .maxSteps = 100 }) == formula::render_trace(singleByHand, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(single.trace, { .maxSteps = 100 }).find("f_s = ") != std::string::npos);
+    CHECK(formula::render_trace(formula::explain_check(minimumStrength, strengthOf(20)).trace, { .maxSteps = 100 }).find("f_s")
+          == std::string::npos);
+
+    formula::Trace<> allByHand {};
+    (void) formula::check_all(set, strengthAndDiameter(20, 163), formula::RecordingSink { allByHand, south });
+    auto const all = formula::explain_check_all(set, strengthAndDiameter(20, 163), south);
+    CHECK(formula::render_trace(all.trace, { .maxSteps = 100 }) == formula::render_trace(allByHand, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(all.trace, { .maxSteps = 100 }).find("f_s = ") != std::string::npos);
+    CHECK(formula::render_trace(formula::explain_check_all(set, strengthAndDiameter(20, 163)).trace, { .maxSteps = 100 })
+              .find("f_s")
+          == std::string::npos);
+}
+
+TEST_CASE("constraint outcome kinds describe themselves in lowercase words", "[constraint]")
+{
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::Satisfied) == "satisfied");
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::Violated) == "violated");
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::NotChecked) == "not checked");
+    STATIC_REQUIRE(formula::describe(formula::ConstraintOutcomeKind::Invalid) == "invalid");
 }

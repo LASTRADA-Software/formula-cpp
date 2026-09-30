@@ -44,6 +44,7 @@
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -53,6 +54,7 @@
 #include <optional>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -190,7 +192,7 @@ struct SeriesConstantNode: SeriesNodeBase
 };
 
 /// A per-element constant, its length counted from the values given:
-/// `series_constant<unit::One>(rat(1), rat(2), rat(3))`.
+/// `series_constant<unit::One>(1, 2, 3)`.
 template <Unit U, typename... Rs>
     requires(sizeof...(Rs) > 0) && (std::convertible_to<Rs, Rational> && ...)
 [[nodiscard]] constexpr auto series_constant(Rs... values) noexcept
@@ -523,6 +525,36 @@ template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
     return ElementwiseRoundNode<U, Places, Mode, S> { {}, seriesOperand };
 }
 
+namespace detail
+{
+    /// A `PlacesTable` of @p N entries, every one @p everyElement. Built from
+    /// an index pack and not by filling a value-initialised array: on cl that
+    /// instantiates a compiler-internal helper, which warned (C4459) that its
+    /// `i` hides a consumer's global of that name.
+    template <std::size_t... Indices>
+    [[nodiscard]] constexpr PlacesTable<sizeof...(Indices)> uniform_places_of(DecimalPlaces everyElement,
+                                                                             std::index_sequence<Indices...>) noexcept
+    {
+        return PlacesTable<sizeof...(Indices)> { (static_cast<void>(Indices), everyElement)... };
+    }
+
+    /// A `PlacesTable` of @p N entries, every one @p everyElement.
+    template <std::size_t N>
+    [[nodiscard]] constexpr PlacesTable<N> uniform_places(DecimalPlaces everyElement) noexcept
+    {
+        return uniform_places_of(everyElement, std::make_index_sequence<N> {});
+    }
+} // namespace detail
+
+/// @p seriesOperand rounded as @p R names, every element to `R.places`
+/// decimal places of `R.unit`: the per-element form with one table entry
+/// repeated, `rounded_elementwise<hundredthPercent>(series<Passing, 5>)`.
+template <DecimalRounding R, SeriesNode S>
+[[nodiscard]] constexpr auto rounded_elementwise(S seriesOperand) noexcept
+{
+    return rounded_elementwise<R.unit, detail::uniform_places<S::length>(R.places), R.mode>(seriesOperand);
+}
+
 /// Which end of a series a running total starts from.
 ///
 /// An `enum class` rather than a `bool`, and never defaulted: "a total running
@@ -555,6 +587,9 @@ enum class CumulativeDirection : std::uint8_t
 
 namespace detail
 {
+    template <>
+    inline constexpr bool formats_by_describe<CumulativeDirection> = true;
+
     /// Fails to compile when `sum` is given a single value. Named so the
     /// operand prints.
     template <typename Operand>
@@ -674,6 +709,15 @@ template <Unit U, auto Places, RoundingMode Mode, Node N>
     return detail::RefusedSeries<N::dimension> {};
 }
 
+/// A single value handed to `rounded_elementwise<R>`: refused as the
+/// three-argument form's is.
+template <DecimalRounding R, Node N>
+[[nodiscard]] constexpr auto rounded_elementwise(N) noexcept
+{
+    static_assert(detail::RequireRoundElementwiseOfSeries<N>::value);
+    return detail::RefusedSeries<N::dimension> {};
+}
+
 /// The total of every element of a series: **one value**, and so a `Node`,
 /// which stands wherever a number stands -- inside a method's variant, beside
 /// a `var`, or broadcast back over the series it came from (`m_r(i) /
@@ -745,6 +789,25 @@ enum class FailureSite : std::uint8_t
     /// among its observations names none of its own elements.
     InputObservation,
 };
+
+/// A lowercase phrase with no trailing punctuation, so callers can embed it in a longer sentence.
+[[nodiscard]] constexpr std::string_view describe(FailureSite site) noexcept
+{
+    switch (site)
+    {
+        case FailureSite::ResultElement:
+            return "result element";
+        case FailureSite::InputObservation:
+            return "input observation";
+    }
+    return "unknown failure site";
+}
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<FailureSite> = true;
+} // namespace detail
 
 /// Why a series could not be evaluated, and where.
 struct SeriesFailure
@@ -1328,6 +1391,36 @@ template <Described Result, SeriesNode S, typename Env, typename Sink = NullSink
         }
         return SeriesOutcome<Result, seriesLength>::value(inDeclaredUnit, ValueSource::Derived);
     }
+}
+
+/// `checked_evaluate_series<Q>(boundFormula.expression, environmentGiven,
+/// recordingSink)`, `Q` taken from the `Yields` (`yields.hpp`). `Result` is
+/// `Q`'s place for a caller who names it anyway; any other quantity is
+/// refused.
+template <typename Result = detail::ResultOfYields, Described Q, SeriesNode S, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<SeriesOutcome<Q, S::length>, SeriesFailure> checked_evaluate_series(
+    Yields<Q, S> const& boundFormula, Env const& environmentGiven, Sink recordingSink = {}) noexcept
+{
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, S>::valid)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }; // refused already
+    else
+        return checked_evaluate_series<Q>(boundFormula.expression, environmentGiven, recordingSink);
+}
+
+/// A bound formula around a bound formula, refused where it is written
+/// (`detail::RequireFormulaNotBound`, `yields.hpp`). Taken here only so that
+/// the refusal is the one message; what it returns is never seen.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          Described Inner,
+          typename E,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<SeriesOutcome<Q, 1>, SeriesFailure> checked_evaluate_series(
+    Yields<Q, Yields<Inner, E>> const&, Env const&, Sink = {}) noexcept
+{
+    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
 }
 
 } // namespace formula

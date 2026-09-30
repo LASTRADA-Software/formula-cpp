@@ -2,9 +2,11 @@
 #pragma once
 
 /// @file
-/// `std::format` for a `Rational` and a `Measured<Q>`: `std::format("{}",
-/// Rational { 3, 5 })` is `0.6`, and a measured 5.2 in a unit whose symbol is
-/// `kJ` formats as `5.2 kJ`.
+/// `std::format` for a `Rational`, a `Measured<Q>`, an `Outcome<Q>`, a `Unit`,
+/// a `Dimension` and every enumeration that has a `describe()`:
+/// `std::format("{}", Rational { 3, 5 })` is `0.6`, a measured 5.2 in a unit
+/// whose symbol is `kJ` formats as `5.2 kJ`, `dim::Density` as `L^-3 M^1`, and
+/// `ArithmeticError::Overflow` as `overflow in exact arithmetic`.
 ///
 /// **Opt-in.** This header is not included by `formula.hpp`: it includes
 /// `<format>`, which the umbrella deliberately keeps out, so that a consumer
@@ -12,14 +14,15 @@
 ///
 ///     #include <formula-cpp/format.hpp>
 ///
-/// **Include it in every translation unit that formats a `Rational` or a
-/// `Measured`, or asks whether it can** (`std::formattable`). What it
-/// declares are explicit specialisations of `std::formatter`, and an explicit
-/// specialisation must be seen before any use that would otherwise
-/// instantiate the primary template. A translation unit that asks without it
-/// gets `std::formatter`'s disabled primary for a type another translation
-/// unit formats, and a program whose translation units disagree on that is
-/// ill-formed, with no diagnostic required.
+/// **Include it in every translation unit that formats any of these types, or
+/// asks whether it can** (`std::formattable`). What it declares are
+/// specialisations of `std::formatter`, and a specialisation must be seen
+/// before any use that would otherwise instantiate the primary template. A
+/// translation unit that asks without it gets `std::formatter`'s disabled
+/// primary for a type another translation unit formats, and a program whose
+/// translation units disagree on that is ill-formed, with no diagnostic
+/// required. That holds for an enumeration too: `std::formattable<RetryEnd,
+/// char>` is true only where this header is included.
 ///
 /// **One rule, the library's throughout** (`number_text.hpp`): a decimal is
 /// written only when it is the exact value, and a rounded one only when the
@@ -28,24 +31,31 @@
 /// `≈` saying it was rounded; `{:.3HalfEven}` is `0.333`, a rounding the
 /// format asked for outright.
 ///
-/// **The reference is on the two specialisations**,
+/// **The reference is on the specialisations for a number**,
 /// `std::formatter<formula::Rational, char>` and
-/// `std::formatter<formula::Measured<Q>, char>`: the spec's grammar, one
+/// `std::formatter<formula::Measured<Q>, char>`, which `Outcome<Q>` follows:
+/// the spec's grammar, one
 /// example per form with the text it writes, the seven rounding-mode names
 /// and why no mode is assumed, how the width counts, how a spec the grammar
 /// does not allow fails, and when writing a value throws. The guide
 /// `docs/display.md`, section "Formatting with `std::format`", sets it out
 /// for a reader with the output of a real program beside each form.
 ///
-/// **The library owns these two specialisations of `std::formatter`.** A
-/// consumer who specialises `std::formatter<formula::Rational, char>` or
-/// `std::formatter<formula::Measured<Q>, char>` as well defines one entity
-/// twice, which breaks the one-definition rule. Only `char` formatting is
-/// provided: a unit's symbol is UTF-8 bytes.
+/// **The library owns these specialisations of `std::formatter`.** A consumer
+/// who specialises `std::formatter` for `formula::Rational`,
+/// `formula::Measured<Q>`, `formula::Outcome<Q>`, `formula::Unit` or
+/// `formula::Dimension` as well defines one entity twice, which breaks the
+/// one-definition rule. A consumer's own `std::formatter<E, char>` for an
+/// enumeration listed in `detail::formats_by_describe` does the same, and a
+/// generic one constrained on `std::is_enum_v` is ambiguous for those
+/// enumerations. Only `char` formatting is provided: a unit's symbol is UTF-8
+/// bytes.
 
+#include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/number_text.hpp>
+#include <formula-cpp/outcome.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
@@ -56,6 +66,7 @@
 #include <expected>
 #include <format>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace formula::detail
@@ -420,6 +431,84 @@ template <typename OutputIterator>
     writeFill(padding - paddingBefore);
     return destination;
 }
+
+/// Reads a `Measured<Q>` or `Outcome<Q>` replacement field's spec, as
+/// `parse_number_format_field` does, and refuses `~Mode` without `.N` when
+/// @p Q's unit declares decimals outside the -18 to 18 that `DecimalPlaces`
+/// spans.
+template <Described Q>
+[[nodiscard]] constexpr std::format_parse_context::iterator parse_measured_format_field(
+    std::format_parse_context& parseContext, NumberFormatSpec& parsed)
+{
+    auto const specEnd = parse_number_format_field(parseContext, parsed);
+    constexpr int declaredPlaces = Describe<Q>::unit.decimals;
+    if (parsed.body == NumberFormatBody::Approximated && !parsed.places.has_value()
+        && (declaredPlaces > 18 || declaredPlaces < -18))
+        formula_number_format_places_out_of_range();
+    return specEnd;
+}
+
+/// Writes @p shownMeasured to @p destination as @p formatSpec says: the
+/// number in @p Q's declared unit and its symbol, or `(not measured)` when it
+/// is absent. Throws `std::format_error` when the number cannot be spelled as
+/// asked (`spell_formatted_number`).
+template <Described Q, typename OutputIterator>
+[[nodiscard]] OutputIterator format_measured(Measured<Q> const& shownMeasured,
+                                             NumberFormatSpec const& formatSpec,
+                                             OutputIterator destination)
+{
+    if (shownMeasured.is_absent())
+        return write_formatted_number(NotMeasuredText, std::string_view {}, formatSpec, destination);
+    Unit const shownIn = Describe<Q>::unit;
+    NumberText const spelled = spell_formatted_number(*shownMeasured.stored(), shownIn, formatSpec);
+    return write_formatted_number(spelled.view(), view(shownIn.symbolText), formatSpec, destination);
+}
+
+/// @p shown's `describe()` words. Called from inside `formula::detail`, so
+/// that ordinary lookup stops at `formula::describe` and never reaches a
+/// consumer's global of the same name; the enumeration's own overload is found
+/// by argument-dependent lookup where the formatter is instantiated.
+template <typename E>
+[[nodiscard]] std::string_view described_words(E shown)
+{
+    return describe(shown);
+}
+
+/// Appends @p baseName and @p exponentValue to @p spelled as `L^2` or
+/// `L^(1/2)`, after a space when @p spelled is not empty; nothing when the
+/// exponent is zero.
+inline void append_exponent_text(std::string& spelled, std::string_view baseName, Exponent exponentValue)
+{
+    if (is_zero(exponentValue))
+        return;
+    if (!spelled.empty())
+        spelled += ' ';
+    spelled += baseName;
+    spelled += '^';
+    if (is_integer(exponentValue))
+        spelled += std::to_string(exponentValue.numerator);
+    else
+        spelled += '(' + std::to_string(exponentValue.numerator) + '/' + std::to_string(exponentValue.denominator) + ')';
+}
+
+/// A dimension's exponents, as `std::format` writes them -- see
+/// `formatter<Dimension>`.
+[[nodiscard]] inline std::string dimension_text(Dimension const& shownDimension)
+{
+    std::string spelled;
+    append_exponent_text(spelled, "L", shownDimension.length);
+    append_exponent_text(spelled, "M", shownDimension.mass);
+    append_exponent_text(spelled, "T", shownDimension.time);
+    append_exponent_text(spelled, "I", shownDimension.current);
+    append_exponent_text(spelled, "Theta", shownDimension.temperature);
+    append_exponent_text(spelled, "N", shownDimension.amount);
+    append_exponent_text(spelled, "J", shownDimension.luminosity);
+    for (NamedBase const& namedBase: shownDimension.namedBases)
+        append_exponent_text(spelled, view(namedBase.name), namedBase.exponent);
+    if (is_dimensionless(shownDimension))
+        spelled = "(dimensionless)";
+    return spelled;
+}
 } // namespace formula::detail
 
 // The specialisations are declared inside `namespace std` rather than as
@@ -594,12 +683,7 @@ struct formatter<formula::Measured<Q>, char>
     /// refused here.
     constexpr auto parse(std::format_parse_context& parseContext)
     {
-        auto const specEnd = formula::detail::parse_number_format_field(parseContext, _spec);
-        constexpr int declaredPlaces = formula::Describe<Q>::unit.decimals;
-        if (_spec.body == formula::detail::NumberFormatBody::Approximated && !_spec.places.has_value()
-            && (declaredPlaces > 18 || declaredPlaces < -18))
-            formula::detail::formula_number_format_places_out_of_range();
-        return specEnd;
+        return formula::detail::parse_measured_format_field<Q>(parseContext, _spec);
     }
 
     /// Writes @p shown as the spec says, or `(not measured)` when it is
@@ -613,16 +697,106 @@ struct formatter<formula::Measured<Q>, char>
     template <typename FormatContext>
     auto format(formula::Measured<Q> const& shown, FormatContext& formatContext) const
     {
-        if (shown.is_absent())
-            return formula::detail::write_formatted_number(
-                formula::NotMeasuredText, std::string_view {}, _spec, formatContext.out());
-        formula::Unit const shownIn = formula::Describe<Q>::unit;
-        formula::NumberText const spelled = formula::detail::spell_formatted_number(*shown.stored(), shownIn, _spec);
-        return formula::detail::write_formatted_number(
-            spelled.view(), formula::view(shownIn.symbolText), _spec, formatContext.out());
+        return formula::detail::format_measured<Q>(shown, _spec, formatContext.out());
     }
 
   private:
     formula::detail::NumberFormatSpec _spec {};
+};
+
+/// `std::format` of a `formula::Outcome<Q>`, in the grammar of
+/// `formatter<formula::Measured<Q>>`: a value as a `Measured<Q>` is written,
+/// an empty outcome as `(not measured)`, and a verdict or an invalid outcome
+/// as its label, filled, aligned and padded to the spec's width. A rounding in
+/// the spec does not apply to words, but a spec the grammar does not allow is
+/// refused as it is for a `Measured<Q>`. A label is right-aligned by default,
+/// as a number is; the `Unit`, `Dimension` and enumeration formatters align
+/// left by default, as a string does.
+///
+///     std::format("{}", Outcome<Q>::value(Measured<Q> { Rational { 26, 5 } }, ValueSource::Derived))  5.2 kJ
+///     std::format("{}", Outcome<Q>::empty())                                                           (not measured)
+///     std::format("{:>18}", Outcome<Q>::verdict({ "repeat the test" }))                                "   repeat the test"
+///
+/// Owned by this library: a consumer's own specialisation of it would define
+/// it twice, which breaks the one-definition rule.
+template <formula::Described Q>
+struct formatter<formula::Outcome<Q>, char>
+{
+    /// Reads the spec up to its `}`, as `formatter<formula::Measured<Q>>` does.
+    constexpr auto parse(std::format_parse_context& parseContext)
+    {
+        return formula::detail::parse_measured_format_field<Q>(parseContext, _spec);
+    }
+
+    /// Writes @p shown as the spec says.
+    /// @throws std::format_error as `formatter<formula::Measured<Q>>` does,
+    ///         for a value.
+    template <typename FormatContext>
+    auto format(formula::Outcome<Q> const& shown, FormatContext& formatContext) const
+    {
+        if (shown.is_verdict())
+            return formula::detail::write_formatted_number(
+                shown.verdict_label(), std::string_view {}, _spec, formatContext.out());
+        if (shown.is_invalid())
+            return formula::detail::write_formatted_number(
+                shown.reason_label(), std::string_view {}, _spec, formatContext.out());
+        return formula::detail::format_measured<Q>(shown.measurement(), _spec, formatContext.out());
+    }
+
+  private:
+    formula::detail::NumberFormatSpec _spec {};
+};
+
+/// `std::format` of a `formula::Unit`: its symbol, filled and aligned as a
+/// string is.
+///
+/// Owned by this library: a consumer's own specialisation of it would define
+/// it twice, which breaks the one-definition rule.
+template <>
+struct formatter<formula::Unit, char>: formatter<string_view, char>
+{
+    /// Writes the symbol of @p shownIn.
+    template <typename FormatContext>
+    auto format(formula::Unit const& shownIn, FormatContext& formatContext) const
+    {
+        return formatter<string_view, char>::format(formula::view(shownIn.symbolText), formatContext);
+    }
+};
+
+/// `std::format` of a `formula::Dimension`: its exponents joined by spaces,
+/// `L^2 M^-3` or `L^(1/2)` (base names `L`, `M`, `T`, `I`, `Theta`, `N`, `J`,
+/// each left out at exponent 0), then any named base by its name, and
+/// `(dimensionless)` for a pure number. Filled and aligned as a string is.
+///
+/// Owned by this library: a consumer's own specialisation of it would define
+/// it twice, which breaks the one-definition rule.
+template <>
+struct formatter<formula::Dimension, char>: formatter<string_view, char>
+{
+    /// Writes @p shown.
+    template <typename FormatContext>
+    auto format(formula::Dimension const& shown, FormatContext& formatContext) const
+    {
+        std::string const spelled = formula::detail::dimension_text(shown);
+        return formatter<string_view, char>::format(spelled, formatContext);
+    }
+};
+
+/// `std::format` of a formula enumeration that `detail::formats_by_describe`
+/// lists: its `describe()` words, filled and aligned as a string is. The
+/// enumeration's own header must be included.
+///
+/// Owned by this library: a consumer's own `std::formatter` for one of those
+/// enumerations, or a generic one for every enumeration, collides with it.
+template <typename E>
+    requires formula::detail::formats_by_describe<E>
+struct formatter<E, char>: formatter<string_view, char>
+{
+    /// Writes `describe(shown)`.
+    template <typename FormatContext>
+    auto format(E shown, FormatContext& formatContext) const
+    {
+        return formatter<string_view, char>::format(formula::detail::described_words(shown), formatContext);
+    }
 };
 } // namespace std

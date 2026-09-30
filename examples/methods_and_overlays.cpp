@@ -26,6 +26,7 @@
 // Standard references, exactly as every other example in this repository is.
 
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
@@ -34,15 +35,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
+#include <optional>
+#include <print>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
 namespace
 {
 namespace unit = formula::unit;
 using formula::var;
+using namespace formula::literals;
 
 // ---- Tags: what a variant applies to ----------------------------------------
 //
@@ -65,11 +69,6 @@ using EdgeA = formula::Quantity<struct EdgeATag, "a", "first loaded edge", unit:
 using EdgeB = formula::Quantity<struct EdgeBTag, "b", "second loaded edge", unit::Millimetre>;
 using Diameter = formula::Quantity<struct DiameterTag, "d", "cylinder diameter", unit::Millimetre>;
 using ShapeFactor = formula::Quantity<struct ShapeFactorTag, "k_s", "shape factor", unit::One>;
-
-[[nodiscard]] constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
-{
-    return formula::Rational { numerator, denominator };
-}
 } // namespace
 
 // A tag is shown under its own name by default -- `Cube` -- and a published
@@ -94,6 +93,11 @@ namespace
 // are different expressions of different types; what they must share is the
 // dimension they report, and a pack whose variants disagree does not compile.
 //
+// The method rounds to a tenth of a megapascal, a rule named once.
+inline constexpr formula::DecimalRounding tenthMpa { unit::Megapascal,
+                                                     formula::DecimalPlaces { 1 },
+                                                     formula::RoundingMode::HalfAwayFromZero };
+
 // Kept out of clang-format's hands: it reads `var<ShapeFactor> * var<Force>`
 // as a pointer declaration and writes `var<ShapeFactor>* var<Force>`, and the
 // guide quotes this declaration verbatim.
@@ -101,21 +105,21 @@ namespace
 inline constexpr auto compressiveStrength = formula::method(
     formula::variants(formula::variant<Prism>(var<Force> / (var<EdgeA> * var<EdgeA>)),
                       formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeA> * var<EdgeB>)),
-                      formula::variant<Cylinder>(formula::constant<unit::One>(rat(4)) * var<Force>
+                      formula::variant<Cylinder>(formula::constant<unit::One>(4) * var<Force>
                                                  / (formula::pi * formula::pow<2>(var<Diameter>)))),
-    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(473, 10)),
+    formula::rounding_rule<tenthMpa>(),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(47.3_r),
                                              formula::Verdict { "the load at failure is below 47.3 kN" })));
 // clang-format on
 
 // A 163 x 103 mm cube face loaded to 89.3 kN with a measured shape factor of
 // 1.043: 5.5477... MPa, so a rounding rule's granularity shows in the number --
 // 5.5 MPa to one decimal, 5.55 to two.
-inline constexpr auto specimen = formula::environment(formula::Measured<Force> { rat(89'300) },
-                                                      formula::Measured<EdgeA> { rat(163) },
-                                                      formula::Measured<EdgeB> { rat(103) },
-                                                      formula::Measured<Diameter> { rat(135) },
-                                                      formula::Measured<ShapeFactor> { rat(1043, 1000) });
+inline constexpr auto specimen = formula::environment(formula::Measured<Force> { 89'300 },
+                                                      formula::Measured<EdgeA> { 163 },
+                                                      formula::Measured<EdgeB> { 103 },
+                                                      formula::Measured<Diameter> { 135 },
+                                                      formula::Measured<ShapeFactor> { 1.043_r });
 
 // ---- 2. Overlays -----------------------------------------------------------------
 inline constexpr formula::Citation northConstant { .title = "Shape factor",
@@ -133,7 +137,7 @@ inline constexpr formula::Citation eastScope { .reference = "Example Standard 3:
 /// rule's unit is the unit a jurisdiction REPORTS in, and it must measure the
 /// method's dimension.
 inline constexpr auto north =
-    formula::overlay(formula::with_constant<ShapeFactor>(rat(863, 1000), northConstant),
+    formula::overlay(formula::with_constant<ShapeFactor>(0.863_r, northConstant),
                      formula::with_rounding<unit::NewtonPerSquareMillimetre,
                                             formula::DecimalPlaces { 2 },
                                             formula::RoundingMode::HalfAwayFromZero>(northRounding));
@@ -144,7 +148,7 @@ inline constexpr auto north =
 /// is listed first so that nothing listed after it is missed inside it.
 inline constexpr auto south = formula::overlay(
     formula::replace_variant<Cylinder>(
-        var<Force> / (formula::constant<unit::One>(rat(1127, 1000)) * formula::pow<2>(var<Diameter>)), southReplacement),
+        var<Force> / (formula::constant<unit::One>(1.127_r) * formula::pow<2>(var<Diameter>)), southReplacement),
     formula::add_derived<ShapeFactor>(var<EdgeB> / var<EdgeA>, southDefinition),
     formula::prune_variant<Prism>(southScope));
 
@@ -200,49 +204,32 @@ inline constexpr formula::Citation westRevision { .title = "Acceptance",
 /// has one, and neither of them the base method's. `with_constraints` replaces
 /// the method's constraints wholesale -- it does not add to them.
 inline constexpr auto west = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(973, 10)),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(97.3_r),
                                              formula::Verdict { "the load at failure is below 97.3 kN" }),
-                         formula::constraint(var<EdgeA> <= formula::number(rat(173, 100)) * var<EdgeB>,
+                         formula::constraint(var<EdgeA> <= formula::number(1.73_r) * var<EdgeB>,
                                              formula::Verdict { "the loaded face is more than 1.73 times as long as wide" })),
     westAcceptance));
 
 /// A later revision of the west's annex, applied on top of the west's method:
 /// its one constraint is all the stacked method checks.
 inline constexpr auto westRevised = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(831, 10)),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(83.1_r),
                                              formula::Verdict { "the load at failure is below 83.1 kN" })),
     westRevision));
 
 inline constexpr auto western = formula::apply(west, compressiveStrength);
 inline constexpr auto westernRevised = formula::apply(westRevised, western);
 
-[[nodiscard]] std::string_view describe(formula::ConstraintOutcomeKind kind)
-{
-    switch (kind)
-    {
-        case formula::ConstraintOutcomeKind::Satisfied:
-            return "satisfied";
-        case formula::ConstraintOutcomeKind::Violated:
-            return "violated";
-        case formula::ConstraintOutcomeKind::NotChecked:
-            return "not checked";
-        case formula::ConstraintOutcomeKind::Invalid:
-            return "invalid";
-    }
-    return "unknown";
-}
-
 template <std::size_t N>
 void print_outcomes(char const* method, std::array<formula::ConstraintOutcome, N> const& outcomes)
 {
-    std::printf("%s: %zu constraint(s)\n", method, N);
+    std::println("{}: {} constraint(s)", method, N);
     for (std::size_t index = 0; index < N; ++index)
     {
-        std::string_view const word = describe(outcomes[index].kind());
-        std::printf("  [%zu] %.*s", index, static_cast<int>(word.size()), word.data());
+        std::print("  [{}] {}", index, outcomes[index].kind());
         if (std::optional<formula::Verdict> const verdict = outcomes[index].verdict())
-            std::printf(": %.*s", static_cast<int>(verdict->label.size()), verdict->label.data());
-        std::printf("\n");
+            std::print(": {}", verdict->label);
+        std::println("");
     }
 }
 
@@ -257,49 +244,16 @@ template <typename M>
            + std::string { origin.source().section };
 }
 
-template <typename M>
-[[nodiscard]] std::string acceptanceOf(M const& m)
-{
-    formula::Trace<> trace {};
-    (void) formula::check_method(m, specimen, formula::RecordingSink { trace });
-    return formula::render_trace(trace, { .maxSteps = 30 });
-}
-
-[[nodiscard]] std::string exact(formula::Evaluated<formula::Rational> const& result)
-{
-    if (!result.has_value() || !result->has_value())
-        return "no value";
-    formula::Rational const value = **result;
-    std::string text = std::to_string(value.numerator());
-    if (value.denominator() != 1)
-        text += "/" + std::to_string(value.denominator());
-    return text + " Pa";
-}
-
-template <typename Tag, typename M, typename... V>
-[[nodiscard]] std::string derivationOf(M const& m, V const&... vocabulary)
-{
-    formula::Trace<> trace {};
-    (void) formula::evaluate_method<Tag>(m, specimen, formula::RecordingSink { trace, vocabulary... });
-    return formula::render_trace(trace, { .maxSteps = 30 });
-}
-
 void print_symbols(formula::Documentation const& documentation)
 {
     for (formula::SymbolEntry const& row: documentation.symbols)
     {
-        std::printf("  %.*s: %.*s",
-                    static_cast<int>(row.symbol.size()),
-                    row.symbol.data(),
-                    static_cast<int>(row.description.size()),
-                    row.description.data());
+        std::print("  {}: {}", row.symbol, row.description);
         if (row.fixedValue.has_value())
-            std::printf(" -- fixed at %lld/%lld",
-                        static_cast<long long>(row.fixedValue->numerator()),
-                        static_cast<long long>(row.fixedValue->denominator()));
+            std::print(" -- fixed at {:/}", *row.fixedValue);
         if (row.derivedAs.has_value())
-            std::printf(" -- derived as %s", row.derivedAs->c_str());
-        std::printf("\n");
+            std::print(" -- derived as {}", *row.derivedAs);
+        std::println("");
     }
 }
 } // namespace
@@ -310,122 +264,149 @@ int main()
     auto const check = [&allPassed](bool condition, char const* what) {
         if (!condition)
         {
-            std::printf("CHECK FAILED: %s\n", what);
+            std::println("CHECK FAILED: {}", what);
             allPassed = false;
         }
     };
 
     // ---- 1. Selecting a variant ---------------------------------------------------
-    std::printf("== 1. A method selects a variant by tag ==\n\n");
+    std::println("== 1. A method selects a variant by tag ==\n");
 
-    auto const cube = formula::evaluate_method<Cube>(compressiveStrength, specimen);
-    std::printf("cube:   %s\n", exact(cube).c_str());
-    std::printf("\n%s\n", derivationOf<Cube>(compressiveStrength).c_str());
-    check(exact(cube) == "5500000 Pa", "the cube's strength, rounded to 5.5 MPa and answered in pascals");
+    auto const cube = formula::explain_method<Cube>(compressiveStrength, specimen);
+    auto const cubeStrength = formula::number_of(cube.outcome);
+    if (!cubeStrength)
+    {
+        std::println("cube: {}", cube.outcome ? "no value" : formula::describe(cube.outcome.error()));
+        return 1;
+    }
+    std::println("cube:   {} Pa", *cubeStrength);
+    std::println("\n{}", formula::render_trace(cube.trace, { .maxSteps = 30 }));
+    check(cubeStrength == 5500000_r, "the cube's strength, rounded to 5.5 MPa and answered in pascals");
 
-    std::string const cylinderTrace = derivationOf<Cylinder>(compressiveStrength);
-    std::printf("%s\n", cylinderTrace.c_str());
-    check(cylinderTrace.find("[variant cylinder 135 x 271 mm (3rd of 3), selected by tag]") != std::string::npos,
+    auto const cylinder = formula::explain_method<Cylinder>(compressiveStrength, specimen);
+    std::string const cylinderTrace = formula::render_trace(cylinder.trace, { .maxSteps = 30 });
+    std::println("{}", cylinderTrace);
+    check(cylinderTrace.contains("[variant cylinder 135 x 271 mm (3rd of 3), selected by tag]"),
           "the cylinder variant is named as its TagName spells it, at its published position");
 
     // ---- 2. Overlays ---------------------------------------------------------------
-    std::printf("== 2. A jurisdiction's overlay yields a method ==\n\n");
+    std::println("== 2. A jurisdiction's overlay yields a method ==\n");
 
-    auto const northCube = formula::evaluate_method<Cube>(northern, specimen);
-    std::printf("north cube: %s\n\n%s\n", exact(northCube).c_str(), derivationOf<Cube>(northern).c_str());
-    check(exact(northCube) == "4590000 Pa", "the north's fixed 0.863, rounded to 4.59 N/mm2 by its own rule");
+    auto const northCube = formula::explain_method<Cube>(northern, specimen);
+    auto const northStrength = formula::number_of(northCube.outcome);
+    if (!northStrength)
+    {
+        std::println("north cube: {}", northCube.outcome ? "no value" : formula::describe(northCube.outcome.error()));
+        return 1;
+    }
+    std::println("north cube: {} Pa\n\n{}", *northStrength, formula::render_trace(northCube.trace, { .maxSteps = 30 }));
+    check(northStrength == 4590000_r, "the north's fixed 0.863, rounded to 4.59 N/mm2 by its own rule");
 
-    auto const southCube = formula::evaluate_method<Cube>(southern, specimen);
-    std::printf("south cube: %s\n\n%s\n", exact(southCube).c_str(), derivationOf<Cube>(southern).c_str());
-    check(exact(southCube) == "3400000 Pa", "the south's derived shape factor b / a = 103/163");
+    auto const southCube = formula::explain_method<Cube>(southern, specimen);
+    auto const southStrength = formula::number_of(southCube.outcome);
+    if (!southStrength)
+    {
+        std::println("south cube: {}", southCube.outcome ? "no value" : formula::describe(southCube.outcome.error()));
+        return 1;
+    }
+    std::println("south cube: {} Pa\n\n{}", *southStrength, formula::render_trace(southCube.trace, { .maxSteps = 30 }));
+    check(southStrength == 3400000_r, "the south's derived shape factor b / a = 103/163");
 
-    std::string const southCylinder = derivationOf<Cylinder>(southern);
-    std::printf("%s\n", southCylinder.c_str());
-    check(southCylinder.find("[replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]") != std::string::npos,
+    auto const southCylinder = formula::explain_method<Cylinder>(southern, specimen);
+    std::string const southCylinderTrace = formula::render_trace(southCylinder.trace, { .maxSteps = 30 });
+    std::println("{}", southCylinderTrace);
+    check(southCylinderTrace.contains("[replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]"),
           "the south's cylinder formula is marked as the south's");
-    check(exact(formula::evaluate_method<Cylinder>(southern, specimen)) == "4300000 Pa"
-              && exact(formula::evaluate_method<Cylinder>(compressiveStrength, specimen)) == "6200000 Pa",
+    check(formula::number_of(southCylinder.outcome) == 4300000_r && formula::number_of(cylinder.outcome) == 6200000_r,
           "the south's replacement formula is the one that ran: 4.3 MPa, not the base method's 6.2");
-    check(southCylinder.find("(3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard "
-                             "7:2019 A, A.1]")
-              != std::string::npos,
+    check(southCylinderTrace.contains("(3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard "
+                                      "7:2019 A, A.1]"),
           "a variant keeps its published position after one before it is pruned, and the prune is said with its "
           "citation");
 
-    std::string const eastCube = derivationOf<Cube>(eastern);
-    std::printf("%s\n", eastCube.c_str());
-    check(eastCube.find("[variant Cube (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard "
-                        "3:2023 E, E.1]")
-              != std::string::npos,
+    std::string const eastCube =
+        formula::render_trace(formula::explain_method<Cube>(eastern, specimen).trace, { .maxSteps = 30 });
+    std::println("{}", eastCube);
+    check(eastCube.contains("[variant Cube (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard "
+                            "3:2023 E, E.1]"),
           "a pinned variant is still counted in the method as published, and the pin is said with its citation");
-    std::printf("east: %zu variant(s) left after the pin\n\n", std::tuple_size_v<decltype(eastern.variantSet.cases)>);
+    std::println("east: {} variant(s) left after the pin\n", std::tuple_size_v<decltype(eastern.variantSet.cases)>);
 
-    std::printf("documentation of the south's cube:\n");
+    std::println("documentation of the south's cube:");
     auto const southCubeFormula = std::get<0>(southern.variantSet.cases).expression; // the prism is pruned
     formula::Documentation const southPage = formula::document(southCubeFormula);
-    std::printf("  %s\n", southPage.formula.c_str());
+    std::println("  {}", southPage.formula);
     print_symbols(southPage);
-    std::printf("\n");
+    std::println("");
     check(southPage.symbols.front().derivedAs == std::optional<std::string> { "b / a" },
           "the page says how the south derives the shape factor");
 
     // ---- 3. A runtime choice among compiled jurisdictions ----------------------------
-    std::printf("== 3. Which jurisdiction applies is a runtime value ==\n\n");
+    std::println("== 3. Which jurisdiction applies is a runtime value ==\n");
     for (Jurisdiction const jurisdiction: { Jurisdiction::Base, Jurisdiction::North, Jurisdiction::South })
-        std::printf("jurisdiction %d: %s\n", static_cast<int>(jurisdiction), exact(cubeStrengthIn(jurisdiction)).c_str());
-    std::printf("\n");
-    check(exact(cubeStrengthIn(Jurisdiction::North)) == exact(northCube), "the runtime choice reaches the north");
+    {
+        auto const chosen = cubeStrengthIn(jurisdiction);
+        auto const chosenStrength = formula::number_of(chosen);
+        if (!chosenStrength)
+        {
+            std::println("jurisdiction {}: {}", std::to_underlying(jurisdiction),
+                         chosen ? "no value" : formula::describe(chosen.error()));
+            return 1;
+        }
+        std::println("jurisdiction {}: {} Pa", std::to_underlying(jurisdiction), *chosenStrength);
+    }
+    std::println("");
+    // The one deliberate second run of the north: the runtime choice must reach the same method.
+    check(formula::number_of(cubeStrengthIn(Jurisdiction::North)) == northStrength, "the runtime choice reaches the north");
 
     // ---- 4. A vocabulary --------------------------------------------------------------
-    std::printf("== 4. The same formula in two jurisdictions' words ==\n\n");
+    std::println("== 4. The same formula in two jurisdictions' words ==\n");
     auto const baseCubeFormula = std::get<1>(compressiveStrength.variantSet.cases).expression;
     std::string const inNorth = formula::render(baseCubeFormula, northernWords);
     std::string const inSouth = formula::render(baseCubeFormula, southernWords);
-    std::printf("north: %s\nsouth: %s\n\n", inNorth.c_str(), inSouth.c_str());
+    std::println("north: {}\nsouth: {}\n", inNorth, inSouth);
     check(inNorth == "k_s * F / (a * b)" && inSouth == "k_s * F / (b * a)", "the two edges swap letters");
 
     formula::Documentation const southernPage = formula::document(baseCubeFormula, southernWords);
-    std::printf("the southern page's symbol table:\n");
+    std::println("the southern page's symbol table:");
     print_symbols(southernPage);
-    std::printf("\n");
+    std::println("");
 
-    formula::Trace<> trace {};
-    (void) formula::evaluate_method<Cube>(compressiveStrength, specimen, formula::RecordingSink { trace, southernWords });
-    std::string const southernTrace = formula::render_trace(trace, { .maxSteps = 30 });
-    std::printf("%s\n", southernTrace.c_str());
-    check(southernTrace.find("4. b = 163 mm\n") != std::string::npos, "the trace writes the 163 mm edge as the south does");
+    auto const southernRun = formula::explain_method<Cube>(compressiveStrength, specimen, southernWords);
+    std::string const southernTrace = formula::render_trace(southernRun.trace, { .maxSteps = 30 });
+    std::println("{}", southernTrace);
+    check(southernTrace.contains("4. b = 163 mm\n"), "the trace writes the 163 mm edge as the south does");
 
     // ---- 5. Constraints ----------------------------------------------------------------
-    std::printf("== 5. Whose acceptance logic ==\n\n");
+    std::println("== 5. Whose acceptance logic ==\n");
 
-    auto const baseOutcomes = formula::check_method(compressiveStrength, specimen);
-    auto const westOutcomes = formula::check_method(western, specimen);
-    print_outcomes("base", baseOutcomes);
-    print_outcomes("west", westOutcomes);
-    std::printf("\n");
-    check(baseOutcomes.size() == 1 && baseOutcomes[0].is_satisfied(), "the base method's one check: 89.3 kN >= 47.3 kN");
-    check(westOutcomes.size() == 2 && westOutcomes[0].is_violated() && westOutcomes[1].is_satisfied(),
+    auto const baseCheck = formula::explain_check_method(compressiveStrength, specimen);
+    auto const westCheck = formula::explain_check_method(western, specimen);
+    print_outcomes("base", baseCheck.outcome);
+    print_outcomes("west", westCheck.outcome);
+    std::println("");
+    check(baseCheck.outcome.size() == 1 && baseCheck.outcome[0].is_satisfied(),
+          "the base method's one check: 89.3 kN >= 47.3 kN");
+    check(westCheck.outcome.size() == 2 && westCheck.outcome[0].is_violated() && westCheck.outcome[1].is_satisfied(),
           "the west's two checks, each at its own index: 89.3 kN < 97.3 kN, and 163 mm <= 1.73 x 103 mm");
 
-    std::printf("base constraints: %s\n", whoseConstraints(compressiveStrength).c_str());
-    std::printf("west constraints: %s\n\n", whoseConstraints(western).c_str());
+    std::println("base constraints: {}", whoseConstraints(compressiveStrength));
+    std::println("west constraints: {}\n", whoseConstraints(western));
 
-    std::string const baseAcceptance = acceptanceOf(compressiveStrength);
-    std::string const westAcceptanceTrace = acceptanceOf(western);
-    std::printf("%s\n%s\n", baseAcceptance.c_str(), westAcceptanceTrace.c_str());
-    check(baseAcceptance.find("[satisfied; the method's own constraint]") != std::string::npos,
-          "the base method's verdict is the method's own");
-    check(westAcceptanceTrace.find("[the load at failure is below 97.3 kN; jurisdiction overlay: Acceptance, "
-                                   "Example Standard 9:2022 B, B.2]")
-              != std::string::npos,
+    std::string const baseAcceptance = formula::render_trace(baseCheck.trace, { .maxSteps = 30 });
+    std::string const westAcceptanceTrace = formula::render_trace(westCheck.trace, { .maxSteps = 30 });
+    std::println("{}\n{}", baseAcceptance, westAcceptanceTrace);
+    check(baseAcceptance.contains("[satisfied; the method's own constraint]"), "the base method's verdict is the method's own");
+    check(westAcceptanceTrace.contains("[the load at failure is below 97.3 kN; jurisdiction overlay: Acceptance, "
+                                       "Example Standard 9:2022 B, B.2]"),
           "the west's verdict names the west's annex");
 
     auto const revisedOutcomes = formula::check_method(westernRevised, specimen);
     print_outcomes("west, revised on top", revisedOutcomes);
-    std::printf("revised constraints: %s\n\n", whoseConstraints(westernRevised).c_str());
+    std::println("revised constraints: {}\n", whoseConstraints(westernRevised));
     check(revisedOutcomes.size() == 1 && revisedOutcomes[0].is_satisfied(),
           "stacked overlays: the later overlay's one constraint holds, and the earlier two are gone");
 
-    std::printf("all checks passed: %s\n", allPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allPassed ? "yes" : "no");
     return allPassed ? 0 : 1;
 }

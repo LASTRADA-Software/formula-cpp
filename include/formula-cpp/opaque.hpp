@@ -908,6 +908,13 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// A bound whole opaque call handed to a verb that answers with one value
+    /// (`yields.hpp`): refused as `checked_evaluate` refuses the call itself.
+    template <OpaqueOperation Op, typename... Inputs>
+    struct RequireSingleValueBound<OpaqueCall<Op, Inputs...>>: RequireOpaqueOutputChosen<OpaqueCall<Op, Inputs...>>
+    {
+    };
+
     /// Fails to compile when the unit a `rounded_output` is stated in does not
     /// measure the dimension of the output it rounds. Silent over a refused
     /// call or an output of no declared name: @p Output is refused already.
@@ -1061,6 +1068,14 @@ template <detail::FixedString Name, Unit U, DecimalPlaces Places, RoundingMode M
     else
         return RoundedOpaqueOutputNode<detail::unknownOutput, Call, U, Places, Mode, detail::UnnamedOpaqueOutput> { {},
                                                                                                                     call };
+}
+
+/// The output named @p Name of @p call, rounded as @p R names:
+/// `rounded_output<"slope", fourPlaces>(fit)`.
+template <detail::FixedString Name, DecimalRounding R, OpaqueOperation Op, typename... Inputs>
+[[nodiscard]] constexpr auto rounded_output(OpaqueCall<Op, Inputs...> call) noexcept
+{
+    return rounded_output<Name, R.unit, R.places, R.mode>(call);
 }
 
 namespace detail

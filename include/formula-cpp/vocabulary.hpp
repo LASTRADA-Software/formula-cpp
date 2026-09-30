@@ -422,9 +422,10 @@ template <typename V>
 concept Vocabulary = detail::isVocabulary<std::remove_cv_t<V>>;
 
 /// How @p Q is written under @p vocabulary -- the one call every surface that
-/// writes a quantity's symbol goes through.
-template <Described Q, Vocabulary V>
-[[nodiscard]] constexpr std::string_view symbol_of(V const& vocabulary) noexcept
+/// writes a quantity's symbol goes through. Without one, `DefaultVocabulary`:
+/// `Describe<Q>::symbol`.
+template <Described Q, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] constexpr std::string_view symbol_of(V const& vocabulary = V {}) noexcept
 {
     return vocabulary.template symbol<Q>();
 }

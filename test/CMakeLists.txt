@@ -30,6 +30,7 @@ add_executable(formula-cpp-tests
     error_tests.cpp
     expression_tests.cpp
     rational_tests.cpp
+    rational_literal_tests.cpp
     render_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp
@@ -103,6 +104,7 @@ add_executable(formula-cpp-tests
     wide_int_tests.cpp
     wide_rounding_tests.cpp
     rounded_output_tests.cpp
+    yields_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -288,6 +290,20 @@ formula_add_negative_test(exponent_zero_denominator
     "formula_exponent_denominator_must_not_be_zero")
 formula_add_negative_test(exponent_out_of_range "formula_exponent_out_of_range")
 
+# The `_r` literal is `consteval`, so a spelling it refuses is caught the same
+# way as the exponent sentinels above: by the NAME of the deliberately
+# non-`constexpr` guard, which every compiler quotes, and with no EXPECT_COUNT,
+# because clang and clang-cl report a failed consteval call twice.
+formula_add_negative_test(rational_literal_out_of_range "formula_rational_literal_out_of_range")
+formula_add_negative_test(rational_literal_too_many_places "formula_rational_literal_out_of_range")
+formula_add_negative_test(rational_literal_not_a_decimal "formula_rational_literal_not_a_decimal")
+formula_add_negative_test(rational_literal_octal "formula_rational_literal_not_a_decimal")
+formula_add_negative_test(rational_literal_hex_with_exponent_letter "formula_rational_literal_not_a_decimal")
+formula_add_negative_test(rational_literal_exponent_out_of_range "formula_rational_literal_out_of_range")
+formula_add_negative_test(rational_literal_exponent_above_cap "formula_rational_literal_out_of_range")
+formula_add_negative_test(rational_literal_exponent_just_above_cap "formula_rational_literal_out_of_range")
+formula_add_negative_test(rational_literal_binary "formula_rational_literal_not_a_decimal")
+
 formula_add_negative_test(dimension_mismatch
     "formula: these two dimensions are not the same")
 formula_add_negative_test(dimension_named_base_mismatch
@@ -321,6 +337,15 @@ formula_add_negative_test(unit_dimension_mismatch
 # named base dimensions.
 formula_add_negative_test(unit_currency_mismatch
     "formula: these two units measure different dimensions" EXPECT_COUNT 1)
+
+# A conversion between measured quantities of different dimensions is refused where
+# it is written, with or without a value, and once.
+formula_add_negative_test(measured_convert_dimension_mismatch
+    "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
+formula_add_negative_test(measured_convert_dimension_mismatch_absent
+    "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
+formula_add_negative_test(measured_convert_currency_mismatch
+    "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
 
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately
@@ -425,6 +450,22 @@ formula_add_negative_test(environment_series_length_mismatch
 formula_add_negative_test(measured_series_short
     "this series was given a different number of elements than its length")
 
+# A wrong element in measured_series: another quantity's measurement draws the
+# series' own message (once, and no overload list); a double or a wide
+# unsigned draws Rational's, and the series' message stays silent.
+formula_add_negative_test(measured_series_element_other_quantity
+    "formula: an element of measured_series<Q> is a Measured<Q> of that one quantity" EXPECT_COUNT 1
+    REJECT "no matching" "cannot convert" "could not convert")
+formula_add_negative_test(measured_series_element_bool
+    "formula: an element of measured_series<Q> is a Measured<Q> of that one quantity" EXPECT_COUNT 1
+    REJECT "no matching" "cannot convert" "could not convert")
+formula_add_negative_test(measured_series_element_double
+    "formula: a floating-point value is not an exact rational" EXPECT_COUNT 1
+    REJECT "an element of measured_series<Q>")
+formula_add_negative_test(measured_series_element_wide_unsigned
+    "formula: this unsigned type can hold values above Rational's maximum" EXPECT_COUNT 1
+    REJECT "an element of measured_series<Q>")
+
 # A series where one value is asked for: checked_evaluate, evaluate and
 # variant<Tag>. The REJECTs pin that nothing past the refusal reads the
 # environment, and that variants(...) and method(...) around a refused
@@ -450,6 +491,83 @@ formula_add_negative_test(evaluate_series_result_dimension_mismatch
 # ...~expected()" (3 more errors at 793dda5, 6 more once the series hooks
 # arrived). cl, clang-cl and clang++ give one message either way, so only
 # the gcc legs can see this REJECT fire.
+
+# A formula bound to its result quantity (`yields.hpp`). Each REJECT on the
+# first two pins a verb's gate on Yields::valid: without it, define,
+# checked_evaluate_rejection and explain_rejection each add their own
+# message for the same mistake (measured on clang-cl 22.1.8, 2 errors with
+# any one gate deleted). The gates of checked_evaluate (which evaluate goes
+# through), checked_evaluate_series, explain, checked_explain and
+# explain_series cannot be seen this way -- each forwards to a verb that
+# asks the same RequireResultDimension specialisation, instantiated once, so
+# deleting any one of them left clang-cl 22.1.8's count unchanged -- and no
+# count pins them.
+formula_add_negative_test(yields_result_dimension_mismatch
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1
+    REJECT "formula: this definition's expression measures a different dimension")
+formula_add_negative_test(yields_rejection_result_dimension_mismatch
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1
+    REJECT "formula: this result quantity does not measure what the rejection's determinations measure")
+formula_add_negative_test(yields_relabelled
+    "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(trace_of_result_dimension_mismatch
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(trace_of_yields_relabelled
+    "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
+    REJECT "no matching")
+# Ten verbs, each asked for its own wrong quantity: one refusal each. Each
+# verb gates on names_yields_result, never on RequireYieldsResult's value:
+# with the gate reading that value, clang-cl 22.1.8 compiled both branches
+# of define's gate once the check had failed, and its two returns deduce
+# different types. The last two REJECTs name that error: the first in
+# clang's words, as clang-cl 22.1.8 printed them, the other in g++'s.
+formula_add_negative_test(yields_relabelled_every_verb
+    "formula: this formula names its result quantity with yields" EXPECT_COUNT 10
+    REJECT "no matching" "in return type deduced as" "inconsistent deduction for auto return type")
+formula_add_negative_test(yields_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
+    REJECT "formula: this formula names its result quantity with yields")
+formula_add_negative_test(trace_of_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(trace_of_si_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(yields_series_explain
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 3
+    REJECT "no matching")
+formula_add_negative_test(yields_rejection_evaluate
+    "formula: this is a rejection of outliers, not a single value; evaluate it with checked_evaluate_rejection" EXPECT_COUNT 6
+    REJECT "no matching")
+formula_add_negative_test(yields_retry_evaluate
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry" EXPECT_COUNT 6
+    REJECT "no matching")
+formula_add_negative_test(yields_opaque_call_evaluate
+    "formula: an opaque call is not a value, since an operation may have several outputs" EXPECT_COUNT 6
+    REJECT "no matching")
+formula_add_negative_test(yields_as_operand
+    "formula: a bound formula is not an operand; use its .expression" EXPECT_COUNT 1
+    REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
+formula_add_negative_test(yields_compared
+    "formula: a bound formula is not an operand; use its .expression" EXPECT_COUNT 1
+    REJECT "no matching" "invalid operands" "no match for")
+formula_add_negative_test(yields_not_a_value
+    "formula: this bound formula is not an expression of one value" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(yields_around_yields
+    "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
+    REJECT "no viable conversion" "no matching" "formula: this formula names its result quantity with yields")
+formula_add_negative_test(yields_around_yields_series
+    "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
+    REJECT "no viable conversion" "no matching")
+formula_add_negative_test(yields_around_yields_rejection
+    "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
+    REJECT "no viable conversion" "no matching")
+formula_add_negative_test(yields_define_series
+    "formula: define<Q> takes an expression of one value, and this is a series" EXPECT_COUNT 1
+    REJECT "no matching")
 
 # A braced list std::array would pad with absent elements: every spelling
 # that could reach a std::array parameter, refused because the constructor
@@ -681,6 +799,9 @@ formula_add_negative_test(series_cumulative_of_single_value_as_series
 formula_add_negative_test(series_round_of_single_value
     "rounded_elementwise rounds each element of a series, and this is a single value, not a series"
     REJECT "no matching" "this expression is a series, not a single value")
+formula_add_negative_test(series_round_named_of_single_value
+    "rounded_elementwise rounds each element of a series, and this is a single value, not a series" EXPECT_COUNT 1
+    REJECT "no matching" "this expression is a series, not a single value")
 
 # A per-element rounding with a table of the wrong length, which
 # gates the unit check off, and one with a unit of the wrong dimension.
@@ -690,6 +811,10 @@ formula_add_negative_test(series_round_places_count_mismatch
 formula_add_negative_test(series_round_unit_dimension_mismatch
     "this rounding node names a unit that does not measure the dimension of the expression it rounds"
     REJECT "are not a PlacesTable<N> of one DecimalPlaces per element of its series")
+# A rounding named once as a DecimalRounding, in a unit of another dimension:
+# the rounding node's own refusal, once.
+formula_add_negative_test(decimal_rounding_unit_dimension_mismatch
+    "this rounding node names a unit that does not measure the dimension of the expression it rounds" EXPECT_COUNT 1)
 # Past a refused table nothing indexes or loops over it: evaluated in a
 # constant expression, rendered, documented and traced, a table of the wrong
 # count, and a lone DecimalPlaces, each draw the one message; a table of the
@@ -1033,6 +1158,34 @@ formula_add_negative_test(band_inverted
 formula_add_negative_test(band_zero_width
     "formula: this band is not well-formed"
     REJECT "must be initialized by a constant expression")
+
+# A floating-point key or bound would be truncated by the integer overloads;
+# each form is refused once, by the library's own message.
+formula_add_negative_test(breakpoint_from_floating_point
+    "formula: a breakpoint's key is an exact number" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(breakpoint_pair_from_floating_point
+    "formula: a breakpoint's key is an exact number" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(band_from_floating_point
+    "formula: a band's bounds are exact numbers" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+
+formula_add_negative_test(band_from_floating_point_second
+    "formula: a band's bounds are exact numbers" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(band_from_floating_point_third
+    "formula: a band's bounds are exact numbers" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(band_from_floating_point_fourth
+    "formula: a band's bounds are exact numbers" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(band_from_floating_point_several
+    "formula: a band's bounds are exact numbers" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
+formula_add_negative_test(breakpoint_pair_denominator_from_floating_point
+    "formula: a breakpoint's key is an exact number" EXPECT_COUNT 1
+    REJECT "no matching" "ambiguous")
 
 formula_add_negative_test(lookup_band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"
@@ -1495,7 +1648,9 @@ formula_add_negative_test(overlay_derived_without_citation
 formula_add_negative_test(overlay_replacement_without_citation
     "formula: replace_variant<Tag>(expression) was given no citation")
 formula_add_negative_test(overlay_rounding_without_citation
-    "formula: with_rounding<U, Places, Mode>() was given no citation")
+    "formula: with_rounding<...>() was given no citation")
+formula_add_negative_test(overlay_named_rounding_without_citation
+    "formula: with_rounding<...>() was given no citation")
 formula_add_negative_test(overlay_constraints_without_citation
     "formula: with_constraints(constraints(...)) was given no citation")
 
@@ -2488,7 +2643,7 @@ formula_add_negative_test(retry_as_variant
     "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
     REJECT "no matching" "RequireVariantsAgree" "RequireRoundingRuleMeasuresVariants")
 formula_add_negative_test(retry_in_arithmetic
-    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula" EXPECT_COUNT 1
     REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
 formula_add_negative_test(retry_render_other_quantity
     "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"

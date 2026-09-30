@@ -2,6 +2,7 @@
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/trace.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -168,6 +169,18 @@ TEST_CASE("a two-parameter extension-point node also works as the root of an exp
     auto const measurement = outcome.measurement();
     REQUIRE(measurement.stored().has_value());
     CHECK(*measurement.stored() == formula::Rational { 7 });
+}
+
+TEST_CASE("trace_of_si traces a two-parameter extension-point node at the root, as checked_evaluate does", "[sink][trace]")
+{
+    // trace_of_si evaluates through detail::dispatch, as checked_evaluate
+    // does, so a consumer's node that only learned two parameters is found at
+    // the root as well as nested. Called with the recording sink directly,
+    // the root would have no overload to match. The node reports nothing, so
+    // it records no step of its own; the sum around it records the two that
+    // do.
+    CHECK(formula::trace_of_si(LegacyNode {}, environmentOf(5, 1)).empty());
+    CHECK(formula::trace_of_si(LegacyNode {} + var<Mass>, environmentOf(5, 1)).steps.size() == 2);
 }
 
 // ---------------------------------------------------------------------------

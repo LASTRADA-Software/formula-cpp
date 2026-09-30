@@ -33,16 +33,24 @@ the check skips. No code block on this page carries one.
 ## A method: variants, tags, and one rounding rule
 
 A method is built from three parts, always in this order: the variants, the
-rounding rule, and the constraints.
+rounding rule, and the constraints. The rounding rule is named once, as a
+`DecimalRounding`: a unit, how many decimal places of it to keep, and which way
+to break ties.
+
+```cpp
+inline constexpr formula::DecimalRounding tenthMpa { unit::Megapascal,
+                                                     formula::DecimalPlaces { 1 },
+                                                     formula::RoundingMode::HalfAwayFromZero };
+```
 
 ```cpp
 inline constexpr auto compressiveStrength = formula::method(
     formula::variants(formula::variant<Prism>(var<Force> / (var<EdgeA> * var<EdgeA>)),
                       formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeA> * var<EdgeB>)),
-                      formula::variant<Cylinder>(formula::constant<unit::One>(rat(4)) * var<Force>
+                      formula::variant<Cylinder>(formula::constant<unit::One>(4) * var<Force>
                                                  / (formula::pi * formula::pow<2>(var<Diameter>)))),
-    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(473, 10)),
+    formula::rounding_rule<tenthMpa>(),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(47.3_r),
                                              formula::Verdict { "the load at failure is below 47.3 kN" })));
 ```
 
@@ -63,8 +71,12 @@ inline constexpr auto compressiveStrength = formula::method(
 never deduced: which variant applies is a property of the specimen, and the
 caller says what the specimen is.
 
+The example calls `explain_method<Tag>`, which is `evaluate_method<Tag>` with a
+recording sink. It returns what `evaluate_method` returned in `outcome`, and
+the derivation in `trace`, from one evaluation:
+
 ```cpp
-auto const cube = formula::evaluate_method<Cube>(compressiveStrength, specimen);
+auto const cube = formula::explain_method<Cube>(compressiveStrength, specimen);
 ```
 
 ```text
@@ -247,7 +259,7 @@ static assertion failed: formula: pin_variant<Tag>() was given no citation; whic
 
 ```cpp
 inline constexpr auto north =
-    formula::overlay(formula::with_constant<ShapeFactor>(rat(863, 1000), northConstant),
+    formula::overlay(formula::with_constant<ShapeFactor>(0.863_r, northConstant),
                      formula::with_rounding<unit::NewtonPerSquareMillimetre,
                                             formula::DecimalPlaces { 2 },
                                             formula::RoundingMode::HalfAwayFromZero>(northRounding));
@@ -291,7 +303,7 @@ measurements](quantities.md)), so a number can never disagree with its label.
 ```cpp
 inline constexpr auto south = formula::overlay(
     formula::replace_variant<Cylinder>(
-        var<Force> / (formula::constant<unit::One>(rat(1127, 1000)) * formula::pow<2>(var<Diameter>)), southReplacement),
+        var<Force> / (formula::constant<unit::One>(1.127_r) * formula::pow<2>(var<Diameter>)), southReplacement),
     formula::add_derived<ShapeFactor>(var<EdgeB> / var<EdgeA>, southDefinition),
     formula::prune_variant<Prism>(southScope));
 ```
@@ -501,9 +513,9 @@ replaces it with two checks of its own:
 
 ```cpp
 inline constexpr auto west = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(973, 10)),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(97.3_r),
                                              formula::Verdict { "the load at failure is below 97.3 kN" }),
-                         formula::constraint(var<EdgeA> <= formula::number(rat(173, 100)) * var<EdgeB>,
+                         formula::constraint(var<EdgeA> <= formula::number(1.73_r) * var<EdgeB>,
                                              formula::Verdict { "the loaded face is more than 1.73 times as long as wide" })),
     westAcceptance));
 ```
@@ -514,9 +526,13 @@ it. It never stops at the first failure, for the reason [Constraints and
 verdicts](constraints.md) gives:
 
 ```cpp
-auto const baseOutcomes = formula::check_method(compressiveStrength, specimen);
-auto const westOutcomes = formula::check_method(western, specimen);
+auto const baseCheck = formula::explain_check_method(compressiveStrength, specimen);
+auto const westCheck = formula::explain_check_method(western, specimen);
 ```
+
+`explain_check_method` is `check_method` with a recording sink: it returns the
+outcomes in `outcome` and the derivation in `trace`, from one run. Here are the
+outcomes:
 
 ```text
 base: 1 constraint(s)
@@ -656,7 +672,7 @@ Two limits, stated here so that nobody mistakes them for supported cases:
 /// A later revision of the west's annex, applied on top of the west's method:
 /// its one constraint is all the stacked method checks.
 inline constexpr auto westRevised = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(831, 10)),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(83.1_r),
                                              formula::Verdict { "the load at failure is below 83.1 kN" })),
     westRevision));
 
@@ -744,12 +760,11 @@ the southern page's symbol table:
 ```
 
 The symbol moves and the meaning stays: in the south, `b` is the first loaded
-edge. A trace records symbols **when the method is evaluated**, so the sink
-must be given the same vocabulary as the page:
+edge. A trace records symbols **when the method is evaluated**, so the trace
+must be recorded with the same vocabulary as the page:
 
 ```cpp
-formula::Trace<> trace {};
-(void) formula::evaluate_method<Cube>(compressiveStrength, specimen, formula::RecordingSink { trace, southernWords });
+auto const southernRun = formula::explain_method<Cube>(compressiveStrength, specimen, southernWords);
 ```
 
 ```text

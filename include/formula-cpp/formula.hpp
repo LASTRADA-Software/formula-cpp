@@ -57,3 +57,4 @@
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>

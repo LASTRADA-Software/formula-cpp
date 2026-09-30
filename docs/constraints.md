@@ -34,12 +34,11 @@ that must hold, not as the failure -- so the declaration reads the way the
 standard reads:
 
 ```cpp
-constexpr auto minimumStrength =
-    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
-                        formula::Verdict { "reject the specimen" },
-                        formula::Citation { .title = "Minimum compressive strength",
-                                            .reference = "Example Standard 7:2020",
-                                            .section = "5.1" });
+constexpr auto minimumStrength = formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(27.3_r),
+                                                     formula::Verdict { "reject the specimen" },
+                                                     formula::Citation { .title = "Minimum compressive strength",
+                                                                         .reference = "Example Standard 7:2020",
+                                                                         .section = "5.1" });
 ```
 
 There is deliberately no separate verdict for success: a satisfied
@@ -77,9 +76,22 @@ strength was measured at 45 MPa, one at 20 MPa, and one where strength was
 never measured at all:
 
 ```cpp
-constexpr auto satisfied = formula::check(minimumStrength, strengthOf(45));
-constexpr auto violated = formula::check(minimumStrength, strengthOf(20));
-constexpr auto notChecked = formula::check(minimumStrength, nothingMeasured());
+constexpr auto satisfied = formula::check(minimumStrength, strength45);
+constexpr auto violated = formula::check(minimumStrength, strength20);
+constexpr auto notChecked = formula::check(minimumStrength, nothingMeasured);
+```
+
+where the environments are plain constants -- the last one names both
+quantities and measures neither:
+
+```cpp
+constexpr auto strength45 = formula::environment(formula::Measured<Strength> { 45 });
+constexpr auto strength20 = formula::environment(formula::Measured<Strength> { 20 });
+constexpr auto strength0 = formula::environment(formula::Measured<Strength> { 0 });
+
+// Neither quantity measured -- the case this whole example exists to show.
+constexpr auto nothingMeasured =
+    formula::environment(formula::Measured<Strength>::absent(), formula::Measured<Diameter>::absent());
 ```
 
 which report:
@@ -126,8 +138,7 @@ error instead of ever comparing anything:
 
 ```cpp
 constexpr auto dividesByZero =
-    formula::constraint((var<Strength> / formula::number(formula::Rational { 0 }))
-                             > formula::constant<unit::Megapascal>(formula::Rational { 1 }),
+    formula::constraint((var<Strength> / formula::number(0)) > formula::constant<unit::Megapascal>(1),
                         formula::Verdict { "specimen result is unusable" });
 ```
 
@@ -150,8 +161,8 @@ A constraint renders as its rule alone, `require <lhs> <comparison> <rhs>`,
 never its verdict:
 
 ```cpp
-std::printf("rendered: %s\n", formula::render(minimumStrength).c_str());
-std::printf("rendered (LaTeX): %s\n", formula::render<formula::Dialect::LaTeX>(minimumStrength).c_str());
+std::println("rendered: {}", formula::render(minimumStrength));
+std::println("rendered (LaTeX): {}", formula::render<formula::Dialect::LaTeX>(minimumStrength));
 ```
 
 ```
@@ -178,21 +189,10 @@ for `Node`, so a constraint documents exactly the way a formula does:
 ```cpp
 formula::Documentation const documentation = formula::document(minimumStrength);
 formula::Citation const& citation = documentation.citations.front();
-std::printf("documented: %s\n", documentation.formula.c_str());
-std::printf("cited: %.*s, %.*s, %.*s\n",
-            static_cast<int>(citation.title.size()),
-            citation.title.data(),
-            static_cast<int>(citation.reference.size()),
-            citation.reference.data(),
-            static_cast<int>(citation.section.size()),
-            citation.section.data());
+std::println("documented: {}", documentation.formula);
+std::println("cited: {}, {}, {}", citation.title, citation.reference, citation.section);
 for (formula::SymbolEntry const& entry: documentation.symbols)
-    std::printf("symbol: %.*s = %.*s [%s]\n",
-                static_cast<int>(entry.symbol.size()),
-                entry.symbol.data(),
-                static_cast<int>(entry.description.size()),
-                entry.description.data(),
-                std::string { formula::view(entry.unit.symbolText) }.c_str());
+    std::println("symbol: {} = {} [{}]", entry.symbol, entry.description, entry.unit);
 ```
 
 ```
@@ -216,18 +216,18 @@ rendering above, with a bracketed suffix naming what checking it concluded --
 present for every one of the four outcomes, because nothing else in the
 line carries that distinction:
 
+`formula::explain_check(constraint, environment)` is `check()` with a recording
+sink: it returns the outcome and the trace it recorded. The example renders the
+trace once per outcome above:
+
 ```cpp
-template <typename P, typename Env>
-[[nodiscard]] std::string tracedCheck(formula::Constraint<P> const& subject, Env const& environment)
-{
-    formula::Trace<> trace {};
-    formula::RecordingSink<> sink { trace };
-    [[maybe_unused]] auto const outcome = formula::check(subject, environment, sink);
-    return formula::render_trace(trace, { .maxSteps = 5 });
-}
+std::print("{}", formula::render_trace(formula::explain_check(minimumStrength, strength45).trace, { .maxSteps = 5 }));
+std::print("{}", formula::render_trace(formula::explain_check(minimumStrength, strength20).trace, { .maxSteps = 5 }));
+std::print("{}", formula::render_trace(formula::explain_check(minimumStrength, nothingMeasured).trace, { .maxSteps = 5 }));
+std::print("{}", formula::render_trace(formula::explain_check(dividesByZero, strength0).trace, { .maxSteps = 5 }));
 ```
 
-Called once per outcome above, this prints:
+which prints:
 
 ```
 1. f = 45 MPa
@@ -280,14 +280,21 @@ Alongside `minimumStrength`, a second, independent constraint over a
 different quantity:
 
 ```cpp
-constexpr auto maximumDiameter =
-    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 139 }),
-                        formula::Verdict { "specimen exceeds diameter tolerance" });
+constexpr auto maximumDiameter = formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(139),
+                                                     formula::Verdict { "specimen exceeds diameter tolerance" });
 ```
 
 ```cpp
 constexpr auto setOutcomes =
-    formula::check_all(formula::constraints(minimumStrength, maximumDiameter), strengthOnly(20));
+    formula::check_all(formula::constraints(minimumStrength, maximumDiameter), strength20Only);
+```
+
+with `strength20Only` an environment that measures the strength and leaves the
+diameter unmeasured:
+
+```cpp
+constexpr auto strength20Only =
+    formula::environment(formula::Measured<Strength> { 20 }, formula::Measured<Diameter>::absent());
 ```
 
 Here strength (20 MPa) violates `minimumStrength`, and diameter was never

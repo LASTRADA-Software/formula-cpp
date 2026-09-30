@@ -1267,6 +1267,10 @@ TEST_CASE("document: RenderOptions writes every number the page states in its st
     formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(
         var<Strength> * rat(863, 1000), formula::DefaultVocabulary {}, exactDecimals);
     CHECK(latex.formula == "f \\cdot 0.863");
+    // Without a vocabulary, which is the default one.
+    CHECK(formula::document(var<Strength> * rat(863, 1000), exactDecimals).formula == "f * 0.863");
+    CHECK(formula::document<formula::Dialect::LaTeX>(var<Strength> * rat(863, 1000), exactDecimals).formula
+          == "f \\cdot 0.863");
 
     // A derived quantity's derivation.
     formula::Documentation const derivedPage = formula::document(sizedStrength);

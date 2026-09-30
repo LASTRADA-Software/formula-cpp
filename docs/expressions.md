@@ -116,7 +116,8 @@ comment rather than as compiled code, since it must not fail the build:
 //
 //     constexpr auto broken = formula::var<Diameter> + formula::var<Area>;
 //
-// Uncommenting the line above does not compile.
+// Uncommenting the line above does not compile. See docs/expressions.md for
+// the exact diagnostic text a real build prints for this mistake.
 ```
 
 Multiplication and division impose nothing on the operands' dimensions -- a
@@ -163,11 +164,11 @@ which gives, verbatim but for the paths, shown relative to the repository,
 on MSVC's `cl.exe` (19.51, `cl-debug` preset):
 
 ```
-include\formula-cpp/environment.hpp(439): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
-include\formula-cpp/environment.hpp(439): note: the template instantiation context (the oldest one first) is
+include\formula-cpp/environment.hpp(486): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
+include\formula-cpp/environment.hpp(486): note: the template instantiation context (the oldest one first) is
 test\negative\quantity_alias_environment_missing.cpp(15): note: see reference to function template instantiation 'formula::Measured<Ratio> formula::Environment<formula::Measured<WaterVolume>>::get<Ratio>(void) noexcept const' being compiled
 test\negative\quantity_alias_environment_missing.cpp(15): note: see the first reference to 'formula::Environment<formula::Measured<WaterVolume>>::get' in 'main'
-include\formula-cpp/environment.hpp(584): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
+include\formula-cpp/environment.hpp(631): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
 ```
 
 The prototype this layer replaced answered a missing input with a runtime
@@ -243,12 +244,58 @@ quantity being evaluated, `checked_evaluate` returns that value with
 `ValueSource::ManuallyEntered` **without evaluating the formula at all** --
 proven in `test/evaluate_tests.cpp` by an override whose formula would
 divide by zero: the override still wins, because the formula is never
-reached. `examples/expressions.cpp` overrides a computed ratio and prints
-both the value and the fact that it was entered:
+reached. `examples/expressions.cpp` overrides a computed ratio -- the
+environment `batch` holds the two volumes and a ratio a person entered, 0.5
+(`0.5_r`, an exact decimal, from `using namespace formula::literals;`) -- and
+prints both the value and where it came from:
+
+```cpp
+auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                        formula::Measured<CementVolume> { 300 },
+                                        formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
+auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
+if (!ratio)
+{
+    std::println("water/cement ratio: {}", ratio.error());
+    return 1;
+}
+std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
+```
 
 ```
-w/c = 0.500000 (entered)
+w/c = 0.5 (manually entered)
 ```
+
+`waterCementRatio` names its result quantity where it is declared, so the call
+names none ([Naming the result once](#naming-the-result-once)). The
+`std::expected` is checked before `*ratio` or `ratio->` reads it:
+dereferencing one that holds an error is undefined behaviour, and
+`ratio.error()` says in words what failed. A result computed at compile time is checked the same way by a
+`static_assert(area.has_value())`, as the example does for its area. `{}` of
+an `Outcome` writes its number in its quantity's unit (a ratio has no symbol),
+and `{}` of a `ValueSource` its words; see [Displaying numbers](display.md).
+
+## Reading a result
+
+Most of the time a caller wants only the number, and needs to know that there
+may be none. `formula::number_of(x)` returns a `std::optional<Rational>`: the
+number `x` holds, or nothing. It reads a `Measured<Q>`, an `Outcome<Q>`, the
+`std::expected` that `checked_evaluate` returns, an `Evaluated<Rational>`, a
+`RetryOutcome` and a `RejectionOutcome`. `examples/expressions.cpp` checks the
+`ratio` above with it:
+
+```cpp
+bool const overrideWinsOutright = ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
+```
+
+It is an `optional` and not a zero because zero is a measurement: a specimen
+that weighed nothing and a specimen never weighed are different results.
+`optional == Rational` is false when the optional is empty, so
+`number_of(ratio) == 0.5_r` is a complete check on its own -- an absent
+number, an error and a verdict all compare unequal to every number. The
+`ratio->` in front is safe because `ratio` was checked above. `number_of`
+says nothing about *why* there is no number; ask `Outcome::kind()` or the
+error for that.
 
 ## Choosing a representation
 
@@ -310,21 +357,24 @@ produce a fractional exponent -- exactly why `Dimension`'s exponents are
 rational rather than integer (see [`docs/dimensions.md`](dimensions.md)).
 `examples/expressions.cpp` computes a circular area from a constant (`pi`)
 and a power (`d^2`), with the result declared in a different unit
-(`SquareMetre`) from the input (`Millimetre`):
+(`SquareMetre`) from the input (`Millimetre`). A bare number in a formula,
+the `4` here, is a dimensionless coefficient:
 
 ```cpp
-constexpr auto circularArea = formula::pi * formula::pow<2>(var<Diameter>) / formula::Rational { 4 };
+constexpr auto circularArea = formula::yields<Area>(formula::pi * formula::pow<2>(var<Diameter>) / 4);
 ```
 
 ```
-circular area of a 103 mm diameter = 0.008332 m2 (computed)
+circular area of a 103 mm diameter = ≈0.008332 m2 (derived)
 ```
 
 `formula::Pi` is a documented rational convergent -- `245850922/78256779`,
 which differs from pi by less than 8e-17 -- and is deliberately **not** pi
 itself: it is the one approximation the exact layer makes on purpose, written
 once so every caller gets the same number and the trace states which number
-it was.
+it was. The area is exact over that fraction, and has no short decimal, so
+the example prints it rounded to six places, which `≈` marks:
+`{:~.6HalfAwayFromZero}` ([Displaying numbers](display.md)).
 
 `checked_exact_nth_root` answers only when the root **is** a rational number.
 The root of 4 is 2 and the root of 9/4 is 3/2, but the root of 2 is
@@ -517,14 +567,17 @@ constexpr auto waterCementRatio =
 // The second formula uses the first by name. Nothing about the first
 // declaration anticipated being reused.
 constexpr auto mixCost =
-    formula::documented(var<UnitPrice> * waterCementRatio,
-                        { .title = "Cost of a mix at a given water/cement ratio", ... });
+    formula::yields<MixCost>(formula::documented(var<UnitPrice> * waterCementRatio,
+                                                 { .title = "Cost of a mix at a given water/cement ratio", ... }));
 ```
 
 There is no separate composition step and no wrapper type. The outer formula
 is simply a larger expression tree, so the dimension check, evaluation,
 rendering, tracing and `document()` all treat the reused sub-tree the way
-they treat any other node.
+they treat any other node. Only the outer formula names its result with
+`yields`, because only it is evaluated: a formula bound to its result is the
+top of a formula, not an operand of one
+([Naming the result once](#naming-the-result-once)).
 
 **Provenance travels upward through the seam.** The outer formula was never
 told about the inner one's citation, but `document()` walks the whole tree
@@ -573,3 +626,75 @@ remembers it. When the named parts are values in their own right -- a bill or
 a report of many values, each built on the ones before -- define each once
 instead, and let a worksheet calculate each once and recalculate only what a
 change reaches: [Calculations and worksheets](calculations.md).
+
+## Naming the result once
+
+`checked_evaluate<Q>` is told its result quantity at every call, and never
+works it out, because an expression's dimension does not name a quantity. A
+volume over a volume is *a* ratio; whether it is the water/cement ratio or an
+air content is the author's decision, and a library that picked one would
+sooner or later label a number with another quantity's symbol and
+description. `formula::yields<Q>` keeps that rule. Nothing is deduced: the
+author still names the quantity, but once, where the formula is written,
+instead of at every call:
+
+```cpp
+constexpr auto boundRatio = formula::yields<Ratio>(var<WaterVolume> / var<CementVolume>);
+
+auto const evaluated = formula::evaluate(boundRatio, batch);    // an Outcome<Ratio>
+auto const explained = formula::explain(boundRatio, batch);     // its outcome and its trace
+std::string const written = formula::render(boundRatio);        // "V_w / V_c"
+constexpr auto definition = formula::define(boundRatio);        // Ratio, defined by the formula
+```
+
+`examples/expressions.cpp` binds its circular area and its water/cement ratio
+this way, and `examples/composition.cpp` its mix cost.
+
+The name is checked where it is written. `yields<Q>` holds `Q` to the
+dimension the expression computes, as `checked_evaluate<Q>` does, and refuses
+a quantity of another dimension with the same message: *this result quantity
+does not measure the dimension this expression computes*. A verb handed the
+refused formula adds nothing to it.
+
+`evaluate`, `checked_evaluate`, `checked_evaluate_series`,
+`checked_evaluate_rejection`, `explain`, `checked_explain`, `explain_series`,
+`explain_rejection` and `define` each take a bound formula, and return what
+they return for the formula it holds and the quantity it names. `render` and
+`document` take one too, and write the formula it holds: they name no result.
+Naming the quantity again at a call is allowed when it is the same one --
+
+```cpp
+auto const again = formula::checked_evaluate<Ratio>(boundRatio, batch);
+```
+
+-- and refused when it is another, even one of the same dimension: *this
+formula names its result quantity with yields; evaluate it for that
+quantity, or name none*. Two dimensionless quantities are exactly the case
+this is for, since their dimensions agree and nothing else would notice.
+
+**`documented()` goes inside.** A bound formula is not a node: it is the top
+of a formula, not a part of one. So it wraps a documented formula, whose
+citation stays with the formula, and not the other way round:
+
+```cpp
+constexpr auto citedRatio = formula::yields<Ratio>(formula::documented(
+    var<WaterVolume> / var<CementVolume>, { .title = "Water/cement ratio", .reference = "Example Standard 1:2020" }));
+```
+
+`documented(yields<Ratio>(...), ...)` does not compile, because `documented`
+takes a node. Nor does a bound formula go inside another bound formula:
+`yields<Ratio>(boundRatio)` is refused where it is written, even for the same
+quantity -- *this formula is bound to its result quantity already; bind the
+formula it holds (.expression), or use it as it is*.
+
+**Reuse goes through `.expression`.** For the same reason, a bound formula is
+not an operand of another formula, nor a side of a comparison; either use is
+refused with *a bound formula is not an operand; use its .expression*. The formula it holds is an operand, as any formula is
+([Composing a formula from other formulas](#composing-a-formula-from-other-formulas)).
+Here `MixWater` and `MixCement` are volumes in litres, as `WaterVolume` and
+`CementVolume` are:
+
+```cpp
+// The water a mix of another cement content needs at the same ratio.
+constexpr auto mixWater = formula::yields<MixWater>(var<MixCement> * boundRatio.expression);
+```

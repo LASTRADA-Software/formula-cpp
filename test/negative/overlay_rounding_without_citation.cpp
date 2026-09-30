@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: with_rounding<U, Places, Mode>() was given no citation
+// EXPECT: formula: with_rounding<...>() was given no citation
 //
 // A rounding rule an overlay states with no citation. The trace exists to say why
 // a number is what it is, and "by jurisdiction overlay" with no citation says

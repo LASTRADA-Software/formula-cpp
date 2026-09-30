@@ -335,6 +335,40 @@ TEST_CASE("a method applies its own rounding rule to the variant it selects", "[
     STATIC_REQUIRE(notATie->value() == formula::Rational { 6'000'000 });
 }
 
+TEST_CASE("explain_method: the method's value and the trace a RecordingSink records", "[method][trace]")
+{
+    constexpr auto methodGiven = formula::method(
+        formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                          formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
+        formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    // Cylinder squares EdgeX, Cube multiplies EdgeX by EdgeY: 6.1 MPa and 0.6 MPa
+    // on this specimen, so a twin evaluating the other tag has another value and
+    // another trace.
+    auto const specimenGiven = specimen(60'500, 100, 999);
+
+    formula::Trace<> handBuilt {};
+    formula::Evaluated<formula::Rational> const direct =
+        formula::evaluate_method<Cylinder>(methodGiven, specimenGiven, formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_method<Cylinder>(methodGiven, specimenGiven);
+    CHECK(explained.outcome == direct);
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->value() == formula::Rational { 6'100'000 });
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+
+    auto const otherTag = formula::explain_method<Cube>(methodGiven, specimenGiven);
+    CHECK(otherTag.outcome != direct);
+    CHECK(formula::render_trace(otherTag.trace, { .maxSteps = 100 })
+          != formula::render_trace(explained.trace, { .maxSteps = 100 }));
+
+    // The vocabulary is the one the trace is written in.
+    auto const renamed = formula::explain_method<Cylinder>(
+        methodGiven, specimenGiven, formula::vocabulary(formula::renames<Force>("F_max")));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).find("F_max") != std::string::npos);
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }).find("F_max") == std::string::npos);
+}
+
 TEST_CASE("a sink is told whose constraints they are around the checks, or not at all", "[method][constraint]")
 {
     // Both of the pair: told once before the verdicts and once after, and
@@ -414,6 +448,38 @@ TEST_CASE("a precision check joins a method's constraints and is checked by chec
     CHECK(trace.steps[acceptance.operands[0]].kind == formula::StepKind::Constraint);
 }
 
+TEST_CASE("explain_check_method: the constraints' verdicts and the trace a RecordingSink records", "[method][trace]")
+{
+    // 1/50 satisfies the precision check and 1/60 violates it, so the verdicts
+    // and the steps both differ between the two.
+    formula::Trace<> handBuilt {};
+    auto const direct = formula::check_method(pairMethod, pairInputs(ratio(1, 60)), formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 60)));
+    CHECK(explained.outcome == direct);
+    REQUIRE(explained.outcome.size() == 1);
+    CHECK(explained.outcome[0].is_violated());
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+    CHECK(explained.trace.steps.back().kind == formula::StepKind::AcceptanceChecked);
+
+    auto const satisfied = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 50)));
+    CHECK(satisfied.outcome[0].is_satisfied());
+    CHECK(formula::render_trace(satisfied.trace, { .maxSteps = 100 })
+          != formula::render_trace(explained.trace, { .maxSteps = 100 }));
+}
+
+TEST_CASE("explain_check_method writes its trace in the vocabulary it is given", "[method][trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<FirstMass>("m_1"));
+    formula::Trace<> handBuilt {};
+    (void) formula::check_method(pairMethod, pairInputs(ratio(1, 50)), formula::RecordingSink { handBuilt, south });
+    auto const renamed = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 50)), south);
+    auto const plain = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 50)));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).find("m_1 = 40 g") != std::string::npos);
+    CHECK(formula::render_trace(plain.trace, { .maxSteps = 100 }).find("m_1") == std::string::npos);
+}
+
 TEST_CASE("with_constant reaches a coefficient inside a precision limit's limit expression", "[method][precision][overlay]")
 {
     // A jurisdiction fixes k_r at 1/60. The environment holds no k_r at all,
@@ -452,4 +518,16 @@ TEST_CASE("a vocabulary renames the results in a precision check on every surfac
     CHECK(text.starts_with("1. m_1 = 40 g\n2. m_2 = 8181/200 g\n"));
     CHECK(text.find("level = 16181/400 g [bound by #") != std::string::npos);
     CHECK(text.find("x_A") == std::string::npos);
+}
+
+TEST_CASE("DecimalRounding: the same rounding rule as the three arguments it names", "[method]")
+{
+    constexpr formula::DecimalRounding tenthMpa { unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero };
+    using ByValue = decltype(formula::rounding_rule<tenthMpa>());
+    using ByTriple = decltype(formula::rounding_rule<unit::Megapascal,
+                                                     formula::DecimalPlaces { 1 },
+                                                     formula::RoundingMode::HalfAwayFromZero>());
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+    constexpr formula::DecimalRounding hundredthMpa { unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero };
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::rounding_rule<hundredthMpa>()), ByValue>);
 }

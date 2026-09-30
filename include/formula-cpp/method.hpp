@@ -1138,6 +1138,13 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
     return {};
 }
 
+/// The rounding rule @p R names: `rounding_rule<tenthMpa>()`.
+template <DecimalRounding R>
+[[nodiscard]] constexpr RoundingRule<R.unit, R.places, R.mode> rounding_rule() noexcept
+{
+    return {};
+}
+
 /// Whose constraints a method checks: its own, or a jurisdiction's that
 /// replaced them. Recorded for the reason `RoundingProvenance` is: a verdict
 /// saying only that a specimen was rejected is true whether the method's

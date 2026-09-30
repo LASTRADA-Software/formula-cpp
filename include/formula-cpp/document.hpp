@@ -29,6 +29,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -544,6 +545,12 @@ namespace detail
 
     template <Vocabulary V, typename Operand>
     void collect(Walk<V>& walk, RefusedSeriesScope<Operand> const& node);
+
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>& walk, RefusedRetryValue<Dim> const& node);
+
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>& walk, RefusedBoundValue<Dim> const& node);
 
     template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
     void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node);
@@ -1216,6 +1223,21 @@ namespace detail
     {
     }
 
+    /// A refused retry in arithmetic or a comparison names nothing, as a
+    /// refused series names nothing: it only keeps `document` from adding a
+    /// second error to the refusal that produced it.
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>&, RefusedRetryValue<Dim> const&)
+    {
+    }
+
+    /// A refused bound formula used as an operand names nothing, as a refused
+    /// retry names nothing.
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>&, RefusedBoundValue<Dim> const&)
+    {
+    }
+
     /// An opaque output lists its call -- once per call, however many of its
     /// outputs are used: one call is one call type with one citation -- and
     /// walks the call's inputs, which name its variables.
@@ -1576,6 +1598,17 @@ template <Dialect D = Dialect::Plain, typename... Ds>
 {
     return document<D>(node, DefaultVocabulary {});
 }
+
+/// Documents the formula @p boundFormula holds (`yields.hpp`) as
+/// `document<D>(boundFormula.expression, vocabulary)` does: the same page,
+/// every symbol as @p vocabulary says. The result quantity is not added to
+/// it -- rendering names no result.
+template <Dialect D = Dialect::Plain, Described Q, typename E, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Documentation document(Yields<Q, E> const& boundFormula, V const& vocabulary = V {})
+{
+    return document<D>(boundFormula.expression, vocabulary);
+}
+
 /// Documents @p node as `document<D>(node, vocabulary)` does, with every
 /// number the page writes -- in the formula's text, a derived quantity's
 /// derivation and a criterion's limit -- written as @p renderOptions says
@@ -1587,6 +1620,16 @@ template <Dialect D = Dialect::Plain, typename X, Vocabulary V>
 [[nodiscard]] Documentation document(X const& node, V const& vocabulary, RenderOptions renderOptions)
 {
     return document<D>(node, detail::styled(vocabulary, renderOptions.numbers));
+}
+
+/// Documents @p node as `document<D>(node, DefaultVocabulary {}, renderOptions)`
+/// does: every symbol as `Describe<Q>::symbol` says and every number as
+/// @p renderOptions says, without naming a vocabulary that renames nothing.
+template <Dialect D = Dialect::Plain, typename X>
+    requires requires(X const& written, DefaultVocabulary const& byDefault) { document<D>(written, byDefault); }
+[[nodiscard]] Documentation document(X const& node, RenderOptions renderOptions)
+{
+    return document<D>(node, DefaultVocabulary {}, renderOptions);
 }
 
 } // namespace formula
