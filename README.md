@@ -316,7 +316,7 @@ Each guide has a matching runnable program under `examples/`.
 
 ## Status
 
-0.2.0 is the latest release ([CHANGELOG](CHANGELOG.md)). Usable for what is listed as shipped,
+0.3.0 is the latest release ([CHANGELOG](CHANGELOG.md)). Usable for what is listed as shipped,
 and still growing. The public API may change until 1.0.
 
 | Area | State |
@@ -342,6 +342,7 @@ and still growing. The public API may change until 1.0.
 | Named base dimensions such as money | shipped |
 | Decimals in traces, rendered formulas and `std::format` | shipped |
 | Calculations: definitions, dependency graph, incremental worksheets | shipped |
+| Short spellings: exact decimal literals, bound formulas, number_of, trace_of, std::format of results | shipped |
 
 ## Requirements
 
