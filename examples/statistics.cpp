@@ -24,35 +24,21 @@
 // No critical value here comes from any published table.
 
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
 #include <array>
-#include <cstddef>
-#include <cstdint>
-#include <cstdio>
-#include <string>
+#include <print>
 
 namespace
 {
 namespace unit = formula::unit;
 using formula::Rational;
 using formula::var;
-
-[[nodiscard]] constexpr Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
-{
-    return Rational { numerator, denominator };
-}
-
-/// @p value as `formula::fraction_text` spells it -- `numerator/denominator`,
-/// or the whole number -- in a `std::string`, for `printf`.
-[[nodiscard]] std::string fraction_string(Rational value)
-{
-    formula::NumberText const spelled = formula::fraction_text(value);
-    return std::string { spelled.view() };
-}
+using namespace formula::literals;
 
 // ---- Quantities -------------------------------------------------------------------
 using Mass = formula::Quantity<struct MassTag, "m", "mass of a determination", unit::Gram>;
@@ -73,21 +59,19 @@ using MassVariance = formula::Quantity<struct MassVarianceTag, "s2", "variance o
 // Six determinations of one mass: 40.2, 39.8, 40.5, 44.0, 40.0 and 43.3 g. A
 // method that fixes how many determinations it takes reads them as a series.
 inline constexpr auto sixMasses =
-    formula::environment(formula::measured_series<Mass>(formula::Measured<Mass> { rat(402, 10) },
-                                                        formula::Measured<Mass> { rat(398, 10) },
-                                                        formula::Measured<Mass> { rat(405, 10) },
-                                                        formula::Measured<Mass> { rat(44) },
-                                                        formula::Measured<Mass> { rat(40) },
-                                                        formula::Measured<Mass> { rat(433, 10) }));
+    formula::environment(formula::measured_series<Mass>(40.2_r, 39.8_r, 40.5_r, 44, 40, 43.3_r));
 
 inline constexpr auto determinations = formula::series<Mass, 6>;
-inline constexpr auto mean = formula::sample_mean(determinations);
+inline constexpr auto mean = formula::yields<Mass>(formula::sample_mean(determinations));
 inline constexpr auto count = formula::sample_count(determinations);
 inline constexpr auto variance = formula::sample_variance(determinations);
 inline constexpr auto range = formula::sample_range(determinations);
+/// The spread is reported to 2 dp of g.
+inline constexpr formula::DecimalRounding spreadRounding { unit::Gram,
+                                                           formula::DecimalPlaces { 2 },
+                                                           formula::RoundingMode::HalfAwayFromZero };
 /// The spread reported exactly: the variance's square root, rounded to 2 dp of g.
-inline constexpr auto spread =
-    formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(variance);
+inline constexpr auto spread = formula::rounded_sqrt<spreadRounding>(variance);
 
 // ---- 2. Rejecting outliers ---------------------------------------------------------
 inline constexpr formula::Verdict repeatTest { "discard the determinations and repeat the test" };
@@ -95,50 +79,47 @@ inline constexpr formula::Citation rejectionRule { .title = "Outliers",
                                                    .reference = "Example Standard 5:2022",
                                                    .section = "7.4" };
 
-/// A determination more than 6 % of the pass's mean from it is an outlier.
+/// The method's rejection of @p criterion's outliers from @p sample: the most
+/// extreme of each pass, a determination on the limit kept, at most `Rejected`
+/// in all and at least `Kept` left -- and, when that cannot be kept, the
+/// author's verdict and citation.
 // Kept out of clang-format's hands: docs/statistics.md quotes it verbatim.
 // clang-format off
-inline constexpr auto sixPercent = formula::deviation_from_mean(rat(6, 100) * formula::pass_mean<Mass>);
-
-inline constexpr auto withoutOutliers =
-    formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<4>>(
-        determinations, sixPercent, repeatTest, rejectionRule);
+template <typename Rejected, typename Kept, typename Sample, typename Criterion>
+[[nodiscard]] constexpr auto rejecting(Sample sample, Criterion criterion)
+{
+    return formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, Rejected, Kept>(
+        sample, criterion, repeatTest, rejectionRule);
+}
 // clang-format on
 
+/// A determination more than 6 % of the pass's mean from it is an outlier.
+inline constexpr auto sixPercent = formula::deviation_from_mean(0.06_r * formula::pass_mean<Mass>);
+
+inline constexpr auto withoutOutliers =
+    rejecting<formula::AtMost<2>, formula::KeepAtLeast<4>>(determinations, sixPercent);
+
 /// The same rule, allowed one rejection.
-inline constexpr auto atMostOne = formula::
-    without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<4>>(
-        determinations, sixPercent, repeatTest, rejectionRule);
+inline constexpr auto atMostOne = rejecting<formula::AtMost<1>, formula::KeepAtLeast<4>>(determinations, sixPercent);
 
 // Five determinations with a tie: 40, 40, 44, 40 and 36 g. 44 and 36 g are
 // equally far from the mean.
-inline constexpr auto tiedMasses = formula::environment(formula::measured_series<Mass>(formula::Measured<Mass> { rat(40) },
-                                                                                       formula::Measured<Mass> { rat(40) },
-                                                                                       formula::Measured<Mass> { rat(44) },
-                                                                                       formula::Measured<Mass> { rat(40) },
-                                                                                       formula::Measured<Mass> { rat(36) }));
-inline constexpr auto tieRejection = formula::
-    without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<3>>(
-        formula::series<Mass, 5>, sixPercent, repeatTest, rejectionRule);
+inline constexpr auto tiedMasses = formula::environment(formula::measured_series<Mass>(40, 40, 44, 40, 36));
+inline constexpr auto tieRejection =
+    rejecting<formula::AtMost<2>, formula::KeepAtLeast<3>>(formula::series<Mass, 5>, sixPercent);
 
 // The rule over raw observations, room for eight: how many were made is data.
-inline constexpr auto observedWithoutOutliers = formula::
-    without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<4>>(
-        formula::observations<Mass, 8>, sixPercent, repeatTest, rejectionRule);
+inline constexpr auto observedWithoutOutliers =
+    rejecting<formula::AtMost<2>, formula::KeepAtLeast<4>>(formula::observations<Mass, 8>, sixPercent);
 
 // ---- 3. The criteria -----------------------------------------------------------------
 //
 // Six determinations with two low values: 40.2, 39.8, 40.5, 45.2, 40.0 and 37.2 g.
 inline constexpr auto spreadMasses =
-    formula::environment(formula::measured_series<Mass>(formula::Measured<Mass> { rat(402, 10) },
-                                                        formula::Measured<Mass> { rat(398, 10) },
-                                                        formula::Measured<Mass> { rat(405, 10) },
-                                                        formula::Measured<Mass> { rat(452, 10) },
-                                                        formula::Measured<Mass> { rat(40) },
-                                                        formula::Measured<Mass> { rat(372, 10) }));
+    formula::environment(formula::measured_series<Mass>(40.2_r, 39.8_r, 40.5_r, 45.2_r, 40, 37.2_r));
 
 /// More than 7/4 sample standard deviations from the pass's mean.
-inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::number(rat(7, 4)));
+inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::number(7_r / 4));
 
 // The author's table of critical values, by sample size. Invented, and plainly
 // so: a gap ratio never exceeds 1, and this table's first two limits, 9 and
@@ -148,18 +129,13 @@ inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::num
 // clang-format off
 inline constexpr formula::SampleSizeTable<5> declaredSizes { 3, 4, 5, 6, 8 };
 inline constexpr auto gapLimit = formula::gap_to_range(
-    formula::critical_value<declaredSizes, unit::One>(formula::pass_count,
-                                                      { rat(900), rat(700), rat(30), rat(45), rat(5) })
-    * rat(1, 100));
+    formula::critical_value<declaredSizes, unit::One>(formula::pass_count, { 900_r, 700_r, 30_r, 45_r, 5_r })
+    * 0.01_r);
 // clang-format on
 
-template <typename Criterion>
-[[nodiscard]] constexpr auto rejectionBy(Criterion criterion)
-{
-    return formula::
-        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<3>>(
-            determinations, criterion, repeatTest, rejectionRule);
-}
+inline constexpr auto bySevenQuarters =
+    rejecting<formula::AtMost<2>, formula::KeepAtLeast<3>>(determinations, sevenQuarters);
+inline constexpr auto byGapToRange = rejecting<formula::AtMost<2>, formula::KeepAtLeast<3>>(determinations, gapLimit);
 
 // ---- 4. Precision ----------------------------------------------------------------------
 using FirstResult = formula::Quantity<struct FirstResultTag, "x_A", "first determination", unit::Gram>;
@@ -170,16 +146,16 @@ struct Tag
 
 // Two determinations: 40.0 and 40.905 g, 0.905 g apart.
 inline constexpr auto twoResults =
-    formula::environment(formula::Measured<FirstResult> { rat(40) }, formula::Measured<SecondResult> { rat(40905, 1000) });
+    formula::environment(formula::Measured<FirstResult> { 40 }, formula::Measured<SecondResult> { 40.905_r });
 
-inline constexpr auto pairMean = (var<FirstResult> + var<SecondResult>) / rat(2);
+inline constexpr auto pairMean = (var<FirstResult> + var<SecondResult>) / 2_r;
 
 /// The repeatability limit at a level: r = 0.1 g + level / 50. The level is a
 /// placeholder; the precision limit binds it.
 // Kept out of clang-format's hands: docs/statistics.md quotes it verbatim.
 // clang-format off
 inline constexpr auto limitAtLevel =
-    formula::constant<unit::Gram>(rat(1, 10)) + rat(1, 50) * formula::precision_level<FirstResult>;
+    formula::constant<unit::Gram>(0.1_r) + 0.02_r * formula::precision_level<FirstResult>;
 
 inline constexpr auto agreement = formula::constraint(
     formula::abs(var<FirstResult> - var<SecondResult>)
@@ -197,15 +173,6 @@ inline constexpr auto pairMethod = formula::method(
     formula::variants(formula::variant<Tag>(pairMean)),
     formula::rounding_rule<unit::Gram, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints(agreement));
-
-/// The trace of evaluating @p node for @p Result.
-template <typename Result, typename Node, typename Env>
-[[nodiscard]] std::string traceOf(Node const& node, Env const& environment)
-{
-    formula::Trace<> trace {};
-    (void) formula::checked_evaluate<Result>(node, environment, formula::RecordingSink<> { trace });
-    return formula::render_trace(trace, { .maxSteps = 40 });
-}
 } // namespace
 
 int main()
@@ -214,148 +181,208 @@ int main()
     auto const check = [&allPassed](bool condition, char const* what) {
         if (!condition)
         {
-            std::printf("CHECK FAILED: %s\n", what);
+            std::println("CHECK FAILED: {}", what);
             allPassed = false;
         }
     };
 
     // ---- 1. A sample --------------------------------------------------------------------
-    std::printf("== 1. A sample and its statistics ==\n\n");
+    std::println("== 1. A sample and its statistics ==\n");
 
-    auto const meanValue = formula::checked_evaluate<Mass>(mean, sixMasses);
+    auto const meanValue = formula::checked_evaluate(mean, sixMasses);
+    if (!meanValue)
+    {
+        std::println("the mean of six masses: {}", meanValue.error());
+        return 1;
+    }
     auto const countValue = formula::checked_evaluate<Determinations>(count, sixMasses);
+    if (!countValue)
+    {
+        std::println("the count of six masses: {}", countValue.error());
+        return 1;
+    }
     auto const varianceValue = formula::checked_evaluate<MassVariance>(variance, sixMasses);
+    if (!varianceValue)
+    {
+        std::println("the variance of six masses: {}", varianceValue.error());
+        return 1;
+    }
     auto const rangeValue = formula::checked_evaluate<Spread>(range, sixMasses);
-    auto const spreadValue = formula::checked_evaluate<Spread>(spread, sixMasses);
-    check(meanValue && countValue && varianceValue && rangeValue && spreadValue, "every statistic of six masses is a value");
-    std::printf("%s = %s g\n", formula::render(mean).c_str(), fraction_string(meanValue->measurement().value()).c_str());
-    std::printf("%s = %s\n", formula::render(count).c_str(), fraction_string(countValue->measurement().value()).c_str());
-    std::printf(
-        "%s = %s g2\n", formula::render(variance).c_str(), fraction_string(varianceValue->measurement().value()).c_str());
-    std::printf("%s = %s g\n", formula::render(range).c_str(), fraction_string(rangeValue->measurement().value()).c_str());
-    std::printf("%s = %s g\n", formula::render(spread).c_str(), fraction_string(spreadValue->measurement().value()).c_str());
-    std::printf("LaTeX: %s\n\n", formula::render<formula::Dialect::LaTeX>(spread).c_str());
-    check(meanValue->measurement().value() == rat(413, 10), "the mean is 41.3 g");
-    check(varianceValue->measurement().value() == rat(427, 125), "the variance divides by n - 1: 427/125 g2");
-    check(spreadValue->measurement().value() == rat(37, 20), "the spread, sqrt(427/125) = 1.848... g, reported as 1.85 g");
+    if (!rangeValue)
+    {
+        std::println("the range of six masses: {}", rangeValue.error());
+        return 1;
+    }
+    auto const spreadValue = formula::checked_explain<Spread>(spread, sixMasses);
+    if (!spreadValue)
+    {
+        std::println("the spread of six masses: {}", spreadValue.error().error);
+        return 1;
+    }
+    std::println("{} = {:/}", formula::render(mean), meanValue->measurement());
+    std::println("{} = {:/}", formula::render(count), countValue->measurement());
+    std::println("{} = {:/}", formula::render(variance), varianceValue->measurement());
+    std::println("{} = {:/}", formula::render(range), rangeValue->measurement());
+    std::println("{} = {:/}", formula::render(spread), spreadValue->outcome.measurement());
+    std::println("LaTeX: {}\n", formula::render<formula::Dialect::LaTeX>(spread));
+    check(formula::number_of(meanValue) == 41.3_r, "the mean is 41.3 g");
+    check(formula::number_of(varianceValue) == 3.416_r, "the variance divides by n - 1: 427/125 g2");
+    check(formula::number_of(spreadValue->outcome) == 1.85_r,
+          "the spread, sqrt(427/125) = 1.848... g, reported as 1.85 g");
 
-    std::printf("%s\n", traceOf<Spread>(spread, sixMasses).c_str());
+    std::println("{}", formula::render_trace(spreadValue->trace, { .maxSteps = 40 }));
 
     // The same six masses as observations, in room for eight: the capacity is
     // a bound, and every statistic reads the six made.
-    auto const observed = formula::environment(
-        formula::MeasuredObservations<Mass, 8>(rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10)));
+    auto const observed =
+        formula::environment(formula::MeasuredObservations<Mass, 8>(40.2_r, 39.8_r, 40.5_r, 44_r, 40_r, 43.3_r));
     auto const observedMean =
         formula::checked_evaluate<Mass>(formula::sample_mean(formula::observations<Mass, 8>), observed);
+    if (!observedMean)
+    {
+        std::println("the mean of the observations: {}", observedMean.error());
+        return 1;
+    }
     auto const observedCount =
         formula::checked_evaluate<Determinations>(formula::sample_count(formula::observations<Mass, 8>), observed);
-    check(observedMean && observedCount, "the observations' statistics are values");
-    std::printf("observations of 8 at most, 6 made: mean %s g, count %s\n",
-                fraction_string(observedMean->measurement().value()).c_str(),
-                fraction_string(observedCount->measurement().value()).c_str());
-    check(observedCount->measurement().value() == rat(6), "the count is the six made, not the capacity");
+    if (!observedCount)
+    {
+        std::println("the count of the observations: {}", observedCount.error());
+        return 1;
+    }
+    std::println("observations of 8 at most, 6 made: mean {:/}, count {:/}",
+                 observedMean->measurement(),
+                 observedCount->measurement());
+    check(formula::number_of(observedCount) == 6_r, "the count is the six made, not the capacity");
 
     // Nine for eight places: refused, never truncated to fit.
     std::array<Rational, 9> nine {};
-    nine.fill(rat(40));
+    nine.fill(40_r);
     auto const tooMany = formula::MeasuredObservations<Mass, 8>::from(nine);
-    check(!tooMany.has_value() && tooMany.error() == formula::ObservationsOverCapacity { .given = 9, .capacity = 8 },
+    if (tooMany.has_value())
+    {
+        std::println("nine observations were taken for eight places");
+        return 1;
+    }
+    check(tooMany.error() == formula::ObservationsOverCapacity { .given = 9, .capacity = 8 },
           "more observations than the capacity are refused, with both counts");
-    std::printf("%zu observations for %zu places: refused\n\n", tooMany.error().given, tooMany.error().capacity);
+    std::println("{} observations for {} places: refused\n", tooMany.error().given, tooMany.error().capacity);
 
     // One determination not made: no mean, and no count either.
-    auto const oneMissing = formula::environment(formula::measured_series<Mass>(formula::Measured<Mass> { rat(402, 10) },
-                                                                                formula::Measured<Mass> { rat(398, 10) },
-                                                                                formula::Measured<Mass>::absent(),
-                                                                                formula::Measured<Mass> { rat(44) },
-                                                                                formula::Measured<Mass> { rat(40) },
-                                                                                formula::Measured<Mass> { rat(433, 10) }));
-    std::printf("%s\n", traceOf<Mass>(mean, oneMissing).c_str());
-    check(formula::checked_evaluate<Mass>(mean, oneMissing)->is_empty(), "one missing determination, no mean");
+    auto const oneMissing =
+        formula::environment(formula::measured_series<Mass>(40.2_r, 39.8_r, formula::not_measured, 44, 40, 43.3_r));
+    auto const meanOfMissing = formula::checked_explain(mean, oneMissing);
+    if (!meanOfMissing)
+    {
+        std::println("the mean with one determination missing: {}", meanOfMissing.error().error);
+        return 1;
+    }
+    std::println("{}", formula::render_trace(meanOfMissing->trace, { .maxSteps = 40 }));
+    check(meanOfMissing->outcome.is_empty(), "one missing determination, no mean");
 
     // ---- 2. Rejecting outliers ---------------------------------------------------------
-    std::printf("== 2. Rejecting outliers ==\n\n");
+    std::println("== 2. Rejecting outliers ==\n");
 
-    std::printf("%s\n\n", formula::render(withoutOutliers).c_str());
+    std::println("{}\n", formula::render(withoutOutliers));
     auto const settled = formula::checked_evaluate_rejection<Mass>(withoutOutliers, sixMasses);
-    check(settled.has_value(), "the rejection settles");
-    std::printf("result: %s g, %zu rejected in %zu passes\n\n",
-                fraction_string(settled->outcome().measurement().value()).c_str(),
-                settled->rejected().size(),
-                settled->passes());
-    check(settled->outcome().measurement().value() == rat(321, 8), "the mean of the four kept, 321/8 g");
+    if (!settled)
+    {
+        std::println("the rejection of six masses: {}", settled.error().error);
+        return 1;
+    }
+    std::println("result: {:/}, {} rejected in {} passes\n",
+                 settled->outcome().measurement(),
+                 settled->rejected().size(),
+                 settled->passes());
+    check(formula::number_of(settled) == 40.125_r, "the mean of the four kept, 321/8 g");
     check(settled->rejected().size() == 2 && settled->passes() == 3, "44.0 g in pass 1, then 43.3 g in pass 2");
 
-    formula::Trace<> settledTrace {};
-    (void) formula::checked_evaluate<Mass>(
-        formula::sample_mean(withoutOutliers), sixMasses, formula::RecordingSink<> { settledTrace });
-    std::string const settledText = formula::render_trace(settledTrace, { .maxSteps = 40 });
-    std::printf("%s\n", settledText.c_str());
+    auto const settledMean = formula::checked_explain<Mass>(formula::sample_mean(withoutOutliers), sixMasses);
+    if (!settledMean)
+    {
+        std::println("the mean of the four kept: {}", settledMean.error().error);
+        return 1;
+    }
+    std::println("{}", formula::render_trace(settledMean->trace, { .maxSteps = 40 }));
 
-    formula::Trace<> abortedTrace {};
-    (void) formula::checked_evaluate<Mass>(
-        formula::sample_mean(atMostOne), sixMasses, formula::RecordingSink<> { abortedTrace });
-    std::string const abortedText = formula::render_trace(abortedTrace, { .maxSteps = 40 });
-    std::printf("%s\n", abortedText.c_str());
-    check(formula::checked_evaluate_rejection<Mass>(atMostOne, sixMasses)->outcome().is_verdict(),
-          "one rejection too many is the author's verdict");
+    auto const abortedMean = formula::checked_explain<Mass>(formula::sample_mean(atMostOne), sixMasses);
+    if (abortedMean)
+    {
+        std::println("one rejection too many still reduced to a mean");
+        return 1;
+    }
+    std::println("{}", formula::render_trace(abortedMean.error().trace, { .maxSteps = 40 }));
+    auto const aborted = formula::checked_evaluate_rejection<Mass>(atMostOne, sixMasses);
+    if (!aborted)
+    {
+        std::println("the rejection allowed one: {}", aborted.error().error);
+        return 1;
+    }
+    check(aborted->outcome().is_verdict(), "one rejection too many is the author's verdict");
 
     auto const tied = formula::checked_evaluate_rejection<Mass>(tieRejection, tiedMasses);
-    check(tied && tied->rejected().size() == 2 && tied->rejected()[0].pass == tied->rejected()[1].pass,
+    if (!tied)
+    {
+        std::println("the rejection of a tie: {}", tied.error().error);
+        return 1;
+    }
+    check(tied->rejected().size() == 2 && tied->rejected()[0].pass == tied->rejected()[1].pass,
           "a tie rejects both, in the same pass");
-    std::printf("a tie: elements %zu and %zu rejected together in pass %zu, result %s g\n\n",
-                tied->rejected()[0].position + 1,
-                tied->rejected()[1].position + 1,
-                tied->rejected()[0].pass,
-                fraction_string(tied->outcome().measurement().value()).c_str());
+    std::println("a tie: elements {} and {} rejected together in pass {}, result {:/}\n",
+                 tied->rejected()[0].position + 1,
+                 tied->rejected()[1].position + 1,
+                 tied->rejected()[0].pass,
+                 tied->outcome().measurement());
 
-    auto const threeMade = formula::environment(formula::MeasuredObservations<Mass, 8>(rat(40), rat(40), rat(41)));
-    formula::Trace<> shortTrace {};
-    (void) formula::checked_evaluate_rejection<Mass>(
-        observedWithoutOutliers, threeMade, formula::RecordingSink<> { shortTrace });
-    std::printf("%s\n", formula::render_trace(shortTrace, { .maxSteps = 20 }).c_str());
-    check(formula::checked_evaluate_rejection<Mass>(observedWithoutOutliers, threeMade)->outcome().is_verdict(),
-          "three made, to keep at least four: the verdict before pass 1");
+    auto const threeMade = formula::environment(formula::MeasuredObservations<Mass, 8>(40_r, 40_r, 41_r));
+    auto const tooFew = formula::explain_rejection<Mass>(observedWithoutOutliers, threeMade);
+    if (!tooFew.outcome)
+    {
+        std::println("the rejection of three observations: {}", tooFew.outcome.error().error);
+        return 1;
+    }
+    std::println("{}", formula::render_trace(tooFew.trace, { .maxSteps = 20 }));
+    check(tooFew.outcome->outcome().is_verdict(), "three made, to keep at least four: the verdict before pass 1");
 
     // ---- 3. The criteria ------------------------------------------------------------------
-    std::printf("== 3. Three criteria ==\n\n");
+    std::println("== 3. Three criteria ==\n");
 
-    std::printf("%s\n", formula::render(rejectionBy(sevenQuarters)).c_str());
-    formula::Trace<> stddevTrace {};
-    (void) formula::checked_evaluate_rejection<Mass>(
-        rejectionBy(sevenQuarters), spreadMasses, formula::RecordingSink<> { stddevTrace });
-    std::printf("%s\n", formula::render_trace(stddevTrace, { .maxSteps = 40 }).c_str());
+    std::println("{}", formula::render(bySevenQuarters));
+    auto const byStddevs = formula::explain_rejection<Mass>(bySevenQuarters, spreadMasses);
+    if (!byStddevs.outcome)
+    {
+        std::println("the rejection in standard deviations: {}", byStddevs.outcome.error().error);
+        return 1;
+    }
+    std::println("{}", formula::render_trace(byStddevs.trace, { .maxSteps = 40 }));
 
-    std::printf("%s\n", formula::render(rejectionBy(gapLimit)).c_str());
-    formula::Trace<> gapTrace {};
-    (void) formula::checked_evaluate_rejection<Mass>(
-        rejectionBy(gapLimit), spreadMasses, formula::RecordingSink<> { gapTrace });
-    std::string const gapText = formula::render_trace(gapTrace, { .maxSteps = 40 });
-    std::printf("%s\n", gapText.c_str());
-    check(formula::checked_evaluate_rejection<Mass>(rejectionBy(gapLimit), spreadMasses)->outcome().measurement().value()
-              == rat(321, 8),
-          "the gap table's three passes settle at 321/8 g");
+    std::println("{}", formula::render(byGapToRange));
+    auto const byGap = formula::explain_rejection<Mass>(byGapToRange, spreadMasses);
+    if (!byGap.outcome)
+    {
+        std::println("the rejection by the gap to the range: {}", byGap.outcome.error().error);
+        return 1;
+    }
+    std::println("{}", formula::render_trace(byGap.trace, { .maxSteps = 40 }));
+    check(formula::number_of(byGap.outcome) == 40.125_r, "the gap table's three passes settle at 321/8 g");
 
     // ---- 4. Precision -----------------------------------------------------------------------
-    std::printf("== 4. Precision ==\n\n");
+    std::println("== 4. Precision ==\n");
 
-    std::printf("%s\n", formula::render(agreement).c_str());
-    std::printf("LaTeX: %s\n\n", formula::render<formula::Dialect::LaTeX>(agreement).c_str());
+    std::println("{}", formula::render(agreement));
+    std::println("LaTeX: {}\n", formula::render<formula::Dialect::LaTeX>(agreement));
 
-    formula::Trace<> precisionTrace {};
-    formula::ConstraintOutcome const atMean =
-        formula::check(agreement, twoResults, formula::RecordingSink<> { precisionTrace });
-    std::printf("%s\n", formula::render_trace(precisionTrace, { .maxSteps = 40 }).c_str());
-    formula::ConstraintOutcome const atRoundedLevel = formula::check(agreementAtRoundedLevel, twoResults);
-    std::printf("level = the mean: %s\nlevel = the mean rounded to 1 g: %s\n\n",
-                atMean.is_satisfied() ? "satisfied" : "violated",
-                atRoundedLevel.is_satisfied() ? "satisfied" : "violated");
-    check(atMean.is_satisfied() && atRoundedLevel.is_violated(), "rounding the level first flips the verdict");
+    auto const atMean = formula::explain_check(agreement, twoResults);
+    std::println("{}", formula::render_trace(atMean.trace, { .maxSteps = 40 }));
+    auto const atRoundedLevel = formula::check(agreementAtRoundedLevel, twoResults);
+    std::println(
+        "level = the mean: {}\nlevel = the mean rounded to 1 g: {}\n", atMean.outcome.kind(), atRoundedLevel.kind());
+    check(atMean.outcome.is_satisfied() && atRoundedLevel.is_violated(), "rounding the level first flips the verdict");
 
     auto const accepted = formula::check_method(pairMethod, twoResults);
-    std::printf("the method's acceptance check: %s\n\n", accepted[0].is_satisfied() ? "satisfied" : "violated");
+    std::println("the method's acceptance check: {}\n", accepted[0].kind());
     check(accepted[0].is_satisfied(), "the precision check is one of the method's constraints");
 
-    std::printf("all checks passed: %s\n", allPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allPassed ? "yes" : "no");
     return allPassed ? 0 : 1;
 }

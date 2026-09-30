@@ -36,9 +36,7 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdio>
-#include <expected>
-#include <format>
+#include <print>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -46,8 +44,8 @@
 namespace
 {
 namespace unit = formula::unit;
-using formula::Rational;
 using formula::var;
+using namespace formula::literals;
 
 // ---- Money ----
 //
@@ -158,8 +156,13 @@ struct Total: formula::Quantity<Total, "total", "the bill", Euro>
 
 // Two numbers the bill states: the share of the solar yield the household
 // uses itself, and the rate of the tax. Both are pure numbers.
-inline constexpr Rational selfUseShare { 4, 5 };
-inline constexpr Rational vatRate { 19, 100 };
+inline constexpr auto selfUseShare = 0.8_r;
+inline constexpr auto vatRate = 0.19_r;
+
+// A bill in whole cents: the euro cent's own decimals, rounded half away from
+// zero.
+inline constexpr formula::DecimalRounding wholeCents =
+    formula::declared_rounding(EuroCent, formula::RoundingMode::HalfAwayFromZero);
 
 // ---- The calculation ----
 //
@@ -172,7 +175,7 @@ inline constexpr auto bill = formula::calculation(
     formula::define<OvenKwh>(var<OvenKw> * var<OvenH>),
     formula::define<HeaterKwh>(var<HeaterKw> * var<HeaterH>),
     formula::define<DailyLoad>(var<FridgeKwh> + var<OvenKwh> + var<HeaterKwh>),
-    formula::define<MonthlyLoad>(var<DailyLoad> * Rational { 30 }),
+    formula::define<MonthlyLoad>(var<DailyLoad> * 30_r),
     formula::define<SelfUsed>(var<Solar> * selfUseShare),
     formula::define<Exported>(var<Solar> - var<SelfUsed>),
     formula::define<NetDraw>(var<MonthlyLoad> - var<SelfUsed>),
@@ -181,9 +184,7 @@ inline constexpr auto bill = formula::calculation(
     formula::define<EnergyCost>(var<GridCost> - var<FeedInCredit>),
     formula::define<Subtotal>(var<EnergyCost> + var<BaseFee>),
     formula::define<Vat>(var<Subtotal> * vatRate),
-    formula::define<Total>(
-        formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<Subtotal> + var<Vat>)));
+    formula::define<Total>(formula::rounded<wholeCents>(var<Subtotal> + var<Vat>)));
 
 // What reads what is known while the program compiles.
 static_assert(formula::depends_on<Total, Price>(bill));
@@ -209,9 +210,7 @@ struct ShareInCents: formula::Quantity<ShareInCents, "share_ct", "each one's sha
 
 inline constexpr auto sharing = formula::calculation(
     formula::define<Share>(var<SharedCost> / var<Occupants>),
-    formula::define<ShareInCents>(
-        formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<Share>)));
+    formula::define<ShareInCents>(formula::rounded<wholeCents>(var<Share>)));
 
 /// @p names, comma-separated.
 template <std::size_t N>
@@ -242,25 +241,24 @@ int main()
 {
     bool ok = true;
     auto check = [&ok](char const* what, bool condition) {
-        std::printf("%-58s %s\n", what, condition ? "yes" : "NO");
+        std::println("{:<58} {}", what, condition ? "yes" : "NO");
         ok = ok && condition;
     };
 
     // Every number shown as a decimal where that is its exact value: the
     // self-use share 0.8, the fridge's 4.8 kWh a day.
-    formula::NumberStyle const decimals = formula::NumberStyle::exact_decimal();
+    auto const decimals = formula::NumberStyle::exact_decimal();
 
     // ---- 1. The calculation, and what reads what ----
-    std::printf("the calculation, in the order it calculates:\n%s\n\n",
-                formula::render(bill, formula::DefaultVocabulary {}, { .numbers = decimals }).c_str());
-    std::printf("its graph:\n%s\n", formula::describe_graph(bill).c_str());
+    std::println("the calculation, in the order it calculates:\n{}\n", formula::render(bill, { .numbers = decimals }));
+    std::println("its graph:\n{}", formula::describe_graph(bill));
 
-    std::printf("inputs               : %s\n", listed(formula::inputs_of(bill)).c_str());
-    std::printf("calculation order    : %s\n", listed(formula::calculation_order(bill)).c_str());
-    std::printf("grid_cost reads      : %s\n", listed(formula::dependencies_of<GridCost>(bill)).c_str());
-    std::printf("affected by price    : %s\n", listed(formula::affected_by<Price>(bill)).c_str());
-    std::printf("upstream of net_draw : %s\n", listed(formula::upstream_of<NetDraw>(bill)).c_str());
-    std::printf("read by self_used    : %s\n", listed(formula::dependents_of<SelfUsed>(bill)).c_str());
+    std::println("inputs               : {}", listed(formula::inputs_of(bill)));
+    std::println("calculation order    : {}", listed(formula::calculation_order(bill)));
+    std::println("grid_cost reads      : {}", listed(formula::dependencies_of<GridCost>(bill)));
+    std::println("affected by price    : {}", listed(formula::affected_by<Price>(bill)));
+    std::println("upstream of net_draw : {}", listed(formula::upstream_of<NetDraw>(bill)));
+    std::println("read by self_used    : {}", listed(formula::dependents_of<SelfUsed>(bill)));
     check("ten inputs, fifteen calculated, and grid_cost reads two",
           formula::inputs_of(bill).size() == 10 && formula::calculation_order(bill).size() == 15
               && formula::dependencies_of<GridCost>(bill).size() == 2);
@@ -268,20 +266,18 @@ int main()
           formula::affected_by<Price>(bill).size() == 5 && formula::dependents_of<SelfUsed>(bill).size() == 2);
 
     std::string const drawn = formula::to_dot(bill);
-    std::printf("\nfor Graphviz:\n%s\n", drawn.c_str());
+    std::println("\nfor Graphviz:\n{}", drawn);
 
     // Its documentation page: a row per calculated value, with its definition,
     // then a row per input.
-    formula::Documentation const page = formula::document(bill, formula::DefaultVocabulary {}, { .numbers = decimals });
-    std::printf("its symbol table:\n");
+    formula::Documentation const page = formula::document(bill, { .numbers = decimals });
+    std::println("its symbol table:");
     for (formula::SymbolEntry const& symbolRow: page.symbols)
-        std::printf("%s\n",
-                    std::format("{:<14} {:<35} {}",
-                                symbolRow.symbol,
-                                symbolRow.description,
-                                symbolRow.calculatedAs.has_value() ? "calculated as " + *symbolRow.calculatedAs
-                                                                   : std::string { "an input" })
-                        .c_str());
+        std::println("{:<14} {:<35} {}",
+                     symbolRow.symbol,
+                     symbolRow.description,
+                     symbolRow.calculatedAs.has_value() ? "calculated as " + *symbolRow.calculatedAs
+                                                        : std::string { "an input" });
     check("25 rows, the self-use share in decimals",
           page.symbols.size() == 25 && page.symbols[6].calculatedAs == "solar * 0.8");
 
@@ -289,16 +285,16 @@ int main()
     //
     // The inputs, as an environment of measurements. Nothing is calculated yet.
     auto sheet = formula::worksheet(bill,
-                                    formula::environment(formula::Measured<FridgeW> { Rational { 200 } },
-                                                         formula::Measured<FridgeH> { Rational { 24 } },
-                                                         formula::Measured<OvenKw> { Rational { 5, 2 } },
-                                                         formula::Measured<OvenH> { Rational { 1 } },
-                                                         formula::Measured<HeaterKw> { Rational { 3, 2 } },
-                                                         formula::Measured<HeaterH> { Rational { 4 } },
-                                                         formula::Measured<Solar> { Rational { 150 } },
-                                                         formula::Measured<Price> { Rational { 8, 25 } },
-                                                         formula::Measured<FeedIn> { Rational { 2, 25 } },
-                                                         formula::Measured<BaseFee> { Rational { 25, 2 } }));
+                                    formula::environment(formula::Measured<FridgeW> { 200 },
+                                                         formula::Measured<FridgeH> { 24 },
+                                                         formula::Measured<OvenKw> { 2.5_r },
+                                                         formula::Measured<OvenH> { 1 },
+                                                         formula::Measured<HeaterKw> { 1.5_r },
+                                                         formula::Measured<HeaterH> { 4 },
+                                                         formula::Measured<Solar> { 150 },
+                                                         formula::Measured<Price> { 0.32_r },
+                                                         formula::Measured<FeedIn> { 0.08_r },
+                                                         formula::Measured<BaseFee> { 12.5_r }));
 
     Counters before = counters_of(sheet);
     // Asks for the total and the net draw, and says how many values that
@@ -310,44 +306,42 @@ int main()
                                  .reused = after.reused - before.reused };
         before = after;
         // The total is in whole cents already; .2 pads it to them: 98.00 EUR.
-        std::printf("%s\n",
-                    std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
-                                step,
-                                total.measurement(),
-                                netDraw.measurement(),
-                                counted.recomputed,
-                                counted.reused)
-                        .c_str());
-        return std::pair { total.measurement().value(), counted };
+        std::println("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
+                     step,
+                     total.measurement(),
+                     netDraw.measurement(),
+                     counted.recomputed,
+                     counted.reused);
+        return std::pair { formula::number_of(total), counted };
     };
 
     auto const [firstTotal, firstCount] = report("first run:");
     check("118.26 EUR, every value calculated once",
-          firstTotal == Rational { 11826, 100 } && firstCount.recomputed == 15 && firstCount.reused == 0);
-    check("279 kWh drawn from the grid", sheet.calculate<NetDraw>().measurement().value() == Rational { 279 });
+          firstTotal == 118.26_r && firstCount.recomputed == 15 && firstCount.reused == 0);
+    check("279 kWh drawn from the grid", formula::number_of(sheet.calculate<NetDraw>()) == 279_r);
 
     // ---- 3. Changes, and what each recalculates ----
     //
     // A new price reaches the grid cost and what is built on it: five values.
-    sheet.set(formula::Measured<Price> { Rational { 1, 4 } });
+    sheet.set(formula::Measured<Price> { 0.25_r });
     auto const [cheaperTotal, cheaperCount] = report("price 0.25 EUR/kWh:");
     check("95.02 EUR, five values recalculated",
-          cheaperTotal == Rational { 9502, 100 } && cheaperCount.recomputed == 5 && cheaperCount.reused == 0);
+          cheaperTotal == 95.02_r && cheaperCount.recomputed == 5 && cheaperCount.reused == 0);
 
     // The same price again changes nothing, and nothing is recalculated.
-    sheet.set(formula::Measured<Price> { Rational { 1, 4 } });
+    sheet.set(formula::Measured<Price> { 0.25_r });
     auto const [samePriceTotal, samePriceCount] = report("the same price again:");
     check("nothing recalculated", samePriceTotal == cheaperTotal && samePriceCount.recomputed == 0
                                       && samePriceCount.reused == 0);
 
-    sheet.set(formula::Measured<BaseFee> { Rational { 15 } });
+    sheet.set(formula::Measured<BaseFee> { 15 });
     auto const [feeTotal, feeCount] = report("base fee 15 EUR:");
     check("98.00 EUR, three values recalculated",
-          feeTotal == Rational { 9800, 100 } && feeCount.recomputed == 3 && feeCount.reused == 0);
+          feeTotal == 98_r && feeCount.recomputed == 3 && feeCount.reused == 0);
 
     // Twice the power for half the time: the fridge's energy a day is the
     // same, so what reads it is reused rather than recalculated.
-    sheet.set(formula::Measured<FridgeW> { Rational { 400 } }, formula::Measured<FridgeH> { Rational { 12 } });
+    sheet.set(formula::Measured<FridgeW> { 400 }, formula::Measured<FridgeH> { 12 });
     auto const [fridgeTotal, fridgeCount] = report("fridge 400 W for 12 h:");
     check("two recalculated, eight reused, the total unchanged",
           fridgeTotal == feeTotal && fridgeCount.recomputed == 2 && fridgeCount.reused == 8);
@@ -361,28 +355,25 @@ int main()
     Counters const beforeExplaining = counters_of(sheet);
     auto const dailyLoad = formula::explain_worksheet<DailyLoad>(sheet);
     std::string const dailyText = formula::render_derivation(dailyLoad, { .maxSteps = 30, .numbers = decimals });
-    std::printf("\nhow the daily load was reached:\n%s", dailyText.c_str());
+    std::print("\nhow the daily load was reached:\n{}", dailyText);
     check("the reused daily load reads the fridge's 400 W, and not 200 W",
-          dailyText.find("fridge_w = 400 W") != std::string::npos && dailyText.find("200 W") == std::string::npos);
+          dailyText.contains("fridge_w = 400 W") && !dailyText.contains("200 W"));
     check("recording it calculated nothing",
           sheet.recomputed() == beforeExplaining.recomputed && sheet.reused() == beforeExplaining.reused);
 
     // ---- 5. What if the sun shone more? ----
     //
     // with() answers on a copy; the worksheet itself is left as it was.
-    auto sunnier = sheet.with(formula::Measured<Solar> { Rational { 200 } });
+    auto sunnier = sheet.with(formula::Measured<Solar> { 200 });
     Counters const copied = counters_of(sunnier);
     auto const [sunnierTotal, sunnierDraw] = sunnier.calculate(var<Total>, var<NetDraw>);
-    std::printf("\n%s\n",
-                std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}",
-                            "with 200 kWh of sun:",
-                            sunnierTotal.measurement(),
-                            sunnierDraw.measurement(),
-                            sunnier.recomputed() - copied.recomputed)
-                    .c_str());
+    std::println("\n{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}",
+                 "with 200 kWh of sun:",
+                 sunnierTotal.measurement(),
+                 sunnierDraw.measurement(),
+                 sunnier.recomputed() - copied.recomputed);
     check("85.14 EUR and 239 kWh on the copy, nine recalculated",
-          sunnierTotal.measurement().value() == Rational { 8514, 100 }
-              && sunnierDraw.measurement().value() == Rational { 239 }
+          formula::number_of(sunnierTotal) == 85.14_r && formula::number_of(sunnierDraw) == 239_r
               && sunnier.recomputed() - copied.recomputed == 9);
     auto const [originalTotal, originalCount] = report("the worksheet itself:");
     check("the worksheet itself unchanged, nothing recalculated",
@@ -392,10 +383,10 @@ int main()
     //
     // A meter reading of 250 kWh overrides the calculated net draw: what reads
     // it is recalculated, and what it was calculated from is no longer read.
-    sheet.set(formula::entered(formula::Measured<NetDraw> { Rational { 250 } }));
+    sheet.set(formula::entered(formula::Measured<NetDraw> { 250 }));
     auto const [overriddenTotal, overriddenCount] = report("net draw typed in:");
     check("89.37 EUR from 250 kWh typed in",
-          overriddenTotal == Rational { 8937, 100 } && sheet.is_overridden<NetDraw>()
+          overriddenTotal == 89.37_r && sheet.is_overridden<NetDraw>()
               && sheet.calculate<NetDraw>().source() == formula::ValueSource::ManuallyEntered
               && overriddenCount.recomputed == 5);
 
@@ -404,10 +395,9 @@ int main()
     // many it left out.
     auto const gridCost = formula::explain_worksheet<GridCost>(sheet);
     std::string const gridText = formula::render_derivation(gridCost, { .maxSteps = 5, .numbers = decimals });
-    std::printf("\nhow the grid cost was reached, in five lines:\n%s", gridText.c_str());
+    std::print("\nhow the grid cost was reached, in five lines:\n{}", gridText);
     check("the override in place of its definition, one line left out",
-          gridText.find("net_draw = 250 kWh, entered by hand in place of monthly_load - self_used\n")
-                  != std::string::npos
+          gridText.contains("net_draw = 250 kWh, entered by hand in place of monthly_load - self_used\n")
               && gridText.ends_with("... 1 further step not shown\n"));
 
     sheet.clear_override<NetDraw>();
@@ -421,31 +411,26 @@ int main()
     // cents: the bill's total, read as the second calculation's input. It is
     // converted, not re-wrapped: exactly into the input's unit, an absent
     // total staying absent, and a total of another dimension refused.
-    std::expected<formula::Measured<SharedCost>, formula::ArithmeticError> const sharedCost =
-        formula::checked_convert_to<SharedCost>(sheet.calculate<Total>().measurement());
+    auto const sharedCost = formula::checked_convert_to<SharedCost>(sheet.calculate<Total>().measurement());
     if (!sharedCost.has_value())
     {
-        std::printf("the total is not a cost to share: %s\n",
-                    std::string { formula::describe(sharedCost.error()) }.c_str());
+        std::println("the total is not a cost to share: {}", sharedCost.error());
         return 1;
     }
-    auto shares = formula::worksheet(
-        sharing, formula::environment(*sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
-    formula::Measured<ShareInCents> const eachInCents = shares.calculate<ShareInCents>().measurement();
-    std::printf("\n%s\n",
-                std::format("{:.2HalfAwayFromZero} shared by 3: {} each", *sharedCost, eachInCents).c_str());
-    check("32.67 EUR each", eachInCents.value() == Rational { 3267, 100 });
+    auto shares = formula::worksheet(sharing, formula::environment(*sharedCost, formula::Measured<Occupants> { 3 }));
+    auto const eachInCents = shares.calculate<ShareInCents>().measurement();
+    std::println("\n{:.2HalfAwayFromZero} shared by 3: {} each", *sharedCost, eachInCents);
+    check("32.67 EUR each", formula::number_of(eachInCents) == 32.67_r);
 
     // ---- 8. A failure, and what reads it ----
     //
     // Nobody to share it: the share divides by zero, and the share in cents,
     // which reads it, fails with it.
-    shares.set(formula::Measured<Occupants> { Rational { 0 } });
+    shares.set(formula::Measured<Occupants> { 0 });
     auto const [share, shareInCents] = shares.checked_calculate<Share, ShareInCents>();
-    std::printf("shared by nobody: share: %s, in cents: %s\n",
-                share.has_value() ? "a value" : std::string { formula::describe(share.error()) }.c_str(),
-                shareInCents.has_value() ? "a value"
-                                         : std::string { formula::describe(shareInCents.error()) }.c_str());
+    std::println("shared by nobody: share: {}, in cents: {}",
+                 share.has_value() ? "a value" : formula::describe(share.error()),
+                 shareInCents.has_value() ? "a value" : formula::describe(shareInCents.error()));
     check("a division by zero, and the value reading it fails with it",
           !share.has_value() && share.error() == formula::ArithmeticError::DivisionByZero
               && !shareInCents.has_value() && shareInCents.error() == formula::ArithmeticError::DivisionByZero);
@@ -460,31 +445,29 @@ int main()
     }
     catch (formula::ArithmeticException const& failure)
     {
-        std::printf("calculate<ShareInCents>() threw: %s\n", failure.what());
+        std::println("calculate<ShareInCents>() threw: {}", failure.what());
         thrown = failure.code() == formula::ArithmeticError::DivisionByZero;
     }
-    std::printf("asked again: recomputed %zu\n", shares.recomputed() - failed.recomputed);
+    std::println("asked again: recomputed {}", shares.recomputed() - failed.recomputed);
     check("calculate() throws what checked_calculate() returns", thrown);
     check("the failure was not calculated again", shares.recomputed() == failed.recomputed);
 
     auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
-    std::printf("\nhow the failure was reached:\n%s",
-                formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }).c_str());
+    std::print("\nhow the failure was reached:\n{}",
+               formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }));
 
     // A new cost, and still nobody to share it: the share is calculated again
     // and fails with the same error, which counts as unchanged, so the share
     // in cents, which reads only the share, is reused.
     Counters const beforeNewCost = counters_of(shares);
-    formula::Measured<SharedCost> const newCost { Rational { 100 } };
+    formula::Measured<SharedCost> const newCost { 100 };
     shares.set(newCost);
     auto const stillShared = shares.checked_calculate<ShareInCents>();
     Counters const afterNewCost = counters_of(shares);
-    std::printf("\n%s\n",
-                std::format("{:.2HalfAwayFromZero}, still shared by nobody: recomputed {}, reused {}",
-                            newCost,
-                            afterNewCost.recomputed - beforeNewCost.recomputed,
-                            afterNewCost.reused - beforeNewCost.reused)
-                    .c_str());
+    std::println("\n{:.2HalfAwayFromZero}, still shared by nobody: recomputed {}, reused {}",
+                 newCost,
+                 afterNewCost.recomputed - beforeNewCost.recomputed,
+                 afterNewCost.reused - beforeNewCost.reused);
     check("failing again the same way counts as unchanged",
           !stillShared.has_value() && stillShared.error() == formula::ArithmeticError::DivisionByZero
               && afterNewCost.recomputed - beforeNewCost.recomputed == 1
@@ -496,13 +479,9 @@ int main()
     // is every share -- not zero, and not a failure.
     shares.set(formula::Measured<Occupants>::absent());
     auto const [uncountedShare, uncountedInCents] = shares.calculate<Share, ShareInCents>();
-    std::printf("\n%s\n",
-                std::format("occupants not counted: share {}, in cents {}",
-                            uncountedShare.measurement(),
-                            uncountedInCents.measurement())
-                    .c_str());
+    std::println("\noccupants not counted: share {}, in cents {}", uncountedShare.measurement(), uncountedInCents.measurement());
     check("an absent input leaves what reads it empty", uncountedShare.is_empty() && uncountedInCents.is_empty());
 
-    std::printf("\nall checks passed: %s\n", ok ? "yes" : "no");
+    std::println("\nall checks passed: {}", ok ? "yes" : "no");
     return ok ? 0 : 1;
 }

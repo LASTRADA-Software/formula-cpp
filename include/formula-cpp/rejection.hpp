@@ -6,6 +6,8 @@
 /// declared criterion finds too far from the rest, re-running the mean until
 /// nothing more is rejected or a declared bound aborts it.
 ///
+///     using namespace formula::literals;
+///
 ///     formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep,
 ///                               formula::AtMost<2>, formula::KeepAtLeast<4>>(
 ///         formula::series<Mass, 6>,

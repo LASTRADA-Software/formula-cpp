@@ -28,6 +28,7 @@
 // repository; nothing here cites a standard.
 
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
@@ -36,9 +37,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <expected>
 #include <optional>
+#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -47,6 +48,7 @@ namespace
 {
 namespace unit = formula::unit;
 using formula::var;
+using namespace formula::literals;
 
 // ---- 1. An opaque operation ----------------------------------------------------
 
@@ -88,11 +90,7 @@ struct SeriesSpan
     }
 };
 
-constexpr auto readings =
-    formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { formula::Rational { 127 } },
-                                                           formula::Measured<Reading> { formula::Rational { 103 } },
-                                                           formula::Measured<Reading> { formula::Rational { 191 } },
-                                                           formula::Measured<Reading> { formula::Rational { 139 } }));
+constexpr auto readings = formula::environment(formula::measured_series<Reading>(127, 103, 191, 139));
 
 constexpr auto spanCall = formula::opaque<SeriesSpan>(
     { .title = "Spread of readings", .reference = "Example Standard 12", .section = "4.2" }, formula::series<Reading, 4>);
@@ -108,15 +106,8 @@ using Elapsed = formula::Quantity<struct ElapsedTag, "t", "an invented elapsed t
 using Length = formula::Quantity<struct LengthTag, "L", "an invented length", unit::Millimetre>;
 using Rate = formula::Quantity<struct RateTag, "v", "an invented rate of change", unit::MillimetrePerMinute>;
 
-constexpr auto points =
-    formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { formula::Rational { 1 } },
-                                                           formula::Measured<Elapsed> { formula::Rational { 2 } },
-                                                           formula::Measured<Elapsed> { formula::Rational { 4 } },
-                                                           formula::Measured<Elapsed> { formula::Rational { 7 } }),
-                         formula::measured_series<Length>(formula::Measured<Length> { formula::Rational { 102, 10 } },
-                                                          formula::Measured<Length> { formula::Rational { 109, 10 } },
-                                                          formula::Measured<Length> { formula::Rational { 121, 10 } },
-                                                          formula::Measured<Length> { formula::Rational { 143, 10 } }));
+constexpr auto points = formula::environment(formula::measured_series<Elapsed>(1, 2, 4, 7),
+                                             formula::measured_series<Length>(10.2_r, 10.9_r, 12.1_r, 14.3_r));
 
 constexpr auto fit =
     formula::linear_least_squares(formula::curve(formula::series<Elapsed, 4>, formula::series<Length, 4>),
@@ -127,9 +118,9 @@ constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocit
                                               .magnitudeDenominator = 1000,
                                               .symbolText = formula::symbol("mm/s"),
                                               .decimals = 4 };
-constexpr auto roundedSlope =
-    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
-        fit);
+constexpr formula::DecimalRounding slopeRounding =
+    formula::declared_rounding(millimetrePerSecond, formula::RoundingMode::HalfEven);
+constexpr auto roundedSlope = formula::rounded_output<"slope", slopeRounding>(fit);
 
 /// Fifteen points, each on a different denominator: point k at
 /// ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) mm).
@@ -155,20 +146,26 @@ using Tolerance = formula::Quantity<struct ToleranceTag, "t_w", "an invented tol
 // w(k) = 6.08 g + w(k-1) / 2, from 0 g: 6.08, 9.12, 10.64, 11.4 g, rising by
 // 6.08, 3.04, 1.52, 0.76 g. Accepted when it rose by at most 0.76 g, written
 // w(k-1) - w(k) >= -0.76 g, since the sequence rises.
-constexpr auto halving = formula::constant<unit::Gram>(formula::Rational { 152, 25 })
-                         + formula::previous_attempt<Estimate> / formula::Rational { 2 };
+constexpr auto halving = formula::constant<unit::Gram>(6.08_r) + formula::previous_attempt<Estimate> / 2_r;
 constexpr auto settled = formula::previous_attempt<Estimate> - formula::this_attempt<Estimate>
-                         >= formula::constant<unit::Gram>(formula::Rational { -19, 25 });
-constexpr auto fromZero = formula::starting_from(formula::constant<unit::Gram>(formula::Rational { 0 }));
+                         >= formula::constant<unit::Gram>(-0.76_r);
+constexpr auto fromZero = formula::starting_from(formula::constant<unit::Gram>(0_r));
 constexpr formula::Verdict repeatDetermination { "repeat the determination" };
 constexpr formula::Citation settledCitation { .title = "Settled estimate",
                                               .reference = "Example Standard 12",
                                               .section = "6" };
 
-constexpr auto fourAttempts = formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(
-    fromZero, halving, settled, repeatDetermination, settledCitation);
-constexpr auto threeAttempts = formula::retry<Estimate, 3, formula::FirstJudged::AtFirstAttempt>(
-    fromZero, halving, settled, repeatDetermination, settledCitation);
+/// The method's retry of the estimate: at most @p Max attempts, judged from the
+/// first, the determination repeated when none is settled.
+template <std::size_t Max, typename... Steps>
+constexpr auto estimating(Steps... steps)
+{
+    return formula::retry<Estimate, Max, formula::FirstJudged::AtFirstAttempt>(
+        steps..., repeatDetermination, settledCitation);
+}
+
+constexpr auto fourAttempts = estimating<4>(fromZero, halving, settled);
+constexpr auto threeAttempts = estimating<3>(fromZero, halving, settled);
 
 // ---- 6. Two successive results agree -----------------------------------------------------
 
@@ -176,39 +173,13 @@ using Determination = formula::Quantity<struct DeterminationTag, "d", "an invent
 using Agreed = formula::Quantity<struct AgreedTag, "d_a", "an invented agreed determination", unit::Gram>;
 
 constexpr auto agree = formula::abs(formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>)
-                       <= formula::constant<unit::Gram>(formula::Rational { 127, 100 });
+                       <= formula::constant<unit::Gram>(1.27_r);
 
 constexpr auto successive = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
     formula::attempt_input<Determination>,
     agree,
     formula::Verdict { "repeat the test" },
     { .title = "Agreed determination", .reference = "Example Standard 12", .section = "7" });
-
-constexpr formula::Measured<Determination> grams(std::int64_t tenths)
-{
-    return formula::Measured<Determination> { formula::Rational { tenths, 10 } };
-}
-
-/// How a retry ended, in the enumerator's own name.
-std::string_view endName(formula::RetryEnd ended)
-{
-    switch (ended)
-    {
-        case formula::RetryEnd::Accepted:
-            return "Accepted";
-        case formula::RetryEnd::Exhausted:
-            return "Exhausted";
-        case formula::RetryEnd::NotJudgeable:
-            return "NotJudgeable";
-        case formula::RetryEnd::NotRecorded:
-            return "NotRecorded";
-        case formula::RetryEnd::Failed:
-            return "Failed";
-        case formula::RetryEnd::ManuallyEntered:
-            return "ManuallyEntered";
-    }
-    return "unknown";
-}
 
 /// The last line of @p text, without its newline.
 std::string lastLine(std::string const& text)
@@ -220,26 +191,27 @@ std::string lastLine(std::string const& text)
     return lineStart == std::string::npos ? trimmed : trimmed.substr(lineStart + 1);
 }
 
-/// One line saying how @p retrying ended over @p environment, and the line
-/// its trace ends with -- or the failure, when it failed.
-template <typename Retrying, typename Env>
-std::string ending(char const* label, Retrying const& retrying, Env const& environment)
+/// One line saying how a retry ended, and the line its trace ends with -- or
+/// the failure, when it failed.
+template <typename R>
+void printEnding(char const* label, formula::ExplainedRetry<R> const& explained)
 {
-    auto const explained = formula::explain_retry(retrying, environment);
-    std::string line = std::string { label } + ": ";
     if (!explained.outcome.has_value())
     {
         formula::RetryFailure const failure = explained.outcome.error();
-        line += "Failed, " + std::string { formula::describe(failure.error) }
-                + (failure.attempt == formula::RetryFailure::atStartingValue
-                       ? std::string { " at its starting value" }
-                       : " at attempt " + std::to_string(failure.attempt + 1));
+        std::print("{}: {}, {}", label, formula::RetryEnd::Failed, failure.error);
+        if (failure.attempt == formula::RetryFailure::atStartingValue)
+            std::print(" at its starting value");
+        else
+            std::print(" at attempt {}", failure.attempt + 1);
     }
     else
-        line += std::string { endName(explained.outcome->end()) } + " after "
-                + std::to_string(explained.outcome->attempts_made()) + " attempt(s)";
+        std::print("{}: {} after {} attempt(s)", label, explained.outcome->end(), explained.outcome->attempts_made());
     std::string const traced = formula::render_trace(explained.trace, { .maxSteps = 200 });
-    return line + (traced.empty() ? std::string { "; nothing traced" } : "\n  " + lastLine(traced));
+    if (traced.empty())
+        std::println("; nothing traced");
+    else
+        std::println("\n  {}", lastLine(traced));
 }
 
 // ---- 7. A line through observations -------------------------------------------------
@@ -252,21 +224,16 @@ constexpr auto observedFit =
     formula::linear_least_squares(formula::observations<Elapsed, 64>,
                                   formula::observations<Length, 64>,
                                   { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
-constexpr auto observedSlope =
-    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
-        observedFit);
+constexpr auto observedLine = formula::yields<Rate>(formula::opaque_output<"slope">(observedFit));
+constexpr auto observedSlope = formula::yields<SlopeRate>(formula::rounded_output<"slope", slopeRounding>(observedFit));
 constexpr auto closeEnough = formula::constraint(
     formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(observedFit)
-        >= formula::constant<unit::One>(formula::Rational { 998, 1000 }),
+        >= formula::constant<unit::One>(0.998_r),
     formula::Verdict { "repeat the readings" });
 
-constexpr auto observedPoints = formula::environment(
-    formula::MeasuredObservations<Elapsed, 64>(
-        formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 7 }),
-    formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 },
-                                              formula::Rational { 109, 10 },
-                                              formula::Rational { 121, 10 },
-                                              formula::Rational { 143, 10 }));
+constexpr auto observedPoints =
+    formula::environment(formula::MeasuredObservations<Elapsed, 64>(1_r, 2_r, 4_r, 7_r),
+                         formula::MeasuredObservations<Length, 64>(10.2_r, 10.9_r, 12.1_r, 14.3_r));
 
 /// Fifty readings at four decimals: t = k + 1 + (7919 k mod 997) / 10^4 s and
 /// L = 2410 + 3.17 k + ((3217 k mod 1009) - 504) / 10^4 mm, for k from 0.
@@ -280,17 +247,10 @@ auto fiftyReadings()
         times[k] = formula::Rational { 10'000 * (position + 1) + (7919 * position) % 997, 10'000 };
         lengths[k] = formula::Rational { 24'100'000 + 31'700 * position + (3217 * position) % 1009 - 504, 10'000 };
     }
-    return formula::environment(*formula::MeasuredObservations<Elapsed, 64>::from(times),
-                                *formula::MeasuredObservations<Length, 64>::from(lengths));
-}
-
-/// @p shown as its exact decimal, with its unit.
-template <typename Q>
-std::string decimalText(formula::Measured<Q> const& shown)
-{
-    // Held first: `view()` of a temporary is deleted, since the view would dangle.
-    formula::NumberText const spelled = formula::number_text(shown, formula::NumberStyle::exact_decimal());
-    return std::string { spelled.view() };
+    return formula::MeasuredObservations<Elapsed, 64>::from(times).and_then([&](auto const& timesMade) {
+        return formula::MeasuredObservations<Length, 64>::from(lengths).transform(
+            [&](auto const& lengthsMade) { return formula::environment(timesMade, lengthsMade); });
+    });
 }
 
 // ---- 8. Several regressors ------------------------------------------------------------
@@ -319,31 +279,17 @@ constexpr auto byTemperatureAndContent = formula::multiple_least_squares(
     formula::observations<Length, 64>,
     { .title = "Length by temperature and content", .reference = "Example Standard 12", .section = "5.3" });
 
-constexpr auto sixRows = formula::environment(formula::MeasuredObservations<Temperature, 64>(formula::Rational { 113, 10 },
-                                                                                             formula::Rational { 137, 10 },
-                                                                                             formula::Rational { 179, 10 },
-                                                                                             formula::Rational { 191, 10 },
-                                                                                             formula::Rational { 233, 10 },
-                                                                                             formula::Rational { 297, 10 }),
-                                              formula::MeasuredObservations<Content, 64>(formula::Rational { 23, 10 },
-                                                                                         formula::Rational { 31, 10 },
-                                                                                         formula::Rational { 29, 10 },
-                                                                                         formula::Rational { 41, 10 },
-                                                                                         formula::Rational { 37, 10 },
-                                                                                         formula::Rational { 43, 10 }),
-                                              formula::MeasuredObservations<Length, 64>(formula::Rational { 2588, 25 },
-                                                                                        formula::Rational { 10413, 100 },
-                                                                                        formula::Rational { 10433, 100 },
-                                                                                        formula::Rational { 1051, 10 },
-                                                                                        formula::Rational { 10521, 100 },
-                                                                                        formula::Rational { 106 }));
+constexpr auto sixRows = formula::environment(
+    formula::MeasuredObservations<Temperature, 64>(11.3_r, 13.7_r, 17.9_r, 19.1_r, 23.3_r, 29.7_r),
+    formula::MeasuredObservations<Content, 64>(2.3_r, 3.1_r, 2.9_r, 4.1_r, 3.7_r, 4.3_r),
+    formula::MeasuredObservations<Length, 64>(103.52_r, 104.13_r, 104.33_r, 105.1_r, 105.21_r, 106_r));
 
 // The length at 0 degC: the constant is the length at 0 K.
 constexpr auto lengthAtZeroCelsius =
     formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
         formula::opaque_output<"constant">(byTemperatureAndContent)
         + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
-              * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
+              * formula::constant<unit::Kelvin>(273.15_r));
 } // namespace
 
 int main()
@@ -352,256 +298,236 @@ int main()
     auto const check = [&allPassed](bool condition, char const* what) {
         if (!condition)
         {
-            std::printf("CHECK FAILED: %s\n", what);
+            std::println("CHECK FAILED: {}", what);
             allPassed = false;
         }
     };
 
-    std::printf("== 1. An opaque operation ==\n\n");
+    std::println("== 1. An opaque operation ==\n");
 
-    std::printf("%s\n%s\n", formula::render(span).c_str(), formula::render<formula::Dialect::LaTeX>(span).c_str());
+    std::println("{}\n{}", formula::render(span), formula::render<formula::Dialect::LaTeX>(span));
     auto const spread = formula::explain<Spread>(span, readings);
-    std::printf("%s\n", formula::render_trace(spread.trace, { .maxSteps = 20 }).c_str());
-    check(spread.outcome.measurement().value() == formula::Rational { 88 }, "191 g less 103 g");
-    check(formula::render_trace(spread.trace, { .maxSteps = 20 }).find("[inside not shown]") != std::string::npos,
+    std::println("{}", formula::render_trace(spread.trace, { .maxSteps = 20 }));
+    check(formula::number_of(spread.outcome) == 88_r, "191 g less 103 g");
+    check(formula::render_trace(spread.trace, { .maxSteps = 20 }).contains("[inside not shown]"),
           "the trace says the operation's inside is not shown");
 
     formula::Documentation const page = formula::document(span);
     for (formula::OpaqueOperationEntry const& operation: page.opaqueOperations)
     {
-        std::printf("operation: %.*s, outputs:", static_cast<int>(operation.name.size()), operation.name.data());
+        std::print("operation: {}, outputs:", operation.name);
         for (std::string_view const output: operation.outputs)
-            std::printf(" %.*s", static_cast<int>(output.size()), output.data());
-        std::printf("\n");
+            std::print(" {}", output);
+        std::println();
     }
-    std::printf("\n");
+    std::println();
     check(page.opaqueOperations.size() == 1, "one operation on the page");
 
-    std::printf("== 2. Two outputs, two runs ==\n\n");
+    std::println("== 2. Two outputs, two runs ==\n");
 
     auto const twoOutputs = formula::explain<Spread>(highestLessLowest, readings);
-    std::printf("%s\n", formula::render_trace(twoOutputs.trace, { .maxSteps = 40 }).c_str());
+    std::println("{}", formula::render_trace(twoOutputs.trace, { .maxSteps = 40 }));
     std::size_t runs = 0;
     for (formula::Step<> const& recorded: twoOutputs.trace.steps)
         if (recorded.kind == formula::StepKind::OpaqueOperation)
             ++runs;
-    std::printf("operation runs: %zu\n\n", runs);
+    std::println("operation runs: {}\n", runs);
     check(runs == 2, "two outputs, two runs");
-    check(twoOutputs.outcome.measurement().value() == formula::Rational { 88 }, "the same 88 g");
+    check(formula::number_of(twoOutputs.outcome) == 88_r, "the same 88 g");
 
-    std::printf("== 3. A least-squares line ==\n\n");
+    std::println("== 3. A least-squares line ==\n");
 
-    std::printf("%s\n", formula::render(slope).c_str());
+    std::println("{}", formula::render(slope));
     auto const rate = formula::explain<Rate>(slope, points);
-    std::printf("%s\n", formula::render_trace(rate.trace, { .maxSteps = 20 }).c_str());
-    check(rate.outcome.measurement().value() == formula::Rational { 285, 7 }, "19/28 mm/s is 285/7 mm/min");
+    std::println("{}", formula::render_trace(rate.trace, { .maxSteps = 20 }));
+    check(formula::number_of(rate.outcome) == formula::Rational { 285, 7 }, "19/28 mm/s is 285/7 mm/min");
 
-    constexpr auto onePoint =
-        formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { formula::Rational { 3 } }),
-                             formula::measured_series<Length>(formula::Measured<Length> { formula::Rational { 103, 10 } }));
+    constexpr auto onePoint = formula::environment(formula::measured_series<Elapsed>(3),
+                                                   formula::measured_series<Length>(10.3_r));
     constexpr auto single = formula::linear_least_squares(
         formula::curve(formula::series<Elapsed, 1>, formula::series<Length, 1>), { .reference = "Example Standard 12" });
     auto const noLine = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(single), onePoint);
-    std::printf("one point: %s\n",
-                noLine.has_value() ? "a line" : std::string { formula::describe(noLine.error()) }.c_str());
+    std::println("one point: {}", noLine.has_value() ? "a line" : formula::describe(noLine.error()));
     check(!noLine.has_value() && noLine.error() == formula::ArithmeticError::DomainError, "no line through one point");
 
     constexpr auto fifteen = formula::linear_least_squares(
         formula::curve(formula::series<Elapsed, 15>, formula::series<Length, 15>), { .reference = "Example Standard 12" });
     auto const tooWide = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(fifteen), distinctDenominators());
-    std::printf("fifteen distinct denominators: %s\n",
-                tooWide.has_value() ? "a line" : std::string { formula::describe(tooWide.error()) }.c_str());
+    std::println("fifteen distinct denominators: {}", tooWide.has_value() ? "a line" : formula::describe(tooWide.error()));
     check(!tooWide.has_value() && tooWide.error() == formula::ArithmeticError::Overflow, "Overflow, never a wrong line");
-    std::printf("%s\n", formula::render(roundedSlope).c_str());
+    std::println("{}", formula::render(roundedSlope));
     auto const roundedRate = formula::explain<Rate>(roundedSlope, points);
-    std::printf("%s\n", formula::render_trace(roundedRate.trace, { .maxSteps = 20 }).c_str());
-    check(roundedRate.outcome.measurement().value() == formula::Rational { 10179, 250 }, "0.6786 mm/s is 40.716 mm/min");
+    std::println("{}", formula::render_trace(roundedRate.trace, { .maxSteps = 20 }));
+    check(formula::number_of(roundedRate.outcome) == 40.716_r, "0.6786 mm/s is 40.716 mm/min");
 
-    constexpr auto roundedFifteen =
-        formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
-            fifteen);
+    constexpr auto roundedFifteen = formula::rounded_output<"slope", slopeRounding>(fifteen);
     auto const roundedWide = formula::checked_evaluate<Rate>(roundedFifteen, distinctDenominators());
-    check(roundedWide.has_value() && roundedWide->measurement().value() == formula::Rational { 14529, 125 },
+    check(formula::number_of(roundedWide) == 116.232_r,
           "rounded where used, fifteen distinct denominators answer: 1.9372 mm/s");
     if (roundedWide.has_value())
-    {
-        formula::NumberText const wideSlope =
-            formula::number_text(roundedWide->measurement(), formula::NumberStyle::exact_decimal());
-        std::printf("fifteen distinct denominators, rounded where used: %.*s\n\n",
-                    static_cast<int>(wideSlope.view().size()),
-                    wideSlope.view().data());
-    }
+        std::println("fifteen distinct denominators, rounded where used: {}\n", roundedWide->measurement());
 
-    std::printf("== 4. A citation is required ==\n\n");
+    std::println("== 4. A citation is required ==\n");
 
     constexpr auto uncited = formula::opaque_output<"span">(formula::opaque<SeriesSpan>({}, formula::series<Reading, 4>));
     auto const uncitedSpread = formula::explain<Spread>(uncited, readings);
     std::string const uncitedTrace = formula::render_trace(uncitedSpread.trace, { .maxSteps = 20 });
-    std::printf("%s\n", uncitedTrace.c_str());
-    check(uncitedTrace.find("(no citation given)") != std::string::npos, "an empty citation says so");
+    std::println("{}", uncitedTrace);
+    check(uncitedTrace.contains("(no citation given)"), "an empty citation says so");
 
-    std::printf("== 5. A retry ends in one of six ways ==\n\n");
+    std::println("== 5. A retry ends in one of six ways ==\n");
 
-    std::printf("%s\n\n", formula::render(fourAttempts).c_str());
+    std::println("{}\n", formula::render(fourAttempts));
 
     auto const accepted = formula::explain_retry(fourAttempts, formula::environment());
-    std::printf("%s\n", formula::render_trace(accepted.trace, { .maxSteps = 60 }).c_str());
+    std::println("{}", formula::render_trace(accepted.trace, { .maxSteps = 60 }));
     check(accepted.outcome.has_value() && accepted.outcome->end() == formula::RetryEnd::Accepted
-              && accepted.outcome->outcome().measurement().value() == formula::Rational { 57, 5 },
+              && formula::number_of(accepted.outcome) == 11.4_r,
           "accepted at the fourth attempt, 11.4 g");
 
-    std::printf("%s\n", ending("allowed four", fourAttempts, formula::environment()).c_str());
-    std::printf("%s\n", ending("allowed three", threeAttempts, formula::environment()).c_str());
-    auto const exhausted = formula::checked_evaluate_retry(threeAttempts, formula::environment());
-    check(exhausted.has_value() && exhausted->end() == formula::RetryEnd::Exhausted && exhausted->outcome().is_verdict()
-              && exhausted->outcome().verdict_label() == repeatDetermination.label,
+    printEnding("allowed four", accepted);
+    auto const exhausted = formula::explain_retry(threeAttempts, formula::environment());
+    printEnding("allowed three", exhausted);
+    check(exhausted.outcome.has_value() && exhausted.outcome->end() == formula::RetryEnd::Exhausted
+              && exhausted.outcome->outcome().is_verdict()
+              && exhausted.outcome->outcome().verdict_label() == repeatDetermination.label,
           "running out is the method's verdict");
 
     constexpr auto withinTolerance = formula::previous_attempt<Estimate> - formula::this_attempt<Estimate>
-                                     >= formula::constant<unit::Gram>(formula::Rational { 0 }) - var<Tolerance>;
-    constexpr auto againstTolerance = formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(
-        fromZero, halving, withinTolerance, repeatDetermination, settledCitation);
+                                     >= formula::constant<unit::Gram>(0_r) - var<Tolerance>;
+    constexpr auto againstTolerance = estimating<4>(fromZero, halving, withinTolerance);
     constexpr auto noTolerance = formula::environment(formula::Measured<Tolerance>::absent());
-    std::printf("%s\n", ending("tolerance not measured", againstTolerance, noTolerance).c_str());
-    check(formula::checked_evaluate_retry(againstTolerance, noTolerance)->end() == formula::RetryEnd::NotJudgeable,
+    auto const untold = formula::explain_retry(againstTolerance, noTolerance);
+    printEnding("tolerance not measured", untold);
+    check(untold.outcome.has_value() && untold.outcome->end() == formula::RetryEnd::NotJudgeable,
           "an absent comparison cannot tell");
 
-    constexpr auto thirdMissing = formula::environment(formula::measured_series<Determination>(
-        grams(413), grams(439), formula::Measured<Determination>::absent(), grams(457)));
-    std::printf("%s\n", ending("third determination missing", successive, thirdMissing).c_str());
-    check(formula::checked_evaluate_retry(successive, thirdMissing)->end() == formula::RetryEnd::NotRecorded,
+    constexpr auto thirdMissing =
+        formula::environment(formula::measured_series<Determination>(41.3_r, 43.9_r, formula::not_measured, 45.7_r));
+    auto const unrecorded = formula::explain_retry(successive, thirdMissing);
+    printEnding("third determination missing", unrecorded);
+    check(unrecorded.outcome.has_value() && unrecorded.outcome->end() == formula::RetryEnd::NotRecorded,
           "a determination nobody recorded");
 
     constexpr auto dividing =
-        formula::previous_attempt<Estimate> / formula::Rational { 2 }
-        + formula::constant<unit::Gram>(formula::Rational { 1 }) / (formula::attempt_number - formula::Rational { 1 });
-    constexpr auto failing = formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(
-        fromZero, dividing, settled, repeatDetermination, settledCitation);
-    std::printf("%s\n", ending("divides by k - 1", failing, formula::environment()).c_str());
-    check(!formula::checked_evaluate_retry(failing, formula::environment()).has_value(), "an arithmetic failure");
+        formula::previous_attempt<Estimate> / 2_r + formula::constant<unit::Gram>(1_r) / (formula::attempt_number - 1_r);
+    constexpr auto failing = estimating<4>(fromZero, dividing, settled);
+    auto const divided = formula::explain_retry(failing, formula::environment());
+    printEnding("divides by k - 1", divided);
+    check(!divided.outcome.has_value(), "an arithmetic failure");
 
-    constexpr auto typedIn =
-        formula::environment(formula::entered(formula::Measured<Estimate> { formula::Rational { 113, 10 } }));
-    std::printf("%s\n\n", ending("typed in by a person", fourAttempts, typedIn).c_str());
-    check(formula::checked_evaluate_retry(fourAttempts, typedIn)->end() == formula::RetryEnd::ManuallyEntered,
+    constexpr auto typedIn = formula::environment(formula::entered(formula::Measured<Estimate> { 11.3_r }));
+    auto const entered = formula::explain_retry(fourAttempts, typedIn);
+    printEnding("typed in by a person", entered);
+    std::println();
+    check(entered.outcome.has_value() && entered.outcome->end() == formula::RetryEnd::ManuallyEntered,
           "a person's entry is never replaced");
 
     // No starting value, and previous_attempt read at the first attempt: the
     // author's mistake, which the trace names.
-    constexpr auto noStart = formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(
-        halving, settled, repeatDetermination, settledCitation);
+    constexpr auto noStart = estimating<4>(halving, settled);
     auto const mistaken = formula::explain_retry(noStart, formula::environment());
     std::string const mistakenTrace = formula::render_trace(mistaken.trace, { .maxSteps = 20 });
-    std::printf("%s\n", mistakenTrace.c_str());
-    check(mistakenTrace.find("previous attempt: none before attempt 1") != std::string::npos, "no attempt before the first");
+    std::println("{}", mistakenTrace);
+    check(mistakenTrace.contains("previous attempt: none before attempt 1"), "no attempt before the first");
 
-    std::printf("== 6. Two successive results agree ==\n\n");
+    std::println("== 6. Two successive results agree ==\n");
 
-    std::printf("%s\n", formula::render(successive).c_str());
+    std::println("{}", formula::render(successive));
     constexpr auto allFour =
-        formula::environment(formula::measured_series<Determination>(grams(413), grams(439), grams(427), grams(457)));
-    auto const agreed = formula::checked_evaluate_retry(successive, allFour);
-    std::printf("%s\n\n", ending("41.3, 43.9, 42.7, 45.7 g", successive, allFour).c_str());
-    check(agreed.has_value() && agreed->end() == formula::RetryEnd::Accepted
-              && agreed->accepted_at() == std::optional<std::size_t> { 2 }
-              && agreed->outcome().measurement().value() == formula::Rational { 427, 10 },
+        formula::environment(formula::measured_series<Determination>(41.3_r, 43.9_r, 42.7_r, 45.7_r));
+    auto const agreed = formula::explain_retry(successive, allFour);
+    printEnding("41.3, 43.9, 42.7, 45.7 g", agreed);
+    std::println();
+    check(agreed.outcome.has_value() && agreed.outcome->end() == formula::RetryEnd::Accepted
+              && agreed.outcome->accepted_at() == std::optional<std::size_t> { 2 }
+              && formula::number_of(agreed.outcome) == 42.7_r,
           "42.7 g, at the third attempt");
 
-    std::printf("== 7. A line through observations ==\n\n");
+    std::println("== 7. A line through observations ==\n");
 
-    auto const exactLine = formula::explain<Rate>(formula::opaque_output<"slope">(observedFit), observedPoints);
-    std::printf("%s\n", formula::render_trace(exactLine.trace, { .maxSteps = 30 }).c_str());
-    check(exactLine.outcome.measurement().value() == formula::Rational { 285, 7 }, "19/28 mm/s through observations");
+    auto const exactLine = formula::explain(observedLine, observedPoints);
+    std::println("{}", formula::render_trace(exactLine.trace, { .maxSteps = 30 }));
+    check(formula::number_of(exactLine.outcome) == formula::Rational { 285, 7 }, "19/28 mm/s through observations");
 
-    std::printf("%s\n", formula::render(observedSlope).c_str());
-    auto const roundedLine = formula::explain<SlopeRate>(observedSlope, observedPoints);
-    std::printf("%s\n", formula::render_trace(roundedLine.trace, { .maxSteps = 30 }).c_str());
-    check(roundedLine.outcome.measurement().value() == formula::Rational { 3393, 5000 }, "0.6786 mm/s");
+    std::println("{}", formula::render(observedSlope));
+    auto const roundedLine = formula::explain(observedSlope, observedPoints);
+    std::println("{}", formula::render_trace(roundedLine.trace, { .maxSteps = 30 }));
+    check(formula::number_of(roundedLine.outcome) == 0.6786_r, "0.6786 mm/s");
 
     bool const fitAccepted = formula::check(closeEnough, observedPoints).is_satisfied();
-    std::printf("r squared at 4 dp, floored, at least 0.998: %s\n", fitAccepted ? "satisfied" : "not satisfied");
+    std::println("r squared at 4 dp, floored, at least 0.998: {}", fitAccepted ? "satisfied" : "not satisfied");
     check(fitAccepted, "0.9981 is at least 0.998");
 
     constexpr auto flatLengths = formula::environment(
-        formula::MeasuredObservations<Elapsed, 64>(
-            formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 7 }),
-        formula::MeasuredObservations<Length, 64>(formula::Rational { 127, 10 },
-                                                  formula::Rational { 127, 10 },
-                                                  formula::Rational { 127, 10 },
-                                                  formula::Rational { 127, 10 }));
-    auto const flatLine = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(observedFit), flatLengths);
-    std::printf("flat lengths: %s\n",
-                flatLine.has_value() ? "a line" : std::string { formula::describe(flatLine.error()) }.c_str());
+        formula::MeasuredObservations<Elapsed, 64>(1_r, 2_r, 4_r, 7_r),
+        formula::MeasuredObservations<Length, 64>(12.7_r, 12.7_r, 12.7_r, 12.7_r));
+    auto const flatLine = formula::checked_evaluate(observedLine, flatLengths);
+    std::println("flat lengths: {}", flatLine.has_value() ? "a line" : formula::describe(flatLine.error()));
     check(!flatLine.has_value() && flatLine.error() == formula::ArithmeticError::DomainError, "a flat response has no R²");
 
     auto const fifty = fiftyReadings();
-    auto const exactFifty = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(observedFit), fifty);
-    std::printf("fifty readings at 4 decimals, exact: %s\n",
-                exactFifty.has_value() ? "a line" : std::string { formula::describe(exactFifty.error()) }.c_str());
-    auto const slopeOfFifty = formula::checked_evaluate<SlopeRate>(observedSlope, fifty);
+    if (!fifty)
+    {
+        std::println("fifty readings: {} observations for {} places", fifty.error().given, fifty.error().capacity);
+        return 1;
+    }
+    auto const exactFifty = formula::checked_evaluate(observedLine, *fifty);
+    std::println("fifty readings at 4 decimals, exact: {}",
+                 exactFifty.has_value() ? "a line" : formula::describe(exactFifty.error()));
+    auto const slopeOfFifty = formula::checked_evaluate(observedSlope, *fifty);
     auto const startOfFifty = formula::checked_evaluate<StartLength>(
         formula::
             rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
                 observedFit),
-        fifty);
+        *fifty);
     auto const qualityOfFifty = formula::checked_evaluate<FitQuality>(
         formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
             observedFit),
-        fifty);
+        *fifty);
     check(slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value(), "fifty readings, rounded");
     if (slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value())
-        std::printf("fifty readings at 4 decimals, rounded: slope %s, intercept %s, r squared %s\n\n",
-                    decimalText(slopeOfFifty->measurement()).c_str(),
-                    decimalText(startOfFifty->measurement()).c_str(),
-                    decimalText(qualityOfFifty->measurement()).c_str());
-    check(slopeOfFifty.has_value() && slopeOfFifty->measurement().value() == formula::Rational { 31707, 10'000 },
-          "3.1707 mm/s");
-    std::printf("== 8. Several regressors ==\n\n");
+        std::println("fifty readings at 4 decimals, rounded: slope {}, intercept {}, r squared {}\n",
+                     slopeOfFifty->measurement(),
+                     startOfFifty->measurement(),
+                     qualityOfFifty->measurement());
+    check(formula::number_of(slopeOfFifty) == 3.1707_r, "3.1707 mm/s");
+    std::println("== 8. Several regressors ==\n");
 
     auto const expansion =
         formula::explain<Expansion>(formula::opaque_output<"coefficient 1">(byTemperatureAndContent), sixRows);
-    std::printf("%s\n", formula::render_trace(expansion.trace, { .maxSteps = 40 }).c_str());
+    std::println("{}", formula::render_trace(expansion.trace, { .maxSteps = 40 }));
 
     auto const perKelvin = formula::checked_evaluate<Expansion>(
-        formula::rounded_output<"coefficient 1",
-                                millimetrePerKelvin,
-                                formula::DecimalPlaces { 4 },
-                                formula::RoundingMode::HalfEven>(byTemperatureAndContent),
+        formula::rounded_output<"coefficient 1", formula::declared_rounding(millimetrePerKelvin, formula::RoundingMode::HalfEven)>(
+            byTemperatureAndContent),
         sixRows);
     auto const perPercent = formula::checked_evaluate<Swelling>(
-        formula::rounded_output<"coefficient 2",
-                                millimetrePerPercent,
-                                formula::DecimalPlaces { 4 },
-                                formula::RoundingMode::HalfEven>(byTemperatureAndContent),
+        formula::rounded_output<"coefficient 2", formula::declared_rounding(millimetrePerPercent, formula::RoundingMode::HalfEven)>(
+            byTemperatureAndContent),
         sixRows);
     auto const atZero = formula::checked_evaluate<StartLength>(lengthAtZeroCelsius, sixRows);
     check(perKelvin.has_value() && perPercent.has_value() && atZero.has_value(), "two regressors, rounded");
     if (perKelvin.has_value() && perPercent.has_value() && atZero.has_value())
-        std::printf("coefficient 1: %s, coefficient 2: %s, length at 0 degrees Celsius: %s\n",
-                    decimalText(perKelvin->measurement()).c_str(),
-                    decimalText(perPercent->measurement()).c_str(),
-                    decimalText(atZero->measurement()).c_str());
-    check(perPercent.has_value() && perPercent->measurement().value() == formula::Rational { 5557, 10'000 },
-          "0.5557 mm per percent");
+        std::println("coefficient 1: {}, coefficient 2: {}, length at 0 degrees Celsius: {}",
+                     perKelvin->measurement(),
+                     perPercent->measurement(),
+                     atZero->measurement());
+    check(formula::number_of(perPercent) == 0.5557_r, "0.5557 mm per percent");
 
     constexpr auto collinear = formula::multiple_least_squares(
         formula::regressors(formula::observations<Elapsed, 64>, formula::observations<Delay, 64>),
         formula::observations<Length, 64>,
         { .reference = "Example Standard 12" });
     constexpr auto twiceAsLate = formula::environment(
-        formula::MeasuredObservations<Elapsed, 64>(
-            formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 7 }),
-        formula::MeasuredObservations<Delay, 64>(
-            formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 8 }, formula::Rational { 14 }),
-        formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 },
-                                                  formula::Rational { 109, 10 },
-                                                  formula::Rational { 121, 10 },
-                                                  formula::Rational { 143, 10 }));
+        formula::MeasuredObservations<Elapsed, 64>(1_r, 2_r, 4_r, 7_r),
+        formula::MeasuredObservations<Delay, 64>(2_r, 4_r, 8_r, 14_r),
+        formula::MeasuredObservations<Length, 64>(10.2_r, 10.9_r, 12.1_r, 14.3_r));
     auto const unsolvable = formula::checked_evaluate<Length>(formula::opaque_output<"constant">(collinear), twiceAsLate);
-    std::printf("a delay twice the elapsed time on every row: %s\n\n",
-                unsolvable.has_value() ? "a fit" : std::string { formula::describe(unsolvable.error()) }.c_str());
+    std::println("a delay twice the elapsed time on every row: {}\n",
+                 unsolvable.has_value() ? "a fit" : formula::describe(unsolvable.error()));
     check(!unsolvable.has_value() && unsolvable.error() == formula::ArithmeticError::DomainError,
           "a singular design is refused");
-    std::printf("all checks passed: %s\n", allPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allPassed ? "yes" : "no");
     return allPassed ? 0 : 1;
 }
