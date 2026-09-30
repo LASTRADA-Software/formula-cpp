@@ -140,13 +140,7 @@ struct LinearLeastSquares
         using Traits = RepTraits<Rep>;
         // Decided exactly, before any sum: see the file comment. No point, or
         // one, has no second point distinct from the first either.
-        if (points.size() != pointValues.size())
-            return std::unexpected { ArithmeticError::DomainError };
-        bool anotherPoint = false;
-        for (Rep const& each: points)
-            if (!(each == points[0]))
-                anotherPoint = true;
-        if (!anotherPoint)
+        if (points.size() != pointValues.size() || detail::all_equal_to_first<Rep>(points))
             return std::unexpected { ArithmeticError::DomainError };
 
         std::expected<Rep, ArithmeticError> const zero = Traits::from(Rational { 0 });
@@ -219,7 +213,13 @@ struct LinearLeastSquares
         return std::array { *fittedIntercept, *fittedSlope };
     }
 
-    /// The width `compute_exact` works in: eight limbs, 256 bits.
+    /// The width `compute_exact` works in: eight limbs, 256 bits. A line
+    /// through observations is exact in twelve (`detail/least_squares_kernel.hpp`),
+    /// centred and sized for R², which this fit does not report. This fit keeps
+    /// its own uncentred sums and its width, so that its outputs, its lines and
+    /// its census figures (`docs/numeric-headroom.md`) stay as they were, and so
+    /// that flat values, which the kernel refuses, still fit a line of slope
+    /// zero.
     static constexpr std::size_t exact_limbs = 8;
 
     /// The fit, exactly, for a `rounded_output`: intercept then slope, in
@@ -244,27 +244,12 @@ struct LinearLeastSquares
     {
         using Wide = detail::WideUnsigned<exact_limbs>;
         using Signed = detail::WideSigned<exact_limbs>;
-        if (domainPoints.size() != pointValues.size())
-            return std::unexpected { ArithmeticError::DomainError };
-        bool anotherPoint = false;
-        for (Rational const& each: domainPoints)
-            if (!(each == domainPoints[0]))
-                anotherPoint = true;
-        if (!anotherPoint)
+        if (domainPoints.size() != pointValues.size() || detail::all_equal_to_first<Rational>(domainPoints))
             return std::unexpected { ArithmeticError::DomainError };
 
         // One common denominator for the points, and one for the values.
-        std::optional<Wide> pointScale = Wide::from_u64(1);
-        std::optional<Wide> valueScale = Wide::from_u64(1);
-        for (std::size_t at = 0; at < domainPoints.size(); ++at)
-        {
-            if (pointScale)
-                pointScale = detail::lcm_checked_or_none(
-                    *pointScale, Wide::from_u64(static_cast<std::uint64_t>(domainPoints[at].denominator())));
-            if (valueScale)
-                valueScale = detail::lcm_checked_or_none(
-                    *valueScale, Wide::from_u64(static_cast<std::uint64_t>(pointValues[at].denominator())));
-        }
+        std::optional<Wide> const pointScale = detail::common_denominator<exact_limbs>(domainPoints);
+        std::optional<Wide> const valueScale = detail::common_denominator<exact_limbs>(pointValues);
         if (!pointScale || !valueScale)
             return std::unexpected { ArithmeticError::Overflow };
 
