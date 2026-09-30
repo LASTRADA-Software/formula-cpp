@@ -2582,9 +2582,12 @@ namespace detail
     };
 
     /// Fails to compile when `with_constant<Q>` is applied to a method that
-    /// reads `Q` as a series (`series<Q, N>`). A series is a value at every
-    /// point of the method's domain; one constant cannot stand for it, and
-    /// the substitution would leave the series reading the environment.
+    /// reads `Q` as a series (`series<Q, N>`) or as raw observations
+    /// (`observations<Q, Capacity>`). A series is a value at every point of
+    /// the method's domain, and observations as many values as were made; one
+    /// constant cannot stand for them, and the substitution would leave them
+    /// reading the environment. The words are the calculation's for the same
+    /// reads (`RequireSingleValueReadsInCalculation`).
     ///
     /// Not `RequireConstantUsed`'s message: a variant or constraint does use
     /// `Q`, and a message saying none does would be false.
@@ -2592,9 +2595,9 @@ namespace detail
     struct RequireConstantNotSeries
     {
         static_assert(NotASeries,
-                      "formula: this overlay fixes a quantity the method reads as a series; one constant cannot "
-                      "stand for a series -- the quantity appears in this diagnostic as the template argument Q "
-                      "of RequireConstantNotSeries");
+                      "formula: this overlay fixes a quantity the method reads as a series or as raw observations; "
+                      "one constant cannot stand for many values -- the quantity appears in this diagnostic as the "
+                      "template argument Q of RequireConstantNotSeries");
 
         static constexpr bool value = true;
     };
@@ -2605,9 +2608,9 @@ namespace detail
     struct RequireDerivationNotSeries
     {
         static_assert(NotASeries,
-                      "formula: this overlay derives a quantity the method reads as a series; one definition "
-                      "cannot stand for a series -- the quantity appears in this diagnostic as the template "
-                      "argument Q of RequireDerivationNotSeries");
+                      "formula: this overlay derives a quantity the method reads as a series or as raw observations; "
+                      "one definition cannot stand for many values -- the quantity appears in this diagnostic as the "
+                      "template argument Q of RequireDerivationNotSeries");
 
         static constexpr bool value = true;
     };

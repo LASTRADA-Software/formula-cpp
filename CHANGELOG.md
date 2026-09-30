@@ -316,6 +316,10 @@ may break it, and each such change is recorded here.
 - `statistics.hpp` includes `observations.hpp` instead of `binning.hpp`, and so no longer brings in
   `binning.hpp`, `band.hpp` or `lookup.hpp`: code that used a binning, a band table or a lookup through
   `statistics.hpp` alone includes `binning.hpp` or `lookup.hpp`.
+- An overlay's refusal of a constant or a derivation for a quantity the method reads as a series or as raw
+  observations names both: "formula: this overlay fixes a quantity the method reads as a series or as raw
+  observations; one constant cannot stand for many values", with "derives" and "one definition" for a
+  derivation. It said "reads as a series" and "cannot stand for a series", of raw observations too.
 
 ## [0.1.0] - 2026-09-28
 

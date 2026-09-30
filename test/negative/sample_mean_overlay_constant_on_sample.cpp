@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series
+// EXPECT: formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values
 //
 // `with_constant<Mass>` on a method whose variant is the mean of six
 // determinations of `Mass`. The statistic reads its quantity as a series, and

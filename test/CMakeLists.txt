@@ -710,10 +710,10 @@ formula_add_negative_test(series_round_places_int_array
 # such, and the "nobody reads it" refusal gated off, since a variant does
 # read it.
 formula_add_negative_test(overlay_constant_on_series_quantity
-    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "overrides a quantity that no variant or constraint of the method uses")
 formula_add_negative_test(overlay_derived_on_series_quantity
-    "formula: this overlay derives a quantity the method reads as a series; one definition cannot stand for a series"
+    "formula: this overlay derives a quantity the method reads as a series or as raw observations; one definition cannot stand for many values"
     REJECT "derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(function_zero_root_degree
@@ -951,7 +951,7 @@ formula_add_negative_test(rejection_of_single_value
 
 # Phase 12's series-quantity refusal, reused unchanged for a statistic.
 formula_add_negative_test(sample_mean_overlay_constant_on_sample
-    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "overrides a quantity that no variant or constraint of the method uses" "cannot see inside")
 
 # The same check sees through phase 12's series kinds: a placeholder added to
@@ -2334,10 +2334,10 @@ formula_add_negative_test(rounded_output_rep_double
 # rewrite sees through the call to its inputs, so the series refusal is the
 # one message -- not "cannot see inside", and not "nobody reads it".
 formula_add_negative_test(overlay_constant_inside_opaque_series
-    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
 formula_add_negative_test(overlay_constant_inside_observation_fit
-    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
 # A refused opaque call's output stands in with a dimensionless dimension;
 # every check over it is silent (`detail::refused_already`), so the one
