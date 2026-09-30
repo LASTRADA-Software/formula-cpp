@@ -39,24 +39,7 @@ namespace formula
 
 namespace detail
 {
-    /// @p function of @p argument where it is rational, through `RepFunctions<Rational>`: its value at a
-    /// special point, and `Inexact` elsewhere (or `DomainError`, which the caller has already answered).
-    [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> exact_transcendental(Transcendental function,
-                                                                                         Rational argument) noexcept
-    {
-        switch (function)
-        {
-            case Transcendental::NaturalLogarithm:
-                return RepFunctions<Rational>::natural_log(argument);
-            case Transcendental::DecimalLogarithm:
-                return RepFunctions<Rational>::decimal_log(argument);
-            case Transcendental::Exponential:
-                return RepFunctions<Rational>::exponential(argument);
-        }
-        return std::unexpected { ArithmeticError::DomainError };
-    }
-
-    /// @p function of @p argument, rounded to @p places decimal places under @p roundingMode -- the correctly
+    /// @p F of @p argument, rounded to @p places decimal places under @p roundingMode -- the correctly
     /// rounded decimal of the true value, rational or not. The decision, in order: a logarithm of zero or
     /// below is `DomainError`; places outside -18...18 are `Overflow`, as for `checked_round`; a special
     /// point -- the only values that can tie -- goes to `checked_round`; the exponential of more than 44
@@ -64,40 +47,42 @@ namespace detail
     /// quarter of the last kept unit at any places accepted, so 0, or one unit under `Ceiling` and
     /// `AwayFromZero`; everything else is the kernel's enclosure, rounded by `decide_rounding`, which
     /// answers `Overflow` when the kept integer does not fit and when the two ends round differently.
+    /// The special points are `RepFunctions<Rational>`'s, through `transcendental_of`: their value, and
+    /// `Inexact` elsewhere.
+    template <Transcendental F>
     [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rounded_transcendental(
-        Transcendental function, Rational argument, DecimalPlaces places, RoundingMode roundingMode) noexcept
+        Rational argument, DecimalPlaces places, RoundingMode roundingMode) noexcept
     {
-        if (function != Transcendental::Exponential && argument.sign() <= 0)
-            return std::unexpected { ArithmeticError::DomainError };
+        if constexpr (F != Transcendental::Exponential)
+        {
+            if (argument.sign() <= 0)
+                return std::unexpected { ArithmeticError::DomainError };
+        }
         if (places.value > 18 || places.value < -18)
             return std::unexpected { ArithmeticError::Overflow };
 
-        std::expected<Rational, ArithmeticError> const exact = exact_transcendental(function, argument);
+        std::expected<Rational, ArithmeticError> const exact = transcendental_of<F, Rational>(argument);
         if (exact.has_value())
             return checked_round(*exact, places, roundingMode);
         if (exact.error() != ArithmeticError::Inexact)
             return std::unexpected { exact.error() };
 
         std::optional<Enclosure> enclosure;
-        switch (function)
+        if constexpr (F == Transcendental::NaturalLogarithm)
+            enclosure = natural_log_enclosure(argument);
+        else if constexpr (F == Transcendental::DecimalLogarithm)
+            enclosure = decimal_log_enclosure(argument);
+        else
         {
-            case Transcendental::NaturalLogarithm:
-                enclosure = natural_log_enclosure(argument);
-                break;
-            case Transcendental::DecimalLogarithm:
-                enclosure = decimal_log_enclosure(argument);
-                break;
-            case Transcendental::Exponential:
-                if (argument > Rational { 44 })
-                    return std::unexpected { ArithmeticError::Overflow };
-                if (argument < Rational { -43 })
-                {
-                    if (roundingMode == RoundingMode::Ceiling || roundingMode == RoundingMode::AwayFromZero)
-                        return Rational::from_decimal(1, -places.value);
-                    return Rational {};
-                }
-                enclosure = exponential_enclosure(argument);
-                break;
+            if (argument > Rational { 44 })
+                return std::unexpected { ArithmeticError::Overflow };
+            if (argument < Rational { -43 })
+            {
+                if (roundingMode == RoundingMode::Ceiling || roundingMode == RoundingMode::AwayFromZero)
+                    return Rational::from_decimal(1, -places.value);
+                return Rational {};
+            }
+            enclosure = exponential_enclosure(argument);
         }
         if (!enclosure.has_value())
             return std::unexpected { ArithmeticError::Overflow };
@@ -184,7 +169,7 @@ template <typename Rep = Rational,
 
     std::expected<Rep, ArithmeticError> roundedValue = std::unexpected { ArithmeticError::DomainError };
     if constexpr (std::is_same_v<Rep, Rational>)
-        roundedValue = detail::rounded_transcendental(F, **evaluatedOperand, Places, Mode);
+        roundedValue = detail::rounded_transcendental<F>(**evaluatedOperand, Places, Mode);
     else
     {
         std::expected<Rep, ArithmeticError> const unrounded = detail::transcendental_of<F, Rep>(**evaluatedOperand);
