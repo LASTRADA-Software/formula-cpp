@@ -1994,6 +1994,31 @@ namespace detail
         }
     };
 
+    /// A rounded opaque output, rewritten as the output it rounds is -- through
+    /// its call's inputs, with the call's citation, and never when the call
+    /// was refused -- and rounded as before.
+    template <typename Sub, std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode,
+              typename Origin>
+    struct ConstantRewrite<Sub, RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>
+    {
+        /// How the output it rounds is rewritten.
+        using Output = ConstantRewrite<Sub, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>;
+        /// Whether every input is a kind this header knows, and the call was not refused.
+        static constexpr bool known = Output::known;
+        /// Whether any input uses `Q`.
+        static constexpr bool mentions = Output::mentions;
+        /// The same rounding, of the output of the rewritten call.
+        using type = RoundedOpaqueOutputNode<I, decltype(Output::type::call), U, Places, Mode, Origin>;
+
+        /// The node, over the rewritten call.
+        [[nodiscard]] static constexpr type apply(
+            RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& original,
+            Sub const& overriding) noexcept
+        {
+            return type { {}, Output::apply(unrounded(original), overriding).call };
+        }
+    };
+
     template <typename Sub, UnaryOperator Op, SeriesNode Operand>
     struct ConstantRewrite<Sub, ElementwiseUnaryNode<Op, Operand>>:
         ConstantRewriteOperand<Sub, Operand, ElementwiseUnaryNode<Op, typename ConstantRewriteOf<Sub, Operand>::type>>
@@ -2506,6 +2531,14 @@ namespace detail
         /// Whatever any of the call's inputs substitutes.
         using type = SubstitutedInAll<Inputs...>;
     };
+
+    template <std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode, typename Origin>
+    struct SubstitutedIn<RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>
+    {
+        /// Whatever any of the call's inputs substitutes.
+        using type = SubstitutedInAll<Inputs...>;
+    };
+
 
     /// Fails to compile when `with_constant<Q>` is applied to a method that
     /// never uses `Q`. Such an override changes nothing, and the likeliest

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/calculation.hpp>
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/opaque.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/rounding_node.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -10,7 +13,10 @@
 #include <expected>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -301,6 +307,45 @@ struct HearsCalls
         told->push_back(ToldCall { M, callInfo.values, evaluated.has_value() && evaluated->has_value() });
     }
 };
+
+struct Factor: formula::Quantity<Factor, "k", "an invented factor", unit::One>
+{
+};
+struct Other: formula::Quantity<Other, "k_o", "another invented factor", unit::One>
+{
+};
+struct Share: formula::Quantity<Share, "s", "an invented share", unit::One>
+{
+};
+
+// One value over another: compute alone, over two single values, so that a
+// calculation -- which holds single values -- can define a quantity by it.
+struct RatioOfTwo
+{
+    static constexpr std::string_view name = "ratio of two";
+    static constexpr std::array shapes { formula::InputShape::Single, formula::InputShape::Single };
+    static constexpr std::array<std::string_view, 1> outputs { "ratio" };
+
+    static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
+        std::array<formula::Dimension, 2> declared) noexcept
+    {
+        return std::array { declared[0] / declared[1] };
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(Rep dividend, Rep divisor) noexcept
+    {
+        std::expected<Rep, formula::ArithmeticError> const quotientValue = formula::RepTraits<Rep>::divide(dividend, divisor);
+        if (!quotientValue.has_value())
+            return std::unexpected { quotientValue.error() };
+        return std::array { *quotientValue };
+    }
+};
+
+constexpr formula::Citation shareClause { .title = "Share of two factors", .reference = "Example Standard 7", .section = "3.2" };
+constexpr auto roundedShare = formula::rounded_output<"ratio", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+    formula::opaque<RatioOfTwo>(shareClause, formula::var<Factor>, formula::var<Other>));
+constexpr auto shareCalculation = formula::calculation(formula::define<Share>(roundedShare));
 } // namespace
 
 TEST_CASE("rounded output: a node of its output's dimension that states its rounding", "[rounded-output]")
@@ -501,4 +546,25 @@ TEST_CASE("rounded output: a hook that is not noexcept or too narrow is not take
     CHECK(loose.error() == formula::ArithmeticError::Overflow);
     REQUIRE(!narrow.has_value());
     CHECK(narrow.error() == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("rounded output: the walks see the call's inputs", "[rounded-output][precision][calculation]")
+{
+    using RoundedShare = std::remove_cvref_t<decltype(roundedShare)>;
+    STATIC_REQUIRE(formula::detail::LevelChildren<RoundedShare>::seen);
+    STATIC_REQUIRE(std::is_same_v<typename formula::detail::LevelChildren<RoundedShare>::type,
+                                  std::tuple<formula::VarNode<Factor>, formula::VarNode<Other>>>);
+    // A calculation defines a quantity by it and reads what the call reads.
+    STATIC_REQUIRE(formula::inputs_of(shareCalculation) == std::array<std::string_view, 2> { "k", "k_o" });
+}
+
+TEST_CASE("rounded output: a page lists a call once whether its output is rounded or not", "[rounded-output][document]")
+{
+    constexpr auto both = formula::opaque_output<"total">(fiveCall)
+                          - formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall);
+    formula::Documentation const page = formula::document(both);
+    REQUIRE(page.opaqueOperations.size() == 1);
+    CHECK(page.opaqueOperations[0].name == "reciprocal sum");
+    REQUIRE(page.citations.size() == 1);
+    CHECK(page.formula == "reciprocal sum(z(i)).total - round(reciprocal sum(z(i)).total, to 6 dp)");
 }

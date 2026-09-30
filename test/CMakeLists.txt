@@ -2309,6 +2309,12 @@ formula_add_negative_test(overlay_derivation_of_refused_opaque
 formula_add_negative_test(overlay_substitution_inside_opaque_across_overlays
     "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "cannot see inside")
+# The same through a rounded output, whose call's inputs the whole-method rule
+# sees as it sees an opaque output's.
+formula_add_negative_test(overlay_substitution_inside_rounded_output_across_overlays
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
+    EXPECT_COUNT 1
+    REJECT "cannot see inside")
 formula_add_negative_test(overlay_constant_bypassed_inside_opaque
     "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "cannot see inside")

@@ -1861,6 +1861,29 @@ template <Dialect D, std::size_t I, typename Op, typename... Inputs, typename Or
         return operationName + "(" + arguments + ")." + outputName;
 }
 
+/// A rounded opaque output renders as what it states, the output rounded:
+/// `round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)`, and in
+/// LaTeX `RoundNode`'s subscripted `\operatorname{round}` around the output.
+/// That it is one exact operation rather than a rounding of an exact output is
+/// how it is evaluated, not what it states -- `rounded_sqrt`'s reasoning,
+/// above. The mode is left out, for the reason `RoundNode`'s overload gives,
+/// and the trace states it.
+template <Dialect D, std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode,
+          typename Origin, Vocabulary V>
+[[nodiscard]] std::string render_node(RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node,
+                                      V const& vocabulary)
+{
+    std::string const inner = render<D>(detail::unrounded(node), vocabulary);
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
+    std::string const placesText = std::to_string(Places.value);
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}(" + inner
+               + ")";
+    else
+        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+}
+
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
 /// cannot go through `render_operand` -- its own operand context is computed
 /// directly from `PrecedenceOf<PredicateNode<...>>` instead, one rung above

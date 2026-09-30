@@ -183,7 +183,10 @@ may break it, and each such change is recorded here.
   output the operation does not declare, for a unit that does not measure the output's dimension and
   for a unit with an offset, and it does not compile under `Rep = double`, as no rounding node does.
   `rounded<>(opaque_output<>(...))` is unchanged: the exact output rounded afterwards, or `Overflow`
-  where the exact output overflows.
+  where the exact output overflows. It renders as the rounding it states,
+  `round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)`, a page lists its call once
+  however the call's outputs are used, an overlay's constant reaches inside its call as it does inside
+  `opaque_output`'s, and a calculation may define a quantity by one.
 - `OpaqueValues`, and `OpaqueCallInfo::values`: a sink hearing an opaque call is told `Exact`, as
   before, or `RoundedWhereUsed` for a call evaluated for a `rounded_output`, whose `opaque_produced`
   is then handed an `OpaqueEvaluated<Rational, 0>` -- whether the call answered, was absent or

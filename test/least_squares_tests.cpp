@@ -44,6 +44,15 @@ struct Offset: formula::Quantity<Offset, "L_0", "an invented starting length", u
 {
 };
 
+// A unit the tests round the fitted rate in, declared here as a method would
+// declare it: a millimetre a second, with four decimals, so that the padded
+// style writes 0.6786 as it is.
+constexpr formula::Unit MillimetrePerSecond { .dimension = formula::dim::Velocity,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 1000,
+                                              .symbolText = formula::symbol("mm/s"),
+                                              .decimals = 4 };
+
 // t = 1, 2, 4, 7 s and L = 10.2, 10.9, 12.1, 14.3 mm: slope 19/28 mm/s and
 // intercept 9.5 mm, computed by hand in the plan. The secant from first to
 // last is 41/60 mm/s, x-on-y about 0.6798, through the origin about 2.5786,
@@ -61,6 +70,8 @@ constexpr auto fitPoints =
 constexpr auto fit =
     formula::linear_least_squares(formula::curve(formula::series<Elapsed, 4>, formula::series<Length, 4>),
                                   { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
+constexpr auto roundedSlope =
+    formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(fit);
 
 // The same pairs in coherent SI, seconds and metres, in the order written.
 constexpr std::array<formula::Rational, 4> inOrderTimes { rat(1), rat(2), rat(4), rat(7) };
@@ -502,6 +513,34 @@ TEST_CASE("a constant read only inside the fit's input is still a use of it", "[
     STATIC_REQUIRE(formula::evaluate_method<Fitted>(fixed, fitPoints)->value() == rat(419, 600'000));
 }
 
+namespace
+{
+// The scaled fit's slope, rounded where it is used: the scale is read inside
+// the call only.
+constexpr auto roundedInsideMethod = formula::method(
+    formula::variants(formula::variant<Fitted>(
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            scaledFit))),
+    TenthOfMillimetrePerMinute {},
+    formula::constraints());
+} // namespace
+
+TEST_CASE("rounded output: a constant read inside a rounded output's call is fixed for the whole call",
+          "[least-squares][overlay]")
+{
+    // 19/28 * 1.03 = 0.69892857... mm/s, 0.6989 at 4 dp; 41.934 mm/min, 41.9
+    // after the method's rule. The environment has no scale: a use left
+    // reading it would not compile.
+    constexpr auto fixed = formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex)), roundedInsideMethod);
+    STATIC_REQUIRE(formula::detail::ConstantRewriteOf<
+                   formula::ConstantOverride<Scale>,
+                   std::remove_cvref_t<decltype(formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
+                                                                        formula::RoundingMode::HalfEven>(scaledFit))>>::known);
+    auto const outcome = formula::evaluate_method<Fitted>(fixed, fitPoints);
+    REQUIRE(outcome.has_value());
+    CHECK(outcome->value() == rat(419, 600'000));
+}
+
 TEST_CASE("a scoped vocabulary renames a fit's input in the trace, the render and the page", "[least-squares][vocabulary]")
 {
     constexpr auto north = formula::vocabulary(formula::renames<Length>("l"));
@@ -532,4 +571,35 @@ TEST_CASE("a scoped vocabulary reaches a constant fixed inside a rewritten fit",
     (void) formula::evaluate_method<Fitted>(fixed, fitPoints, formula::RecordingSink { recorded, north });
     CHECK(formula::render_trace(recorded, { .maxSteps = 40 }).find("k = 103/100 [fixed by jurisdiction overlay")
           != std::string::npos);
+}
+
+TEST_CASE("rounded output: a rounded slope renders as the rounding it states in every dialect", "[least-squares][render]")
+{
+    CHECK(formula::render(roundedSlope) == "round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)");
+    CHECK(formula::render<formula::Dialect::Markdown>(roundedSlope)
+          == "round(linear least squares(`t(i)`, `L(i)`).slope, to 4 dp of mm/s)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(roundedSlope)
+          == "\\operatorname{round}_{4\\,\\mathrm{mm/s}}(\\text{linear least squares}({t}_{i}, {L}_{i})_{\\text{slope}})");
+    // The inputs follow the vocabulary; the operation's name and the unit do not.
+    constexpr auto renamed = formula::vocabulary(formula::renames<Elapsed>("t_e"));
+    CHECK(formula::render(roundedSlope, renamed) == "round(linear least squares(t_e(i), L(i)).slope, to 4 dp of mm/s)");
+}
+
+TEST_CASE("rounded output: a page lists the fit once however its outputs are used", "[least-squares][document]")
+{
+    constexpr auto both = formula::opaque_output<"intercept">(fit) + roundedSlope * formula::constant<unit::Second>(rat(1));
+    formula::Documentation const page = formula::document(both);
+    REQUIRE(page.opaqueOperations.size() == 1);
+    CHECK(page.opaqueOperations[0].name == "linear least squares");
+    CHECK(page.opaqueOperations[0].outputs == std::vector<std::string_view> { "intercept", "slope" });
+    REQUIRE(page.citations.size() == 1);
+    CHECK(page.citations[0].section == "5.1");
+    CHECK(page.formula.find("round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)") != std::string::npos);
+    REQUIRE(page.symbols.size() == 2); // t and L, each once
+    // Alone, a rounded output lists its call as well: above, the intercept
+    // alone would list it.
+    formula::Documentation const alone = formula::document(roundedSlope);
+    REQUIRE(alone.opaqueOperations.size() == 1);
+    CHECK(alone.opaqueOperations[0].name == "linear least squares");
+    CHECK(alone.citations.size() == 1);
 }
