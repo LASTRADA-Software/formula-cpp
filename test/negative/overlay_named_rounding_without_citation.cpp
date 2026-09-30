@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: with_rounding<U, Places, Mode>() was given no citation
+// EXPECT: formula: with_rounding<...>() was given no citation
 //
 // A rounding rule named as a DecimalRounding and stated with no citation: refused
 // in the same words as the three-argument spelling, since a trace that says "by

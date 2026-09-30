@@ -517,12 +517,12 @@ formula_add_negative_test(trace_of_result_dimension_mismatch
 formula_add_negative_test(trace_of_yields_relabelled
     "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
     REJECT "no matching")
-# Nine verbs, each asked for its own wrong quantity: one refusal each. Each
+# Ten verbs, each asked for its own wrong quantity: one refusal each. Each
 # verb gates on names_yields_result, never on RequireYieldsResult's value:
 # with the gate reading that value, clang-cl 22.1.8 compiled both branches
 # of define's gate once the check had failed, and its two returns deduce
-# different types. The last two REJECTs name that error: clang's words, as
-# clang-cl 22.1.8 printed them, and g++'s, not yet measured.
+# different types. The last two REJECTs name that error: the first in
+# clang's words, as clang-cl 22.1.8 printed them, the other in g++'s.
 formula_add_negative_test(yields_relabelled_every_verb
     "formula: this formula names its result quantity with yields" EXPECT_COUNT 10
     REJECT "no matching" "in return type deduced as" "inconsistent deduction for auto return type")
@@ -1645,9 +1645,9 @@ formula_add_negative_test(overlay_derived_without_citation
 formula_add_negative_test(overlay_replacement_without_citation
     "formula: replace_variant<Tag>(expression) was given no citation")
 formula_add_negative_test(overlay_rounding_without_citation
-    "formula: with_rounding<U, Places, Mode>() was given no citation")
+    "formula: with_rounding<...>() was given no citation")
 formula_add_negative_test(overlay_named_rounding_without_citation
-    "formula: with_rounding<U, Places, Mode>() was given no citation")
+    "formula: with_rounding<...>() was given no citation")
 formula_add_negative_test(overlay_constraints_without_citation
     "formula: with_constraints(constraints(...)) was given no citation")
 

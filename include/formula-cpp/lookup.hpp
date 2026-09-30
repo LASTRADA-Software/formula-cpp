@@ -613,12 +613,12 @@ namespace detail
 /// typed as `0` -- checked against the installed package on all three node
 /// kinds, all three of which did it. The factory's parameter type cannot see
 /// that call, because there is no call. Making the member itself a
-/// `Corrections<N>` is what closes it: the
-/// braced list now initialises this type, a short one selects the
-/// arity-mismatch constructor below, and its `static_assert` names both counts
-/// at the offending line. `lookup_short_corrections_no_factory.cpp` and its
-/// two siblings pin exactly that, one per node kind, and reverting any one
-/// member to a raw array fails that kind's case alone.
+/// `Corrections<N>` is what closes it: the braced list now initialises this
+/// type, a short one selects the arity-mismatch constructor below, and its
+/// `static_assert` names both counts at the offending line.
+/// `lookup_short_corrections_no_factory.cpp` and its two siblings pin exactly
+/// that, one per node kind, and reverting any one member to a raw array fails
+/// that kind's case alone.
 ///
 /// Nodes therefore declare `Corrections<N> corrections;` with **no default
 /// member initialiser**, and that omission is load bearing: `{}` for a table

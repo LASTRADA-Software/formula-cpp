@@ -30,7 +30,8 @@
 #    through the default vocabulary and ignores the one the surface was given
 #    (angle brackets and one level of parentheses inside the template argument
 #    are matched, as in `Wrapper<Q>` and `decltype(x)`; deeper parentheses, as
-#    in `decltype(f(x))`, are not caught);
+#    in `decltype(f(x))`, are not caught, and nor is a template argument split
+#    across lines, since the match stops at a line's end);
 #  - a two-argument `render<...>(x, renderOptions)` or
 #    `document<...>(x, renderOptions)` call, outside the public overloads that
 #    forward `RenderOptions` -- it names no vocabulary, so it resolves the

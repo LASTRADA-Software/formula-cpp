@@ -200,7 +200,7 @@ namespace detail
 /// is present: a conversion nobody could perform does not compile, and so cannot
 /// look like it succeeded merely because there was no number to get wrong. A
 /// refused conversion draws that one message: the unit conversion in the body is
-/// an ordinary run-time call and adds none (measured with cl and clang-cl).
+/// an ordinary run-time call and adds none.
 template <Described R, Described Q>
 [[nodiscard]] constexpr std::expected<Measured<R>, ArithmeticError> checked_convert_to(Measured<Q> value) noexcept
 {
