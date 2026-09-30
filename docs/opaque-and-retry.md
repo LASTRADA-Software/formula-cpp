@@ -487,7 +487,7 @@ most 0.76 g. The sequence rises, so the acceptance is written
 `w(k-1) - w(k) >= -0.76 g`:
 
 ```cpp
-constexpr auto halving = formula::constant<unit::Gram>(6.08_r) + formula::previous_attempt<Estimate> / 2_r;
+constexpr auto halving = formula::constant<unit::Gram>(6.08_r) + formula::previous_attempt<Estimate> / 2;
 constexpr auto settled = formula::previous_attempt<Estimate> - formula::this_attempt<Estimate>
                          >= formula::constant<unit::Gram>(-0.76_r);
 constexpr auto fromZero = formula::starting_from(formula::constant<unit::Gram>(0));

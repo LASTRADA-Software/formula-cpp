@@ -142,8 +142,8 @@ int main()
                                   .decimals = 1,
                                   .bounds = formula::bounds(0, 1, 100, 1) };
 
-    constexpr auto unboundedVerdict = formula::checked_within_bounds(1'000'000_r, unit::Litre);
-    constexpr auto boundedVerdict = formula::checked_within_bounds(42_r, BoundedGauge);
+    constexpr auto unboundedVerdict = formula::checked_within_bounds(1'000'000, unit::Litre);
+    constexpr auto boundedVerdict = formula::checked_within_bounds(42, BoundedGauge);
     static_assert(unboundedVerdict.has_value() && boundedVerdict.has_value());
 
     // `{}` of a BoundsCheck writes its describe() words.

@@ -117,11 +117,14 @@ census, and only the rounded decimal it answers is counted, made by
 The census does not see evaluations that happen at compile time
 (`constexpr`): a constant evaluation cannot report to a tally. They fit --
 an overflow there is still a refused result -- but their headroom is not
-measured. Three examples evaluate some of their formulas that way:
-`expressions` three, `rounding_and_conditionals` six and `constraints` five.
-`expressions` evaluates one formula at run time, and that evaluation returns
-a value a person entered without computing it, so its row reports no integer
-and the full 63 bits.
+measured. Nine examples evaluate some of their formulas that way:
+`constraints`, `dimensions_and_units`, `expressions`, `lookup_tables`,
+`quantities`, `records`, `rounding_and_conditionals`, `series` and `statistics`.
+A row that reads 0 | 0 | 0 and the full 63 bits means the program counted no
+integer at run time. For `quantities` that is because every check it makes is
+a compile-time one, so there is nothing for the census to tally. `expressions`
+evaluates one formula at run time, and that evaluation returns a value a
+person entered without computing it, so its row reports no integer either.
 
 The figures are deterministic: the census program prints the same on cl
 19.51 and gcc 13.3, and the clang and gcc presets hold it to the same pins.

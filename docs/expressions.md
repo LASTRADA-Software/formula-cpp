@@ -688,7 +688,8 @@ quantity -- *this formula is bound to its result quantity already; bind the
 formula it holds (.expression), or use it as it is*.
 
 **Reuse goes through `.expression`.** For the same reason, a bound formula is
-not an operand of another formula. The formula it holds is, as any formula is
+not an operand of another formula, and a comparison over one is refused in the
+same words. The formula it holds is an operand, as any formula is
 ([Composing a formula from other formulas](#composing-a-formula-from-other-formulas)).
 Here `MixWater` and `MixCement` are volumes in litres, as `WaterVolume` and
 `CementVolume` are:
