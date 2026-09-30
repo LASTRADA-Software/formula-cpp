@@ -386,6 +386,83 @@ kelvin: the slope per kelvin is the slope per degree Celsius, but the
 intercept is the value at 0 K. The value at 0 °C is the intercept plus the
 slope times 273.15 K, written as a formula over the two outputs.
 
+## Several regressors
+
+`multiple_least_squares` fits a constant and one coefficient per regressor.
+The regressors are held by `regressors(...)`, because a parameter pack
+cannot stand before the values and the citation; they come first and the
+values last, as a curve has points then values:
+
+```cpp
+constexpr auto byTemperatureAndContent = formula::multiple_least_squares(
+    formula::regressors(formula::observations<Temperature, 64>, formula::observations<Content, 64>),
+    formula::observations<Length, 64>,
+    { .title = "Length by temperature and content", .reference = "Example Standard 12", .section = "5.3" });
+```
+
+Its outputs are `constant`, `coefficient 1` to `coefficient K` (one-based,
+K from 1 to 8), `r squared` and `points`. Each coefficient is in the
+values' dimension over its regressor's. Six rows -- a temperature in degrees
+Celsius, a content in percent, and a length -- give:
+
+```text
+1. T = 113/10 °C; 137/10 °C; 179/10 °C; 191/10 °C; 233/10 °C; 297/10 °C
+2. w_c = 23/10 %; 31/10 %; 29/10 %; 41/10 %; 37/10 %; 43/10 %
+3. L = 2588/25 mm; 10413/100 mm; 10433/100 mm; 1051/10 mm; 10521/100 mm; 106 mm
+4. multiple least squares(#1, #2, #3) = constant = 22365154943/276592800 mm; coefficient 1 = 346407/4609880000 m/K; coefficient 2 = 19214255/345741 mm; r squared = 27398849648/27403085919; points = 6 [inside not shown] [Length by temperature and content, Example Standard 12, 5.3]
+5. coefficient 1 of #4 = 346407/4609880000 m/K
+```
+
+Coefficient 1 is shown in the coherent `m/K`, because degrees Celsius have an
+offset and are never borrowed as a unit. The fit sees kelvin, so the
+constant is the length at 0 K and 0 % content: the length at 0 °C is a
+formula over two outputs. Coefficient 2 is per unit of content, a fraction, so
+a method that reports it per percent declares a unit of mm per %:
+
+```cpp
+constexpr auto lengthAtZeroCelsius = formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 },
+                                                      formula::RoundingMode::HalfEven>(
+    formula::opaque_output<"constant">(byTemperatureAndContent)
+    + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
+          * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
+```
+
+```text
+coefficient 1: 0.0751 mm/K, coefficient 2: 0.5557 mm/%, length at 0 degrees Celsius: 101.39 mm
+```
+
+### A singular design is an error, not a number
+
+Two regressors that measure the same thing, twice over, have no unique fit
+whatever was observed. The fit refuses them:
+
+```text
+a delay twice the elapsed time on every row: argument outside the domain of the operation
+```
+
+| design | exact (`opaque_output`, `rounded_output`) | `double` (`checked_evaluate_si<double>`) |
+|---|---|---|
+| one regressor a multiple of another (`x2 = 2 x1`) | `DomainError` | `DomainError` |
+| one regressor offset from another (`x2 = x1 + 273.15`, the same temperature in kelvin) | `DomainError` | `DomainError` |
+| an affine combination (`x2 = 3 x1 - 7`) | `DomainError` | `DomainError` |
+| nearly collinear: 1 - R² of x2 on x1 about 2 * 10⁻⁹ | answered, exactly | answered |
+| nearly collinear: about 5 * 10⁻¹⁰ | answered, exactly | `DomainError`, by the tolerance |
+| the same quantity read twice | refused where it is written | refused where it is written |
+
+The first three rows and the two nearly collinear ones are pinned by
+`test/least_squares_kernel_tests.cpp` and
+`test/multiple_least_squares_tests.cpp`; the last row by the refusals in
+`test/negative/`.
+
+**The tolerance, stated.** In `double` a design is taken for singular when a
+pivot of the centred normal equations is at or below 10⁻⁹ of its diagonal --
+when 1 - R² of a regressor on the ones before it is at or below 10⁻⁹. Rounded
+data cannot decide exact singularity, and a design near that line has few
+trustworthy digits either way. The exact routes decide it exactly. Fewer than
+K + 1 rows, a flat regressor and flat values are the fit's own `DomainError`;
+no regressor, more than eight, anything but raw observations, and a call
+without a citation are refused where they are written.
+
 ## A citation is required
 
 Every call names a citation. An operation's inside is exactly what the page

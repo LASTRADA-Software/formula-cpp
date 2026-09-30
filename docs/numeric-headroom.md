@@ -355,9 +355,12 @@ near 2410 N, readings at 4 decimal places near 2410 mm, and a different
 denominator on every point. Each size from 2 to 128 points is fitted twice:
 through `opaque_output`, exactly, in the wide integers of the regression
 kernel, and through `rounded_output`, the slope to 4 decimal places and R²
-floored at 6. The columns count sizes, not bits: the kernel's wide integers do
-not report to the census, so there is no headroom figure to print, and none is
-implied.
+floored at 6. The last row regresses the load on the time and a temperature at
+1 decimal place in degrees Celsius (`multiple_least_squares`, coefficient 1
+to 4 decimal places of N/s, R² floored at 6), from 3 to 128 rows, so 126
+sizes; every size answers or is `Overflow`. The columns count sizes, not bits:
+the kernel's wide integers do not report to the census, so there is no
+headroom figure to print, and none is implied.
 
 <!-- census:regression -->
 
@@ -366,6 +369,7 @@ implied.
 | a line through readings at 3 dp near 2410 N (realistic) | 99 of 127 | 29 points | 0 of 127 | none |
 | a line through readings at 4 dp near 2410 mm (realistic) | 122 of 127 | 7 points | 0 of 127 | none |
 | a line through a different denominator on every point (stress control) | 118 of 127 | 11 points | 66 of 127 | 62 points |
+| two regressors: readings at 3 dp and a temperature at 1 dp in degrees Celsius (realistic) | 100 of 126 | 29 points | 0 of 126 | none |
 
 <!-- /census:regression -->
 

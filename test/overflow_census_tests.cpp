@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <tuple>
@@ -593,6 +594,65 @@ template <typename Overflows>
     }
     return found;
 }
+
+struct FitWarmth: formula::Quantity<FitWarmth, "T_r", "temperature of a reading", unit::Celsius>
+{
+};
+
+/// A temperature at 1 dp in degrees Celsius: 20.0 + (7k mod 13) / 10.
+[[nodiscard]] Rational warmth_at(std::int64_t k)
+{
+    return rat(200 + (7 * k) % 13, 10);
+}
+
+/// How the regression of the first @p count three-decimal loads on their times
+/// and a temperature came out through `opaque_output` and through
+/// `rounded_output` (coefficient 1 at 4 dp of N/s, R^2 floored at 6 dp).
+struct TwoRegressorRoutes
+{
+    /// The exact route's answer: the slope's, or the error.
+    std::optional<formula::ArithmeticError> exactError;
+    /// The rounded route's: coefficient 1's, then R^2's.
+    std::optional<formula::ArithmeticError> roundedError;
+};
+
+[[nodiscard]] TwoRegressorRoutes two_regressors_routes(std::size_t count)
+{
+    std::vector<Rational> times;
+    std::vector<Rational> warmths;
+    std::vector<Rational> forces;
+    for (std::size_t at = 0; at < count; ++at)
+    {
+        FitPoint const point = three_decimals_point(static_cast<std::int64_t>(at));
+        times.push_back(point.x);
+        warmths.push_back(warmth_at(static_cast<std::int64_t>(at)));
+        forces.push_back(point.y);
+    }
+    auto const inputs = formula::environment(*formula::MeasuredObservations<FitTime, 128>::from(times),
+                                             *formula::MeasuredObservations<FitWarmth, 128>::from(warmths),
+                                             *formula::MeasuredObservations<FitForce, 128>::from(forces));
+    constexpr auto fit = formula::multiple_least_squares(
+        formula::regressors(formula::observations<FitTime, 128>, formula::observations<FitWarmth, 128>),
+        formula::observations<FitForce, 128>,
+        { .reference = "Example Standard 12" });
+    auto const failure = [](auto const& evaluated) -> std::optional<formula::ArithmeticError> {
+        if (evaluated.has_value())
+            return std::nullopt;
+        return evaluated.error();
+    };
+    TwoRegressorRoutes routes;
+    routes.exactError = failure(formula::checked_evaluate_si<Rational>(formula::opaque_output<"coefficient 1">(fit), inputs));
+    routes.roundedError = failure(formula::checked_evaluate_si<Rational>(
+        formula::rounded_output<"coefficient 1", newtonPerSecond, formula::DecimalPlaces { 4 },
+                                formula::RoundingMode::HalfEven>(fit),
+        inputs));
+    if (!routes.roundedError.has_value())
+        routes.roundedError = failure(formula::checked_evaluate_si<Rational>(
+            formula::rounded_output<"r squared", formula::unit::One, formula::DecimalPlaces { 6 },
+                                    formula::RoundingMode::Floor>(fit),
+            inputs));
+    return routes;
+}
 } // namespace
 
 // ---- The instrument's own control -------------------------------------------------
@@ -955,6 +1015,25 @@ TEST_CASE("census: a line through observations, exact and rounded, over 2 to 128
     emit("regression", fourDecimals.row("a line through readings at 4 dp near 2410 mm (realistic)"));
     emit("regression", distinct.row("a line through a different denominator on every point (stress control)"));
 
+    // Two regressors, 3 to 128 rows. Every size must answer or be Overflow:
+    // a design that were singular would be a DomainError, not an overflow, and
+    // would read as a size that did not overflow.
+    RouteScan twoRegressors;
+    for (std::size_t count = 3; count <= 128; ++count)
+    {
+        TwoRegressorRoutes const routes = two_regressors_routes(count);
+        INFO("rows " << count);
+        CHECK((!routes.exactError.has_value() || *routes.exactError == formula::ArithmeticError::Overflow));
+        CHECK((!routes.roundedError.has_value() || *routes.roundedError == formula::ArithmeticError::Overflow));
+        ++twoRegressors.sizes;
+        if (routes.exactError.has_value())
+            twoRegressors.exactOverflowing.push_back(count);
+        if (routes.roundedError.has_value())
+            twoRegressors.roundedOverflowing.push_back(count);
+    }
+    emit("regression",
+         twoRegressors.row("two regressors: readings at 3 dp and a temperature at 1 dp in degrees Celsius (realistic)"));
+
     // What the page says, pinned: the realistic rows never stop on the
     // rounded route; the exact route stops early.
     CHECK(threeDecimals.roundedOverflowing.empty());
@@ -965,6 +1044,9 @@ TEST_CASE("census: a line through observations, exact and rounded, over 2 to 128
     CHECK(fourDecimals.exactOverflowing.front() == 7);
     REQUIRE(!distinct.roundedOverflowing.empty());
     CHECK(distinct.roundedOverflowing.front() == 62);
+    CHECK(twoRegressors.roundedOverflowing.empty());
+    REQUIRE(!twoRegressors.exactOverflowing.empty());
+    CHECK(twoRegressors.exactOverflowing.front() == 29);
 }
 
 TEST_CASE("the census draws the samples tools/census/exact_sizes.py draws", "[census]")

@@ -21,6 +21,8 @@
 //   7. A line through raw observations, whose number is data: exact, with R^2
 //      and the number of points, and rounded where used when the exact
 //      fractions no longer fit.
+//   8. Several regressors at once, and a design that cannot be solved: two
+//      regressors that measure the same thing, twice over, are refused.
 //
 // Every number here is invented, as in every other example in this
 // repository; nothing here cites a standard.
@@ -288,6 +290,50 @@ std::string decimalText(formula::Measured<Q> const& shown)
     formula::NumberText const spelled = formula::number_text(shown, formula::NumberStyle::exact_decimal());
     return std::string { spelled.view() };
 }
+
+// ---- 8. Several regressors ------------------------------------------------------------
+
+using Temperature = formula::Quantity<struct TemperatureTag, "T", "an invented temperature", unit::Celsius>;
+// "w" is the iterated estimate's symbol already (section 5).
+using Content = formula::Quantity<struct ContentTag, "w_c", "an invented content", unit::Percent>;
+using Delay = formula::Quantity<struct DelayTag, "t_d", "an invented delay", unit::Second>;
+
+// Units the method states its coefficients in.
+constexpr formula::Unit millimetrePerKelvin { .dimension = formula::dim::Length / formula::dim::Temperature,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 1000,
+                                              .symbolText = formula::symbol("mm/K"),
+                                              .decimals = 4 };
+constexpr formula::Unit millimetrePerPercent { .dimension = formula::dim::Length,
+                                               .magnitudeNumerator = 1,
+                                               .magnitudeDenominator = 10,
+                                               .symbolText = formula::symbol("mm/%"),
+                                               .decimals = 4 };
+using Expansion = formula::Quantity<struct ExpansionTag, "k_T", "an invented length per kelvin", millimetrePerKelvin>;
+using Swelling = formula::Quantity<struct SwellingTag, "k_w", "an invented length per percent", millimetrePerPercent>;
+
+constexpr auto byTemperatureAndContent = formula::multiple_least_squares(
+    formula::regressors(formula::observations<Temperature, 64>, formula::observations<Content, 64>),
+    formula::observations<Length, 64>,
+    { .title = "Length by temperature and content", .reference = "Example Standard 12", .section = "5.3" });
+
+constexpr auto sixRows = formula::environment(
+    formula::MeasuredObservations<Temperature, 64>(formula::Rational { 113, 10 }, formula::Rational { 137, 10 },
+                                                   formula::Rational { 179, 10 }, formula::Rational { 191, 10 },
+                                                   formula::Rational { 233, 10 }, formula::Rational { 297, 10 }),
+    formula::MeasuredObservations<Content, 64>(formula::Rational { 23, 10 }, formula::Rational { 31, 10 },
+                                               formula::Rational { 29, 10 }, formula::Rational { 41, 10 },
+                                               formula::Rational { 37, 10 }, formula::Rational { 43, 10 }),
+    formula::MeasuredObservations<Length, 64>(formula::Rational { 2588, 25 }, formula::Rational { 10413, 100 },
+                                              formula::Rational { 10433, 100 }, formula::Rational { 1051, 10 },
+                                              formula::Rational { 10521, 100 }, formula::Rational { 106 }));
+
+// The length at 0 degC: the constant is the length at 0 K.
+constexpr auto lengthAtZeroCelsius = formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 },
+                                                      formula::RoundingMode::HalfEven>(
+    formula::opaque_output<"constant">(byTemperatureAndContent)
+    + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
+          * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
 } // namespace
 
 int main()
@@ -496,6 +542,46 @@ int main()
                     decimalText(qualityOfFifty->measurement()).c_str());
     check(slopeOfFifty.has_value() && slopeOfFifty->measurement().value() == formula::Rational { 31707, 10'000 },
           "3.1707 mm/s");
+    std::printf("== 8. Several regressors ==\n\n");
+
+    auto const expansion =
+        formula::explain<Expansion>(formula::opaque_output<"coefficient 1">(byTemperatureAndContent), sixRows);
+    std::printf("%s\n", formula::render_trace(expansion.trace, { .maxSteps = 40 }).c_str());
+
+    auto const perKelvin = formula::checked_evaluate<Expansion>(
+        formula::rounded_output<"coefficient 1", millimetrePerKelvin, formula::DecimalPlaces { 4 },
+                                formula::RoundingMode::HalfEven>(byTemperatureAndContent),
+        sixRows);
+    auto const perPercent = formula::checked_evaluate<Swelling>(
+        formula::rounded_output<"coefficient 2", millimetrePerPercent, formula::DecimalPlaces { 4 },
+                                formula::RoundingMode::HalfEven>(byTemperatureAndContent),
+        sixRows);
+    auto const atZero = formula::checked_evaluate<StartLength>(lengthAtZeroCelsius, sixRows);
+    check(perKelvin.has_value() && perPercent.has_value() && atZero.has_value(), "two regressors, rounded");
+    if (perKelvin.has_value() && perPercent.has_value() && atZero.has_value())
+        std::printf("coefficient 1: %s, coefficient 2: %s, length at 0 degrees Celsius: %s\n",
+                    decimalText(perKelvin->measurement()).c_str(), decimalText(perPercent->measurement()).c_str(),
+                    decimalText(atZero->measurement()).c_str());
+    check(perPercent.has_value() && perPercent->measurement().value() == formula::Rational { 5557, 10'000 },
+          "0.5557 mm per percent");
+
+    constexpr auto collinear = formula::multiple_least_squares(
+        formula::regressors(formula::observations<Elapsed, 64>, formula::observations<Delay, 64>),
+        formula::observations<Length, 64>,
+        { .reference = "Example Standard 12" });
+    constexpr auto twiceAsLate = formula::environment(
+        formula::MeasuredObservations<Elapsed, 64>(formula::Rational { 1 }, formula::Rational { 2 },
+                                                   formula::Rational { 4 }, formula::Rational { 7 }),
+        formula::MeasuredObservations<Delay, 64>(formula::Rational { 2 }, formula::Rational { 4 },
+                                                 formula::Rational { 8 }, formula::Rational { 14 }),
+        formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 }, formula::Rational { 109, 10 },
+                                                  formula::Rational { 121, 10 }, formula::Rational { 143, 10 }));
+    auto const unsolvable =
+        formula::checked_evaluate<Length>(formula::opaque_output<"constant">(collinear), twiceAsLate);
+    std::printf("a delay twice the elapsed time on every row: %s\n\n",
+                unsolvable.has_value() ? "a fit" : std::string { formula::describe(unsolvable.error()) }.c_str());
+    check(!unsolvable.has_value() && unsolvable.error() == formula::ArithmeticError::DomainError,
+          "a singular design is refused");
     std::printf("all checks passed: %s\n", allPassed ? "yes" : "no");
     return allPassed ? 0 : 1;
 }
