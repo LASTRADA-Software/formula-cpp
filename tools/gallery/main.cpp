@@ -28,6 +28,7 @@
 #include <formula-cpp/trace_render.hpp>
 
 #include <cstdint>
+#include <cstdio>
 #include <expected>
 #include <fstream>
 #include <print>
