@@ -1,10 +1,22 @@
 # Changelog
 
 Notable changes to formula-cpp, in the form [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-describes. 0.1.0 is the first release. The public API may still change before 1.0: a minor release
-may break it, and each such change is recorded here.
+describes. The public API may still change before 1.0: a minor release may break it, and each such
+change is recorded here.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-09-30
+
+The second release. It adds calculations -- quantities defined by formulas, with a dependency graph
+known at compile time -- and worksheets that recalculate only what a change reaches; decimals in
+traces, rendered formulas and `std::format`; base dimensions an application declares, such as a
+currency; and power, energy and Fahrenheit units. A value the exact layer cannot hold is now written
+only as the correctly rounded decimal its formula declares, proved with integer arithmetic: an
+opaque operation's output through `rounded_output`, and the new logarithms and exponentials, which
+are exact where the value is rational. Least squares reaches raw observations: a line with R² and
+the number of points, and a regression on up to eight regressors that refuses a singular design.
+Some changes break code written for 0.1.0; each is listed under Changed.
 
 ### Added
 
@@ -544,5 +556,6 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   for 205.5 g, and so were a curve over it and a value read off that curve. Each now reads in the
   series' unit, `411/2 g`, when that unit has a symbol and no offset.
 
-[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.2.0
 [0.1.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.1.0
