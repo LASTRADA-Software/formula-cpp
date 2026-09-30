@@ -260,6 +260,18 @@ TEST_CASE("explain_conformity: the elements' outcomes and the trace a RecordingS
     CHECK(explained.trace.steps[1].kind == formula::StepKind::ConformityChecked);
 }
 
+TEST_CASE("explain_conformity writes its trace in the vocabulary it is given", "[conformity][trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<Passing>("p_s"));
+    formula::Trace<> handBuilt {};
+    (void) formula::check_conformity(measuredCheck, measuredPassing, formula::RecordingSink { handBuilt, south });
+    auto const renamed = formula::explain_conformity(measuredCheck, measuredPassing, south);
+    auto const plain = formula::explain_conformity(measuredCheck, measuredPassing);
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).starts_with("1. p_s = "));
+    CHECK(formula::render_trace(plain.trace, { .maxSteps = 100 }).find("p_s") == std::string::npos);
+}
+
 TEST_CASE("a conformity check is one step with one outcome per element", "[conformity][trace]")
 {
     formula::Trace<> trace {};

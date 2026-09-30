@@ -450,6 +450,18 @@ TEST_CASE("explain_rejection: the rejection's outcome and the trace a RecordingS
     CHECK(formula::render_trace(stopped.trace, { .maxSteps = 100 }) != formula::render_trace(explained.trace, { .maxSteps = 100 }));
 }
 
+TEST_CASE("explain_rejection writes its trace in the vocabulary it is given", "[rejection][trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<Mass>("m_s"));
+    formula::Trace<> handBuilt {};
+    (void) formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA, formula::RecordingSink { handBuilt, south });
+    auto const renamed = formula::explain_rejection<Mass>(rejectionA, fixtureA, south);
+    auto const plain = formula::explain_rejection<Mass>(rejectionA, fixtureA);
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).starts_with("1. m_s = "));
+    CHECK(formula::render_trace(plain.trace, { .maxSteps = 100 }).find("m_s") == std::string::npos);
+}
+
 TEST_CASE("only the library builds a RejectionOutcome", "[rejection]")
 {
     using Built = formula::RejectionOutcome<Mass, 6>;

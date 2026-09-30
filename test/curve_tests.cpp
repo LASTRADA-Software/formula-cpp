@@ -651,6 +651,18 @@ TEST_CASE("explain_curve: the curve's outcome and the trace a RecordingSink reco
     CHECK(failed.trace.steps.back().failedElement == std::optional<std::size_t> { 3 });
 }
 
+TEST_CASE("explain_curve writes its trace in the vocabulary it is given", "[curve][trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<Passing>("P_s"));
+    formula::Trace<> handBuilt {};
+    (void) formula::checked_evaluate_curve<Opening, Passing>(grading, screened, formula::RecordingSink { handBuilt, south });
+    auto const renamed = formula::explain_curve<Opening, Passing>(grading, screened, south);
+    auto const plain = formula::explain_curve<Opening, Passing>(grading, screened);
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).find("P_s = ") != std::string::npos);
+    CHECK(formula::render_trace(plain.trace, { .maxSteps = 100 }).find("P_s") == std::string::npos);
+}
+
 TEST_CASE("a splice's failure line names the point and the rule, in either order", "[curve][trace]")
 {
     for (bool const xFirst: { true, false })

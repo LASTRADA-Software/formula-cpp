@@ -468,6 +468,18 @@ TEST_CASE("explain_check_method: the constraints' verdicts and the trace a Recor
           != formula::render_trace(explained.trace, { .maxSteps = 100 }));
 }
 
+TEST_CASE("explain_check_method writes its trace in the vocabulary it is given", "[method][trace][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<FirstMass>("m_1"));
+    formula::Trace<> handBuilt {};
+    (void) formula::check_method(pairMethod, pairInputs(ratio(1, 50)), formula::RecordingSink { handBuilt, south });
+    auto const renamed = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 50)), south);
+    auto const plain = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 50)));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).find("m_1 = 40 g") != std::string::npos);
+    CHECK(formula::render_trace(plain.trace, { .maxSteps = 100 }).find("m_1") == std::string::npos);
+}
+
 TEST_CASE("with_constant reaches a coefficient inside a precision limit's limit expression", "[method][precision][overlay]")
 {
     // A jurisdiction fixes k_r at 1/60. The environment holds no k_r at all,
