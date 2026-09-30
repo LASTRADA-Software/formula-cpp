@@ -1458,3 +1458,12 @@ TEST_CASE("an observation that cannot be read fails a rejection at its own posit
     STATIC_REQUIRE(failed.error().error == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(*failed.error().element == 1);
 }
+
+TEST_CASE("number_of a rejection is the mean of the survivors, and nothing for its verdict", "[rejection]")
+{
+    constexpr auto settled = formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA);
+    constexpr auto aborted = formula::checked_evaluate_rejection<Mass>(rejectionA1, fixtureA);
+    STATIC_REQUIRE(formula::number_of(*settled) == rat(321, 8));
+    STATIC_REQUIRE(formula::number_of(settled) == rat(321, 8));
+    STATIC_REQUIRE(!formula::number_of(*aborted).has_value());
+}

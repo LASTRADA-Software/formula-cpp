@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/error.hpp>
+#include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/outcome.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <expected>
+#include <optional>
 
 namespace
 {
@@ -133,4 +138,34 @@ TEST_CASE("outcome: the label of a non-verdict outcome is empty rather than stal
 
     STATIC_REQUIRE(outcome.verdict_label().empty());
     STATIC_REQUIRE(outcome.reason_label().empty());
+}
+
+TEST_CASE("number_of: the number of a value, nothing for every other kind", "[outcome]")
+{
+    using MassOutcome = formula::Outcome<Mass>;
+    constexpr formula::Measured<Mass> prime { rat(139) };
+    STATIC_REQUIRE(formula::number_of(MassOutcome::value(prime, formula::ValueSource::Derived)) == rat(139));
+    STATIC_REQUIRE(formula::number_of(MassOutcome::value(prime, formula::ValueSource::ManuallyEntered)) == rat(139));
+    STATIC_REQUIRE(!formula::number_of(MassOutcome::empty()).has_value());
+    STATIC_REQUIRE(!formula::number_of(MassOutcome::verdict(formula::Verdict { "repeat the test" })).has_value());
+    STATIC_REQUIRE(!formula::number_of(MassOutcome::invalid(formula::InvalidReason { "discarded" })).has_value());
+    STATIC_REQUIRE(formula::number_of(prime) == rat(139));
+    STATIC_REQUIRE(!formula::number_of(formula::Measured<Mass>::absent()).has_value());
+}
+
+TEST_CASE("number_of: an error is nothing, a success is its number", "[outcome]")
+{
+    using Checked = std::expected<formula::Outcome<Mass>, formula::ArithmeticError>;
+    constexpr Checked succeeded =
+        formula::Outcome<Mass>::value(formula::Measured<Mass> { rat(163) }, formula::ValueSource::Derived);
+    constexpr Checked failed = std::unexpected { formula::ArithmeticError::Overflow };
+    STATIC_REQUIRE(formula::number_of(succeeded) == rat(163));
+    STATIC_REQUIRE(!formula::number_of(failed).has_value());
+    // Evaluated<Rational> is an expected of an optional.
+    constexpr formula::Evaluated<formula::Rational> evaluated = std::optional<formula::Rational> { rat(197) };
+    constexpr formula::Evaluated<formula::Rational> notMeasured = std::optional<formula::Rational> {};
+    constexpr formula::Evaluated<formula::Rational> refused = std::unexpected { formula::ArithmeticError::Overflow };
+    STATIC_REQUIRE(formula::number_of(evaluated) == rat(197));
+    STATIC_REQUIRE(!formula::number_of(notMeasured).has_value());
+    STATIC_REQUIRE(!formula::number_of(refused).has_value());
 }

@@ -1246,6 +1246,13 @@ class RetryOutcome
     std::optional<std::size_t> _acceptedAt;
 };
 
+/// The number the outcome a retry ended with holds -- see `number_of(Outcome)`.
+template <Described R>
+[[nodiscard]] constexpr std::optional<Rational> number_of(RetryOutcome<R> const& ended) noexcept
+{
+    return number_of(ended.outcome());
+}
+
 namespace detail
 {
     /// The one place a `RetryOutcome` is made.

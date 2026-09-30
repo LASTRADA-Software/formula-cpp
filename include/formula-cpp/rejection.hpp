@@ -741,6 +741,14 @@ class RejectionOutcome
     std::size_t _passes = 0;
 };
 
+/// The number the outcome of a rejection holds -- the mean of the survivors --
+/// or nothing for a verdict or an empty result; see `number_of(Outcome)`.
+template <Described Q, std::size_t C>
+[[nodiscard]] constexpr std::optional<Rational> number_of(RejectionOutcome<Q, C> const& rejected) noexcept
+{
+    return number_of(rejected.outcome());
+}
+
 namespace detail
 {
     /// How a rejection ended.

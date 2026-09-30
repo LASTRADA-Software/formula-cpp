@@ -250,6 +250,29 @@ both the value and the fact that it was entered:
 w/c = 0.500000 (entered)
 ```
 
+## Reading a result
+
+Most of the time a caller wants only the number, and needs to know that there
+may be none. `formula::number_of(x)` returns a `std::optional<Rational>`: the
+number `x` holds, or nothing. It reads a `Measured<Q>`, an `Outcome<Q>`, the
+`std::expected` that `checked_evaluate` returns, an `Evaluated<Rational>`, a
+`RetryOutcome` and a `RejectionOutcome`:
+
+```cpp
+using namespace formula::literals;
+
+// 0.5 when the formula evaluates to a number; nothing when an input was never
+// measured, when the arithmetic failed, and for a verdict or an invalid result.
+bool const isHalf = formula::number_of(formula::checked_evaluate<Ratio>(ratio, batch)) == 0.5_r;
+```
+
+It is an `optional` and not a zero because zero is a measurement: a specimen
+that weighed nothing and a specimen never weighed are different results.
+`optional == Rational` is false when the optional is empty, so the comparison
+above is a complete check -- an absent number, an error and a verdict all
+compare unequal to every number. `number_of` says nothing about *why* there is
+no number; ask `Outcome::kind()` or the error for that.
+
 ## Choosing a representation
 
 Two entry points evaluate a formula, and they answer different questions:

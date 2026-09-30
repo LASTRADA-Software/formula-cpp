@@ -17,6 +17,10 @@ change is recorded here.
   `measured_series<Retained>(127, 10.3_r, not_measured)`. An element that is none of these draws
   one message. `band(low, high)` takes its bounds, and `breakpoint(key)` its key, as exact numbers:
   `band(83.7_r, 97.3_r)`, `breakpoint(12.7_r)`. Every earlier spelling stays.
+- `number_of(x)`, the number a result holds or nothing, as a `std::optional<Rational>`. It reads a
+  `Measured`, an `Outcome`, a `checked_evaluate` result, an `Evaluated<Rational>`, a
+  `RetryOutcome` and a `RejectionOutcome`, and is empty for an absent number, an error, a verdict
+  and an invalid result, so `number_of(checked_evaluate<Q>(...)) == 0.5_r` is a complete check.
 
 ## [0.2.0] - 2026-09-30
 

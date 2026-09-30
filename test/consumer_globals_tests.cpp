@@ -1242,5 +1242,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                && formula::band(83.7_r, 97.3_r) == formula::band(837, 10, 973, 10)
                                && formula::breakpoint(12.7_r) == formula::breakpoint(127, 10));
     }
+    // The number a result holds, or nothing: a value's, a retry's accepted
+    // value, and an error's nothing.
+    probe.checks.push_back(formula::number_of(plain).has_value()
+                           && formula::number_of(plain) == plain.measurement().value()
+                           && formula::number_of(checked) == formula::number_of(plain)
+                           && formula::number_of(edgesRetried) == formula::Rational { 163 }
+                           && !formula::number_of(std::expected<formula::Outcome<Strength>, formula::ArithmeticError> {
+                                   std::unexpected { formula::ArithmeticError::Overflow } })
+                                   .has_value());
     return probe;
 }
