@@ -273,15 +273,10 @@ int main()
     std::println("== 1. A method selects a variant by tag ==\n");
 
     auto const cube = formula::explain_method<Cube>(compressiveStrength, specimen);
-    if (!cube.outcome)
-    {
-        std::println("cube: {}", cube.outcome.error());
-        return 1;
-    }
     auto const cubeStrength = formula::number_of(cube.outcome);
     if (!cubeStrength)
     {
-        std::println("cube: no value");
+        std::println("cube: {}", cube.outcome ? "no value" : formula::describe(cube.outcome.error()));
         return 1;
     }
     std::println("cube:   {} Pa", *cubeStrength);
@@ -298,30 +293,20 @@ int main()
     std::println("== 2. A jurisdiction's overlay yields a method ==\n");
 
     auto const northCube = formula::explain_method<Cube>(northern, specimen);
-    if (!northCube.outcome)
-    {
-        std::println("north cube: {}", northCube.outcome.error());
-        return 1;
-    }
     auto const northStrength = formula::number_of(northCube.outcome);
     if (!northStrength)
     {
-        std::println("north cube: no value");
+        std::println("north cube: {}", northCube.outcome ? "no value" : formula::describe(northCube.outcome.error()));
         return 1;
     }
     std::println("north cube: {} Pa\n\n{}", *northStrength, formula::render_trace(northCube.trace, { .maxSteps = 30 }));
     check(northStrength == 4590000_r, "the north's fixed 0.863, rounded to 4.59 N/mm2 by its own rule");
 
     auto const southCube = formula::explain_method<Cube>(southern, specimen);
-    if (!southCube.outcome)
-    {
-        std::println("south cube: {}", southCube.outcome.error());
-        return 1;
-    }
     auto const southStrength = formula::number_of(southCube.outcome);
     if (!southStrength)
     {
-        std::println("south cube: no value");
+        std::println("south cube: {}", southCube.outcome ? "no value" : formula::describe(southCube.outcome.error()));
         return 1;
     }
     std::println("south cube: {} Pa\n\n{}", *southStrength, formula::render_trace(southCube.trace, { .maxSteps = 30 }));
@@ -361,15 +346,11 @@ int main()
     for (Jurisdiction const jurisdiction: { Jurisdiction::Base, Jurisdiction::North, Jurisdiction::South })
     {
         auto const chosen = cubeStrengthIn(jurisdiction);
-        if (!chosen)
-        {
-            std::println("jurisdiction {}: {}", std::to_underlying(jurisdiction), chosen.error());
-            return 1;
-        }
         auto const chosenStrength = formula::number_of(chosen);
         if (!chosenStrength)
         {
-            std::println("jurisdiction {}: no value", std::to_underlying(jurisdiction));
+            std::println("jurisdiction {}: {}", std::to_underlying(jurisdiction),
+                         chosen ? "no value" : formula::describe(chosen.error()));
             return 1;
         }
         std::println("jurisdiction {}: {} Pa", std::to_underlying(jurisdiction), *chosenStrength);
