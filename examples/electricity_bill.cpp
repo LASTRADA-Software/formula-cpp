@@ -76,83 +76,33 @@ inline constexpr formula::Unit Yen { .dimension = formula::base_dimension("JPY")
 static_assert(!formula::SameDimension<Euro.dimension, Yen.dimension>);
 
 // ---- The inputs ----
-struct FridgeW: formula::Quantity<FridgeW, "fridge_w", "the fridge's power", unit::Watt>
-{
-};
-struct FridgeH: formula::Quantity<FridgeH, "fridge_h", "the fridge's hours a day", unit::Hour>
-{
-};
-struct OvenKw: formula::Quantity<OvenKw, "oven_kw", "the oven's power", unit::Kilowatt>
-{
-};
-struct OvenH: formula::Quantity<OvenH, "oven_h", "the oven's hours a day", unit::Hour>
-{
-};
-struct HeaterKw: formula::Quantity<HeaterKw, "heater_kw", "the heater's power", unit::Kilowatt>
-{
-};
-struct HeaterH: formula::Quantity<HeaterH, "heater_h", "the heater's hours a day", unit::Hour>
-{
-};
-struct Solar: formula::Quantity<Solar, "solar", "the solar yield of a month", unit::KilowattHour>
-{
-};
-struct Price: formula::Quantity<Price, "price", "the grid price", EuroPerKilowattHour>
-{
-};
-struct FeedIn: formula::Quantity<FeedIn, "feed_in", "the feed-in tariff", EuroPerKilowattHour>
-{
-};
-struct BaseFee: formula::Quantity<BaseFee, "base_fee", "the monthly base fee", Euro>
-{
-};
+using FridgeW = formula::Quantity<struct FridgeWTag, "fridge_w", "the fridge's power", unit::Watt>;
+using FridgeH = formula::Quantity<struct FridgeHTag, "fridge_h", "the fridge's hours a day", unit::Hour>;
+using OvenKw = formula::Quantity<struct OvenKwTag, "oven_kw", "the oven's power", unit::Kilowatt>;
+using OvenH = formula::Quantity<struct OvenHTag, "oven_h", "the oven's hours a day", unit::Hour>;
+using HeaterKw = formula::Quantity<struct HeaterKwTag, "heater_kw", "the heater's power", unit::Kilowatt>;
+using HeaterH = formula::Quantity<struct HeaterHTag, "heater_h", "the heater's hours a day", unit::Hour>;
+using Solar = formula::Quantity<struct SolarTag, "solar", "the solar yield of a month", unit::KilowattHour>;
+using Price = formula::Quantity<struct PriceTag, "price", "the grid price", EuroPerKilowattHour>;
+using FeedIn = formula::Quantity<struct FeedInTag, "feed_in", "the feed-in tariff", EuroPerKilowattHour>;
+using BaseFee = formula::Quantity<struct BaseFeeTag, "base_fee", "the monthly base fee", Euro>;
 
 // ---- The calculated values ----
-struct FridgeKw: formula::Quantity<FridgeKw, "fridge_kw", "the fridge's power in kilowatts", unit::Kilowatt>
-{
-};
-struct FridgeKwh: formula::Quantity<FridgeKwh, "fridge_kwh", "the fridge's energy a day", unit::KilowattHour>
-{
-};
-struct OvenKwh: formula::Quantity<OvenKwh, "oven_kwh", "the oven's energy a day", unit::KilowattHour>
-{
-};
-struct HeaterKwh: formula::Quantity<HeaterKwh, "heater_kwh", "the heater's energy a day", unit::KilowattHour>
-{
-};
-struct DailyLoad: formula::Quantity<DailyLoad, "daily_load", "the energy used a day", unit::KilowattHour>
-{
-};
-struct MonthlyLoad: formula::Quantity<MonthlyLoad, "monthly_load", "the energy used a month", unit::KilowattHour>
-{
-};
-struct SelfUsed: formula::Quantity<SelfUsed, "self_used", "the solar energy used at home", unit::KilowattHour>
-{
-};
-struct Exported: formula::Quantity<Exported, "exported", "the solar energy fed into the grid", unit::KilowattHour>
-{
-};
-struct NetDraw: formula::Quantity<NetDraw, "net_draw", "the energy drawn from the grid", unit::KilowattHour>
-{
-};
-struct GridCost: formula::Quantity<GridCost, "grid_cost", "the cost of the energy drawn", Euro>
-{
-};
-struct FeedInCredit: formula::Quantity<FeedInCredit, "feed_in_credit", "the credit for the energy fed in", Euro>
-{
-};
-struct EnergyCost: formula::Quantity<EnergyCost, "energy_cost", "the net cost of energy", Euro>
-{
-};
-struct Subtotal: formula::Quantity<Subtotal, "subtotal", "the bill before tax", Euro>
-{
-};
-struct Vat: formula::Quantity<Vat, "vat", "the value-added tax", Euro>
-{
-};
-struct Total: formula::Quantity<Total, "total", "the bill", Euro>
-{
-};
+using FridgeKw = formula::Quantity<struct FridgeKwTag, "fridge_kw", "the fridge's power in kilowatts", unit::Kilowatt>;
+using FridgeKwh = formula::Quantity<struct FridgeKwhTag, "fridge_kwh", "the fridge's energy a day", unit::KilowattHour>;
+using OvenKwh = formula::Quantity<struct OvenKwhTag, "oven_kwh", "the oven's energy a day", unit::KilowattHour>;
+using HeaterKwh = formula::Quantity<struct HeaterKwhTag, "heater_kwh", "the heater's energy a day", unit::KilowattHour>;
+using DailyLoad = formula::Quantity<struct DailyLoadTag, "daily_load", "the energy used a day", unit::KilowattHour>;
+using MonthlyLoad = formula::Quantity<struct MonthlyLoadTag, "monthly_load", "the energy used a month", unit::KilowattHour>;
+using SelfUsed = formula::Quantity<struct SelfUsedTag, "self_used", "the solar energy used at home", unit::KilowattHour>;
+using Exported = formula::Quantity<struct ExportedTag, "exported", "the solar energy fed into the grid", unit::KilowattHour>;
+using NetDraw = formula::Quantity<struct NetDrawTag, "net_draw", "the energy drawn from the grid", unit::KilowattHour>;
+using GridCost = formula::Quantity<struct GridCostTag, "grid_cost", "the cost of the energy drawn", Euro>;
+using FeedInCredit = formula::Quantity<struct FeedInCreditTag, "feed_in_credit", "the credit for the energy fed in", Euro>;
+using EnergyCost = formula::Quantity<struct EnergyCostTag, "energy_cost", "the net cost of energy", Euro>;
+using Subtotal = formula::Quantity<struct SubtotalTag, "subtotal", "the bill before tax", Euro>;
+using Vat = formula::Quantity<struct VatTag, "vat", "the value-added tax", Euro>;
+using Total = formula::Quantity<struct TotalTag, "total", "the bill", Euro>;
 
 // Two numbers the bill states: the share of the solar yield the household
 // uses itself, and the rate of the tax. Both are pure numbers.
@@ -195,18 +145,10 @@ static_assert(!formula::depends_on<Exported, Price>(bill));
 // The bill shared among the people who live there, each share in whole
 // cents. With nobody to share it, the share divides by zero, and the share
 // in cents, which reads it, fails with it.
-struct SharedCost: formula::Quantity<SharedCost, "shared_cost", "the cost to share", Euro>
-{
-};
-struct Occupants: formula::Quantity<Occupants, "occupants", "the people sharing it", unit::One>
-{
-};
-struct Share: formula::Quantity<Share, "share", "each one's share", Euro>
-{
-};
-struct ShareInCents: formula::Quantity<ShareInCents, "share_ct", "each one's share, in whole cents", Euro>
-{
-};
+using SharedCost = formula::Quantity<struct SharedCostTag, "shared_cost", "the cost to share", Euro>;
+using Occupants = formula::Quantity<struct OccupantsTag, "occupants", "the people sharing it", unit::One>;
+using Share = formula::Quantity<struct ShareTag, "share", "each one's share", Euro>;
+using ShareInCents = formula::Quantity<struct ShareInCentsTag, "share_ct", "each one's share, in whole cents", Euro>;
 
 inline constexpr auto sharing = formula::calculation(
     formula::define<Share>(var<SharedCost> / var<Occupants>),

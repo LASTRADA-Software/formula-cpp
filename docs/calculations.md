@@ -116,30 +116,24 @@ and the unit its values are stated in
 values the bill is given: what the appliances draw and for how long, the
 solar yield, the grid price, the feed-in tariff and the base fee. The other
 fifteen are **calculated values**, each worked out from others. A quantity's
-first template argument is its tag -- in a struct, the struct's own name --
+first template argument is its tag -- a struct named once, in place --
 which makes each quantity a type of its own
 ([Declaring a quantity](quantities.md#declaring-a-quantity)). The fridge's
 power is an input, stated in watts, and the grid price another, in the euros
 per kilowatt-hour declared above:
 
 ```cpp
-struct FridgeW: formula::Quantity<FridgeW, "fridge_w", "the fridge's power", unit::Watt>
-{
-};
+using FridgeW = formula::Quantity<struct FridgeWTag, "fridge_w", "the fridge's power", unit::Watt>;
 ```
 
 ```cpp
-struct Price: formula::Quantity<Price, "price", "the grid price", EuroPerKilowattHour>
-{
-};
+using Price = formula::Quantity<struct PriceTag, "price", "the grid price", EuroPerKilowattHour>;
 ```
 
 The same power in kilowatts is a calculated value:
 
 ```cpp
-struct FridgeKw: formula::Quantity<FridgeKw, "fridge_kw", "the fridge's power in kilowatts", unit::Kilowatt>
-{
-};
+using FridgeKw = formula::Quantity<struct FridgeKwTag, "fridge_kw", "the fridge's power in kilowatts", unit::Kilowatt>;
 ```
 
 A value is converted exactly wherever it is read in another unit, so the
