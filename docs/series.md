@@ -133,8 +133,8 @@ is 922.35 K, the range 17.6 K and the mean 34.3 °C:
 
 ```text
 the readings: 1. T_r = 237/10 °C; 413/10 °C; 379/10 °C
-their sum: 2. sum(#1) = 18447/20
-their range: 2. sample_range(#1) = 88/5
+their sum: 2. sum(#1) = 18447/20 K
+their range: 2. sample_range(#1) = 88/5 K
 their mean: 2. sample_mean(#1) = 343/10 °C
 ```
 

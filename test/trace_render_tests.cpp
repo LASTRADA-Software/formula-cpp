@@ -104,9 +104,9 @@ TEST_CASE("a derivation renders one line per step, in order", "[trace-render]")
     // declared unit and `kg2` and `kg2/m3` are not units this library writes.
     CHECK(text
           == "1. m = 6 kg\n"
-             "2. #1^2 = 36\n"
+             "2. #1^2 = 36 kg^2\n"
              "3. V = 3 m3\n"
-             "4. #2 / #3 = 12\n");
+             "4. #2 / #3 = 12 kg^2/m^3\n");
 }
 
 TEST_CASE("a value renders in the unit it was entered in, not in coherent SI", "[trace-render]")
@@ -149,7 +149,7 @@ TEST_CASE("a power times a time reads in the coherent unit, not in kilowatt-hour
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
           == "1. P = 3/2 kW\n"
              "2. t = 4 h\n"
-             "3. #1 * #2 = 21600000\n");
+             "3. #1 * #2 = 21600000 m^2 kg/s^2\n");
 }
 
 TEST_CASE("a derivation longer than the limit is cut, and says so", "[trace-render]")
@@ -528,7 +528,7 @@ TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-rende
           == "1. f = 60 MPa\n"
              "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 > #2 then #3 = 60000000\n");
+             "4. if #1 > #2 then #3 = 60000000 kg/(m s^2)\n");
     CHECK(text.find("when(") == std::string::npos);
     CHECK(text.find("[then]") == std::string::npos);
 }
@@ -550,8 +550,8 @@ TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-rende
              "2. 473/10 MPa\n"
              "3. f = 40 MPa\n"
              "4. 2\n"
-             "5. #3 * #4 = 80000000\n"
-             "6. if #1 > #2 else #5 = 80000000\n");
+             "5. #3 * #4 = 80000000 kg/(m s^2)\n"
+             "6. if #1 > #2 else #5 = 80000000 kg/(m s^2)\n");
     CHECK(text.find("[else]") == std::string::npos);
 }
 
@@ -633,12 +633,12 @@ TEST_CASE("a derivation renders the comparison a conditional actually made", "[t
           == "1. f = 60 MPa\n"
              "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 > #2 then #3 = 60000000\n");
+             "4. if #1 > #2 then #3 = 60000000 kg/(m s^2)\n");
     CHECK(less
           == "1. f = 60 MPa\n"
              "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 < #2 else #3 = 60000000\n");
+             "4. if #1 < #2 else #3 = 60000000 kg/(m s^2)\n");
 }
 
 TEST_CASE("a derivation spells a comparison the way render() does", "[trace-render]")
@@ -1485,8 +1485,8 @@ TEST_CASE("a documented Celsius reading reads in Celsius, and a documented diffe
     CHECK(derivationOf(formula::documented(var<EndTemperature> - var<StartTemperature>, cited), temperatures)
           == "1. T_1 = 277/10 " + degreesCelsius + "\n"
              + "2. T_0 = 163/10 " + degreesCelsius + "\n"
-             + "3. #1 - #2 = 57/5\n"
-               "4. #3 = 57/5 [Temperature rise, Example Standard 1:2020, 6.3]\n");
+             + "3. #1 - #2 = 57/5 K\n"
+               "4. #3 = 57/5 K [Temperature rise, Example Standard 1:2020, 6.3]\n");
 }
 
 TEST_CASE("a documented step over a node that recorded no step keeps the coherent SI unit", "[trace-render][citation]")
@@ -1519,7 +1519,7 @@ TEST_CASE("a documented step over a consumer node that forwards the sink keeps t
 
     std::string const rise = derivationOf(
         formula::documented(forwarding::difference(var<EndTemperature>, var<StartTemperature>), cited), temperatures);
-    CHECK(rise.find(" = 57/5 [Consumer formula, Example Standard 1:2020, 6.4]\n") != std::string::npos);
+    CHECK(rise.find(" = 57/5 K [Consumer formula, Example Standard 1:2020, 6.4]\n") != std::string::npos);
 
     constexpr auto density = formula::documented(forwarding::quotient(var<SampleMass>, var<WaterVolume>), cited);
     auto const specimen = formula::environment(formula::Measured<SampleMass> { formula::Rational { 139 } },
@@ -1530,7 +1530,7 @@ TEST_CASE("a documented step over a consumer node that forwards the sink keeps t
     REQUIRE(trace.steps.size() == 3);
     CHECK(trace.steps.back().unit == formula::coherent(formula::dim::Mass / formula::dim::Volume));
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
-              .find(" = 139/277 [Consumer formula, Example Standard 1:2020, 6.4]\n")
+              .find(" = 139/277 kg/m^3 [Consumer formula, Example Standard 1:2020, 6.4]\n")
           != std::string::npos);
 }
 
@@ -1551,7 +1551,7 @@ TEST_CASE("a documented step over a consumer node with one operand of its dimens
     std::string const degreesCelsius = "\xc2\xb0" "C";
     CHECK(derivationOf(rise, formula::environment(formula::Measured<EndTemperature> { formula::Rational { 277, 10 } }))
           == "1. T_1 = 277/10 " + degreesCelsius + "\n"
-             + "2. #1 = 57/5 [Rise above the reference, Example Standard 1:2020, 6.5]\n");
+             + "2. #1 = 57/5 K [Rise above the reference, Example Standard 1:2020, 6.5]\n");
 }
 
 TEST_CASE("a derivation renders a lookup's own conversion failure as neither a miss nor a relay",
@@ -1721,7 +1721,7 @@ TEST_CASE("a variant step reads as its operand, with the variant and its positio
     CHECK(methodDerivation<specimen::Cube>(compressiveStrength)
           == "1. F = 562 kN\n"
              "2. 19321 mm2\n"
-             "3. #1 / #2 = 562000000000/19321\n"
+             "3. #1 / #2 = 562000000000/19321 kg/(m s^2)\n"
              "4. round(#3, in MPa) = 291/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "5. #4 = 291/10 MPa [variant Cube (1st of 3), selected by tag]\n");
 }
@@ -2249,7 +2249,7 @@ TEST_CASE("a series scaled by a pure number reads in the series' unit", "[series
     CHECK(derivation(factor / retained)
           == "1. 3/2\n"
              "2. m_r = 137 g; 213 g; 293 g\n"
-             "3. #1 / #2 = 1500/137; 500/71; 1500/293\n");
+             "3. #1 / #2 = 1500/137 1/kg; 500/71 1/kg; 1500/293 1/kg\n");
 
     // Celsius readings doubled are no readings: 593.7 K is not 2 x 23.7 degC.
     formula::Trace<> doubled {};
@@ -2258,7 +2258,7 @@ TEST_CASE("a series scaled by a pure number reads in the series' unit", "[series
                                                                series_trace::readings,
                                                                formula::RecordingSink<> { doubled });
     REQUIRE(doubled.steps.size() == 3);
-    CHECK(formula::render_trace(doubled, { .maxSteps = 30 }).ends_with("3. #1 * #2 = 5937/10; 6289/10; 6221/10\n"));
+    CHECK(formula::render_trace(doubled, { .maxSteps = 30 }).ends_with("3. #1 * #2 = 5937/10 K; 6289/10 K; 6221/10 K\n"));
 }
 
 TEST_CASE("a series of prices scaled by a pure number reads in euros", "[series][trace]")
@@ -2296,7 +2296,7 @@ TEST_CASE("a per-element constant and a negation each record one step with every
     // and reads in the coherent unit.
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
           == "1. 1 g; 2 g; 3 g\n"
-             "2. -#1 = -1/1000; -1/500; -3/1000\n");
+             "2. -#1 = -1/1000 kg; -1/500 kg; -3/1000 kg\n");
     REQUIRE(trace.steps.size() == 2);
     CHECK(trace.steps[0].kind == formula::StepKind::SeriesConstant);
     CHECK(trace.steps[1].kind == formula::StepKind::ElementwiseNegate);
@@ -2335,7 +2335,7 @@ TEST_CASE("an elementwise step whose left operand failed says its right one was 
           == "1. m_r = 130 g; 210 g\n"
              "2. m_r = 130 g; 210 g\n"
              "3. m_r = 130 g; 210 g\n"
-             "4. #2 - #3 = 0; 0\n"
+             "4. #2 - #3 = 0 kg; 0 kg\n"
              "5. #1 / #4 = division by zero at element 1\n"
              "6. #5 * (not evaluated) = division by zero at element 1\n");
 }
@@ -2351,7 +2351,7 @@ TEST_CASE("a binary step names the side that failed, the side never evaluated an
           == "1. m_s = 137 g\n"
              "2. m_s = 137 g\n"
              "3. m_s = 137 g\n"
-             "4. #2 - #3 = 0\n"
+             "4. #2 - #3 = 0 kg\n"
              "5. #1 / #4 = division by zero\n"
              "6. #5 / (not evaluated) = division by zero\n");
 
@@ -2441,9 +2441,9 @@ TEST_CASE("a sum, a range and a running total of Celsius readings read in the co
     std::string const readingsLine = "1. T_r = 237/10 " + degreesCelsius + "; 413/10 " + degreesCelsius + "; 379/10 "
                                      + degreesCelsius + "\n";
     constexpr auto readings = formula::series<series_trace::Reading, 3>;
-    CHECK(derivationOf(formula::sum(readings), series_trace::readings) == readingsLine + "2. sum(#1) = 18447/20\n");
+    CHECK(derivationOf(formula::sum(readings), series_trace::readings) == readingsLine + "2. sum(#1) = 18447/20 K\n");
     CHECK(derivationOf(formula::sample_range(readings), series_trace::readings)
-          == readingsLine + "2. sample_range(#1) = 88/5\n");
+          == readingsLine + "2. sample_range(#1) = 88/5 K\n");
     CHECK(derivationOf(formula::sample_mean(readings), series_trace::readings)
           == readingsLine + "2. sample_mean(#1) = 343/10 " + degreesCelsius + "\n");
 
@@ -2453,7 +2453,7 @@ TEST_CASE("a sum, a range and a running total of Celsius readings read in the co
         series_trace::readings,
         formula::RecordingSink<> { running });
     CHECK(formula::render_trace(running, { .maxSteps = 30 })
-          == readingsLine + "2. cumulative(#1, from first) = 5937/20; 6113/10; 18447/20\n");
+          == readingsLine + "2. cumulative(#1, from first) = 5937/20 K; 6113/10 K; 18447/20 K\n");
     REQUIRE(running.steps.size() == 2);
     CHECK(running.steps[1].unit.offsetNumerator == 0);
 }
@@ -2469,9 +2469,9 @@ TEST_CASE("a sum, a range and a mean of Fahrenheit readings read as those of Cel
     std::string const readingsLine = "1. T_f = 50 " + degreesFahrenheit + "; 51 " + degreesFahrenheit + "\n";
     constexpr auto readings = formula::series<series_trace::FahrenheitReading, 2>;
     CHECK(derivationOf(formula::sum(readings), series_trace::fahrenheitReadings)
-          == readingsLine + "2. sum(#1) = 51017/90\n");
+          == readingsLine + "2. sum(#1) = 51017/90 K\n");
     CHECK(derivationOf(formula::sample_range(readings), series_trace::fahrenheitReadings)
-          == readingsLine + "2. sample_range(#1) = 5/9\n");
+          == readingsLine + "2. sample_range(#1) = 5/9 K\n");
     CHECK(derivationOf(formula::sample_mean(readings), series_trace::fahrenheitReadings)
           == readingsLine + "2. sample_mean(#1) = 101/2 " + degreesFahrenheit + "\n");
 }
@@ -2485,12 +2485,12 @@ TEST_CASE("a sum and a mean of a series in a unit with no symbol read in the coh
         formula::measured_series<series_trace::Gap>(formula::Measured<series_trace::Gap> { formula::Rational { 137 } },
                                                     formula::Measured<series_trace::Gap> { formula::Rational { 263 } }));
     CHECK(derivationOf(formula::sum(formula::series<series_trace::Gap, 2>), gaps)
-          == "1. w = 137; 263\n"
-             "2. sum(#1) = 2/5\n");
+          == "1. w = 137/1000 m; 263/1000 m\n"
+             "2. sum(#1) = 2/5 m\n");
     // Nor does a mean, which would borrow an offset unit: 0.2 m.
     CHECK(derivationOf(formula::sample_mean(formula::series<series_trace::Gap, 2>), gaps)
-          == "1. w = 137; 263\n"
-             "2. sample_mean(#1) = 1/5\n");
+          == "1. w = 137/1000 m; 263/1000 m\n"
+             "2. sample_mean(#1) = 1/5 m\n");
 }
 
 TEST_CASE("a series with nothing measured traces as absence at every element, and never as zero", "[series][trace]")
@@ -2996,23 +2996,23 @@ TEST_CASE("a value whose decimal never ends is a fraction unless an approximatio
     formula::Trace<> const third = tracedValue(density,
                                                formula::environment(formula::Measured<Mass> { formula::Rational { 1 } },
                                                                     formula::Measured<Volume> { formula::Rational { 3 } }));
-    CHECK(renderedIn(third, formula::NumberStyle::fraction()) == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = 1/3\n");
-    CHECK(renderedIn(third, formula::NumberStyle::exact_decimal()) == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = 1/3\n");
+    CHECK(renderedIn(third, formula::NumberStyle::fraction()) == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = 1/3 kg/m^3\n");
+    CHECK(renderedIn(third, formula::NumberStyle::exact_decimal()) == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = 1/3 kg/m^3\n");
     CHECK(renderedIn(third, approximately)
           == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = \xe2\x89\x88"
-             "0.333\n");
+             "0.333 kg/m^3\n");
 
     // Padded to the declared decimals of each unit: 3 for kilograms, 4 for
     // cubic metres. The quotient's unit is one nobody declared -- the
     // coherent kg/m3, with no symbol -- so it is never padded, and rounded it
     // uses that unit's 3 places.
     CHECK(renderedIn(third, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
-          == "1. m = 1.000 kg\n2. V = 3.0000 m3\n3. #1 / #2 = 1/3\n");
+          == "1. m = 1.000 kg\n2. V = 3.0000 m3\n3. #1 / #2 = 1/3 kg/m^3\n");
     CHECK(renderedIn(third,
                      formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven,
                                                                formula::DecimalPadding::Padded))
           == "1. m = 1.000 kg\n2. V = 3.0000 m3\n3. #1 / #2 = \xe2\x89\x88"
-             "0.333\n");
+             "0.333 kg/m^3\n");
     // An unlabelled value that is an exact decimal shows that it is not
     // padded: 1.5, not 1.500.
     formula::Trace<> const threeHalves =
@@ -3020,7 +3020,7 @@ TEST_CASE("a value whose decimal never ends is a fraction unless an approximatio
                     formula::environment(formula::Measured<Mass> { formula::Rational { 3 } },
                                          formula::Measured<Volume> { formula::Rational { 2 } }));
     CHECK(renderedIn(threeHalves, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
-          == "1. m = 3.000 kg\n2. V = 2.0000 m3\n3. #1 / #2 = 1.5\n");
+          == "1. m = 3.000 kg\n2. V = 2.0000 m3\n3. #1 / #2 = 1.5 kg/m^3\n");
 }
 
 TEST_CASE("a value the style cannot spell in its unit is not shown, and says why", "[trace-render][decimals]")
@@ -3066,13 +3066,13 @@ TEST_CASE("a rejection's statistic and limit are shown exact beside the comparis
              "3. pass mean = \xe2\x89\x88"
              "42.3 g\n"
              "4. #2 * #3 = \xe2\x89\x88"
-             "0.004\n"
+             "0.004 kg\n"
              "5. pass 1: 3 values, mean \xe2\x89\x88"
              "42.3 g\n"
              "6. rejected element 3 of 3 (47 g) in pass 1: abs(x - mean) = 14/3 g > 127/30 g (deviation from mean)\n"
              "7. 0.1\n"
              "8. pass mean = 40 g\n"
-             "9. #7 * #8 = 0.004\n"
+             "9. #7 * #8 = 0.004 kg\n"
              "10. pass 2: 2 values, mean 40 g\n"
              "11. settled: 1 rejected, 2 remain\n");
 
@@ -3201,7 +3201,7 @@ TEST_CASE("a number typed rather than computed is shown exact, whatever the styl
              "2. m = \xe2\x89\x88"
              "0.286 kg\n"
              "3. #1 * #2 = \xe2\x89\x88"
-             "0.095\n");
+             "0.095 kg\n");
 
     // The library's pi is a rational it states itself, and has no decimal
     // that ends.
@@ -3210,7 +3210,7 @@ TEST_CASE("a number typed rather than computed is shown exact, whatever the styl
           == "1. pi = 245850922/78256779\n"
              "2. m = 1 kg\n"
              "3. #1 * #2 = \xe2\x89\x88"
-             "3.142\n");
+             "3.142 kg\n");
 
     // A table's row, which each of the three table lookups reads: the banded
     // one's bounds are shown as typed too, as exact decimals.
@@ -3262,7 +3262,7 @@ TEST_CASE("a constant an overlay fixed or derived is shown as typed, whatever th
           == "1. c = 1/3 [fixed by jurisdiction overlay: Example Standard 12:2021 NA, NA.4]\n"
              "2. m = 2 kg\n"
              "3. #1 * #2 = \xe2\x89\x88"
-             "0.667\n"
+             "0.667 kg\n"
              "4. round(#3, in kg) = 0.667 kg [rounded to 3 dp (method default); nearest, ties away from zero]\n"
              "5. #4 = 0.667 kg [variant PlainDensity (1st of 1), selected by tag]\n");
 
@@ -3277,7 +3277,7 @@ TEST_CASE("a constant an overlay fixed or derived is shown as typed, whatever th
              "2. c = #1 = 1/3 [derived by jurisdiction overlay: Example Standard 12:2021 NA, NA.4]\n"
              "3. m = 2 kg\n"
              "4. #2 * #3 = \xe2\x89\x88"
-             "0.667\n"
+             "0.667 kg\n"
              "5. round(#4, in kg) = 0.667 kg [rounded to 3 dp (method default); nearest, ties away from zero]\n"
              "6. #5 = 0.667 kg [variant PlainDensity (1st of 1), selected by tag]\n");
 }
@@ -3306,7 +3306,7 @@ TEST_CASE("a step that passes a typed number on shows it as typed, whatever the 
              "0.286 kg\n"
              "2. 1/7 kg\n"
              "3. 1/3 kg\n"
-             "4. if #1 > #2 then #3 = 1/3\n");
+             "4. if #1 > #2 then #3 = 1/3 kg\n");
 }
 
 TEST_CASE("a curve's typed points and values are shown as typed, and its computed ones rounded", "[trace-render][decimals]")
@@ -3379,7 +3379,7 @@ TEST_CASE("a record's scope over a typed number shows it as typed, whatever the 
              "3. m = \xe2\x89\x88"
              "0.286 kg\n"
              "4. #2 * #3 = \xe2\x89\x88"
-             "0.095\n");
+             "0.095 kg^2\n");
 }
 
 TEST_CASE("a step over a consumer's node that forwards the sink is not taken for its typed operand",
@@ -3394,7 +3394,7 @@ TEST_CASE("a step over a consumer's node that forwards the sink is not taken for
     CHECK(renderedIn(tracedValue(rise, formula::environment()), approximately)
           == "1. 1/3 m\n"
              "2. #1 = \xe2\x89\x88"
-             "0.19 [Rise above the reference, Example Standard 1:2020, 6.5]\n");
+             "0.19 m [Rise above the reference, Example Standard 1:2020, 6.5]\n");
 
     // The same for a branch that ran: the branch's step is the constant, and
     // the conditional's value is the node's.
@@ -3407,7 +3407,7 @@ TEST_CASE("a step over a consumer's node that forwards the sink is not taken for
              "2. 1/7 kg\n"
              "3. 1/3 kg\n"
              "4. if #1 > #2 then #3 = \xe2\x89\x88"
-             "0.19\n");
+             "0.19 kg\n");
 }
 
 TEST_CASE("a replaced variant whose formula is a typed number shows it as typed, whatever the style",
@@ -3446,11 +3446,11 @@ TEST_CASE("a precision limit's level over a typed number shows it as typed, what
              "4. 0.02\n"
              "5. level = 1/3 kg [bound by #8]\n"
              "6. #4 * #5 = \xe2\x89\x88"
-             "0.007\n"
+             "0.007 kg\n"
              "7. #3 + #6 = \xe2\x89\x88"
-             "0.107\n"
+             "0.107 kg\n"
              "8. r at level #2 (pass 2 of 2) = #7 = \xe2\x89\x88"
-             "0.107\n");
+             "0.107 kg\n");
 }
 
 TEST_CASE("a value in a unit nobody declared is never padded, a quantity in unit::One included",
@@ -3538,25 +3538,25 @@ TEST_CASE("a precision limit whose limit is a typed number shows it as typed, wh
         tracedValue(limitOfSeventh, formula::environment(formula::Measured<Mass> { rat(2, 7) }));
     CHECK(renderedIn(trace, approximately)
           == "1. 1/3 kg\n"
-             "2. level (pass 1 of 2) = #1 = 1/3\n"
+             "2. level (pass 1 of 2) = #1 = 1/3 kg\n"
              "3. 1/7 kg\n"
-             "4. r at level #2 (pass 2 of 2) = #3 = 1/7\n"
+             "4. r at level #2 (pass 2 of 2) = #3 = 1/7 kg\n"
              "5. m = \xe2\x89\x88"
              "0.286 kg\n"
              "6. #4 * #5 = \xe2\x89\x88"
-             "0.041\n");
+             "0.041 kg^2\n");
 
     // A hand-built trace whose limit step does not hold the value pass 2
     // states is not taken for typed: pass 2's line is spelled as a computed
     // one is, rounded.
     formula::Trace<> forgedLimit = trace;
     forgedLimit.steps[2].value = rat(1, 11);
-    CHECK(renderedIn(forgedLimit, approximately).find("4. r at level #2 (pass 2 of 2) = #3 = \xe2\x89\x88" "0.143\n")
+    CHECK(renderedIn(forgedLimit, approximately).find("4. r at level #2 (pass 2 of 2) = #3 = \xe2\x89\x88" "0.143 kg\n")
           != std::string::npos);
     // Nor one whose pass 2 states a value its limit step does not hold.
     formula::Trace<> forgedPass = trace;
     forgedPass.steps[3].value = rat(1, 11);
-    CHECK(renderedIn(forgedPass, approximately).find("4. r at level #2 (pass 2 of 2) = #3 = \xe2\x89\x88" "0.091\n")
+    CHECK(renderedIn(forgedPass, approximately).find("4. r at level #2 (pass 2 of 2) = #3 = \xe2\x89\x88" "0.091 kg\n")
           != std::string::npos);
 }
 

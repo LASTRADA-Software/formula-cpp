@@ -204,8 +204,8 @@ int main()
     std::string const meanLine = last_line(
         formula::render_trace(formula::trace_of<Reading>(formula::sample_mean(threeReadings), readings), { .maxSteps = 80 }));
     std::println("the readings: {}\ntheir sum: {}\ntheir range: {}\ntheir mean: {}\n", readingsLine, sumLine, rangeLine, meanLine);
-    check(sumLine == "2. sum(#1) = 18447/20", "922.35 K, no reading");
-    check(rangeLine == "2. sample_range(#1) = 88/5", "17.6 K, no reading");
+    check(sumLine == "2. sum(#1) = 18447/20 K", "922.35 K, no reading");
+    check(rangeLine == "2. sample_range(#1) = 88/5 K", "17.6 K, no reading");
     check(meanLine == "2. sample_mean(#1) = 343/10 \xc2\xb0" "C", "a mean of readings is a reading, 34.3 degC");
 
     std::println("== 2. Elementwise arithmetic: one step per operation ==\n");

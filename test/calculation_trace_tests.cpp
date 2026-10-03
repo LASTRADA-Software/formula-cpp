@@ -845,11 +845,11 @@ TEST_CASE("an override between calculated blocks is one line of the budget", "[c
                                    "exported = solar - self_used = 30 kWh\n"
                                    "  1. solar = 150 kWh\n"
                                    "  2. self_used = 120 kWh, calculated\n"
-                                   "  3. #1 - #2 = 108000000\n"
+                                   "  3. #1 - #2 = 108000000 m^2 kg/s^2\n"
                                    "self_used = solar * 4/5 = 120 kWh\n"
                                    "  1. solar = 150 kWh\n"
                                    "  2. 4/5\n"
-                                   "  3. #1 * #2 = 432000000\n"
+                                   "  3. #1 * #2 = 432000000 m^2 kg/s^2\n"
                                    "inputs\n"
                                    "  solar = 150 kWh\n"
                                    "  price = 8/25 EUR/kWh\n"
@@ -893,7 +893,7 @@ TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][wo
     CHECK(full.find("\nfridge_kwh = fridge_kw * fridge_h = 24/5 kWh\n"
                     "  1. fridge_kw = 1/5 kW, calculated\n"
                     "  2. fridge_h = 24 h\n"
-                    "  3. #1 * #2 = 17280000\n")
+                    "  3. #1 * #2 = 17280000 m^2 kg/s^2\n")
           != std::string::npos);
     CHECK(full.ends_with("inputs\n"
                          "  fridge_w = 200 W\n"
@@ -1073,11 +1073,11 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
              "exported = solar - self_used = 30.000 kWh\n"
              "  1. solar = 150.000 kWh\n"
              "  2. self_used = 120.000 kWh, calculated\n"
-             "  3. #1 - #2 = 108000000\n"
+             "  3. #1 - #2 = 108000000 m^2 kg/s^2\n"
              "self_used = solar * 0.8 = 120.000 kWh\n"
              "  1. solar = 150.000 kWh\n"
              "  2. 0.8\n"
-             "  3. #1 * #2 = 432000000\n"
+             "  3. #1 * #2 = 432000000 m^2 kg/s^2\n"
              "inputs\n"
              "  solar = 150.000 kWh\n"
              "  price = 0.3200 EUR/kWh\n"
@@ -1220,7 +1220,7 @@ TEST_CASE("a derivation's header says a value is not shown where its style canno
         std::string const styled = formula::render_derivation(explained, { .maxSteps = 20, .numbers = style });
         CHECK(styled.find("\nl_u = b * 2 = (not shown: overflow in exact arithmetic)\n") != std::string::npos);
         CHECK(styled.find("\n  1. l_u = (not shown: overflow in exact arithmetic), calculated\n") != std::string::npos);
-        CHECK(styled.find("\n  3. #1 * #2 = 0.006\n") != std::string::npos);
+        CHECK(styled.find("\n  3. #1 * #2 = 0.006 m\n") != std::string::npos);
     }
 }
 
@@ -1239,7 +1239,7 @@ TEST_CASE("a derivation's computed price per energy shows its first significant 
     CHECK(formula::render_derivation(explained, { .maxSteps = 20 }) == "price = grid_cost / net_draw = 8/25 EUR/kWh\n"
                                                                        "  1. grid_cost = 80 EUR\n"
                                                                        "  2. net_draw = 250 kWh\n"
-                                                                       "  3. #1 / #2 = 1/11250000\n"
+                                                                       "  3. #1 / #2 = 1/11250000 s^2/(m^2 kg)\n"
                                                                        "inputs\n"
                                                                        "  grid_cost = 80 EUR\n"
                                                                        "  net_draw = 250 kWh\n");
@@ -1250,7 +1250,7 @@ TEST_CASE("a derivation's computed price per energy shows its first significant 
              "  1. grid_cost = 80 EUR\n"
              "  2. net_draw = 250 kWh\n"
              "  3. #1 / #2 = \xe2\x89\x88"
-             "0.00000009\n"
+             "0.00000009 s^2/(m^2 kg)\n"
              "inputs\n"
              "  grid_cost = 80 EUR\n"
              "  net_draw = 250 kWh\n");
@@ -1317,17 +1317,17 @@ TEST_CASE("money of its own is calculated, derived, documented and spelled in it
           == "rate = total / draw = 3401/9300 EUR/kWh\n"
              "  1. total = 102.03 EUR, calculated\n"
              "  2. draw = 279 kWh\n"
-             "  3. #1 / #2 = 3401/33480000000\n"
+             "  3. #1 / #2 = 3401/33480000000 EUR s^2/(m^2 kg)\n"
              "total = charge + fee + 0.25 EUR = 102.03 EUR\n"
              "  1. charge = 89.28 EUR, calculated\n"
              "  2. fee = 12.5 EUR\n"
-             "  3. #1 + #2 = 101.78\n"
+             "  3. #1 + #2 = 101.78 EUR\n"
              "  4. 0.25 EUR\n"
-             "  5. #3 + #4 = 102.03\n"
+             "  5. #3 + #4 = 102.03 EUR\n"
              "charge = draw * tariff = 89.28 EUR\n"
              "  1. draw = 279 kWh\n"
              "  2. tariff = 0.32 EUR/kWh\n"
-             "  3. #1 * #2 = 89.28\n"
+             "  3. #1 * #2 = 89.28 EUR\n"
              "inputs\n"
              "  draw = 279 kWh\n"
              "  tariff = 0.32 EUR/kWh\n"

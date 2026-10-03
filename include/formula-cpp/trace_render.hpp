@@ -1481,6 +1481,61 @@ namespace detail
         return "(not shown: " + std::string { describe(whyNot) } + ")";
     }
 
+    /// The coherent unit of @p dimension, spelt from its base units:
+    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
+    /// one. Written after every dimensioned value whose unit has no symbol, so
+    /// that a slope in metres per second does not read as a pure number.
+    ///
+    /// A named base dimension is spelt by its name -- the name is also the
+    /// symbol of its coherent unit -- ahead of the SI units on its side of the
+    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
+    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
+    /// read as money per energy, not as seconds squared of money per metre.
+    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
+    /// only letters and digits, but a hand-filled `namedBases` can hold
+    /// anything.
+    [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
+    {
+        struct BaseUnit
+        {
+            std::string_view symbol;
+            Exponent exponent;
+        };
+        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
+                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
+                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
+                                              BaseUnit { "cd", dimension.luminosity } };
+        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
+            std::string factorText { symbolText };
+            if (denominatorPart != 1)
+                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
+            else if (numeratorPart != 1)
+                factorText += "^" + std::to_string(numeratorPart);
+            return factorText;
+        };
+        std::string above;
+        std::string below;
+        std::size_t belowCount = 0;
+        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
+            if (baseExponent.numerator > 0)
+                above += (above.empty() ? "" : " ")
+                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
+            else if (baseExponent.numerator < 0)
+            {
+                below += (below.empty() ? "" : " ")
+                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
+                ++belowCount;
+            }
+        };
+        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
+            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
+        for (BaseUnit const& base: bases)
+            place(base.symbol, base.exponent);
+        if (below.empty())
+            return above;
+        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
+    }
+
     /// @p storedValue -- a step's own, or one element of a series step's -- converted
     /// from the coherent unit of @p recorded's dimension into the unit the
     /// step was declared in, with that unit's symbol, or `(not measured)`
@@ -1488,10 +1543,13 @@ namespace detail
     /// `series_step_line`, so that an element of a series reads exactly as a
     /// single value of the same quantity does.
     ///
-    /// The number is spelled in @p numberStyle (`checked_shown_text`: never
-    /// padded in a unit nobody declared); a style that cannot spell it in the
-    /// step's unit is reported as the conversion's failure is, `(not shown:
-    /// ...)`. The fraction style never fails.
+    /// A dimensioned value whose unit has no symbol is shown in the coherent
+    /// unit instead, followed by that unit's spelling (`coherent_unit_text`),
+    /// so that no computed value prints as a bare number. The number is
+    /// spelled in @p numberStyle (`checked_shown_text`: a coherent value is
+    /// never padded); a style that cannot spell it in the shown unit is
+    /// reported as the conversion's failure is, `(not shown: ...)`. The
+    /// fraction style never fails.
     [[nodiscard]] inline std::string value_in_declared_unit(Step<Rational> const& recorded,
                                                             std::optional<Rational> const& storedValue,
                                                             NumberStyle numberStyle)
@@ -1499,8 +1557,16 @@ namespace detail
         if (!storedValue.has_value())
             return std::string { NotMeasuredText };
 
+        // A unit with no symbol cannot say what scale its number is on. A
+        // dimensioned value is then shown in the coherent unit and followed by
+        // that unit's spelling (`coherent_unit_text`), so that no computed
+        // value prints as a bare number and no number is shown in a scale its
+        // line does not name. A dimensionless value is a bare number either
+        // way.
+        bool const spellsCoherent = view(recorded.unit.symbolText).empty() && !(recorded.dimension == dim::Scalar);
+        Unit const shownUnit = spellsCoherent ? coherent(recorded.dimension) : recorded.unit;
         std::expected<Rational, ArithmeticError> const shown =
-            checked_convert(*storedValue, coherent(recorded.dimension), recorded.unit);
+            checked_convert(*storedValue, coherent(recorded.dimension), shownUnit);
         // Unreachable for a `Step` the recorder built -- it records a unit of
         // the step's own dimension -- but a `Step` is a public aggregate and a
         // caller may fill one in by hand. Refusing to print is the only
@@ -1508,12 +1574,12 @@ namespace detail
         // claims it is not in.
         if (!shown)
             return not_shown_text(shown.error());
-        std::expected<NumberText, ArithmeticError> const spelled = checked_shown_text(*shown, numberStyle, recorded.unit);
+        std::expected<NumberText, ArithmeticError> const spelled = checked_shown_text(*shown, numberStyle, shownUnit);
         if (!spelled)
             return not_shown_text(spelled.error());
 
         std::string valueText { spelled->view() };
-        std::string const unitSymbol = unit_symbol_text(recorded.unit);
+        std::string const unitSymbol = spellsCoherent ? coherent_unit_text(recorded.dimension) : unit_symbol_text(shownUnit);
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
         return valueText;
@@ -2217,7 +2283,8 @@ namespace detail
     {
         if (!squared)
             return value_in_declared_unit(recorded, si, numberStyle);
-        Unit const shownUnit = recorded.unit;
+        bool const spellsCoherent = view(recorded.unit.symbolText).empty() && !(recorded.dimension == dim::Scalar);
+        Unit const shownUnit = spellsCoherent ? coherent(recorded.dimension) : recorded.unit;
         std::expected<Rational, ArithmeticError> const magnitude =
             Rational::make(shownUnit.magnitudeNumerator, shownUnit.magnitudeDenominator);
         std::expected<Rational, ArithmeticError> const magnitudeSquared =
@@ -2231,8 +2298,11 @@ namespace detail
         if (!spelled)
             return not_shown_text(spelled.error());
         std::string valueText { spelled->view() };
-        std::string const unitSymbol = unit_symbol_text(shownUnit);
-        if (!unitSymbol.empty())
+        // A unit with a symbol squares as the library writes squares (`g2`);
+        // the coherent one is spelt from its bases (`K^2`).
+        if (spellsCoherent)
+            valueText += " " + coherent_unit_text(recorded.dimension * recorded.dimension);
+        else if (std::string const unitSymbol = unit_symbol_text(shownUnit); !unitSymbol.empty())
             valueText += " " + unitSymbol + "2";
         return valueText;
     }
@@ -2470,64 +2540,7 @@ namespace detail
         std::optional<std::size_t> failedInput {};
     };
 
-    /// The coherent unit of @p dimension, spelt from its base units:
-    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
-    /// one. For an opaque output shown in no input's unit, so that a slope in
-    /// metres per second does not read as a pure number.
-    ///
-    /// A named base dimension is spelt by its name -- the name is also the
-    /// symbol of its coherent unit -- ahead of the SI units on its side of the
-    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
-    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
-    /// read as money per energy, not as seconds squared of money per metre.
-    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
-    /// only letters and digits, but a hand-filled `namedBases` can hold
-    /// anything.
-    [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
-    {
-        struct BaseUnit
-        {
-            std::string_view symbol;
-            Exponent exponent;
-        };
-        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
-                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
-                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
-                                              BaseUnit { "cd", dimension.luminosity } };
-        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
-            std::string factorText { symbolText };
-            if (denominatorPart != 1)
-                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
-            else if (numeratorPart != 1)
-                factorText += "^" + std::to_string(numeratorPart);
-            return factorText;
-        };
-        std::string above;
-        std::string below;
-        std::size_t belowCount = 0;
-        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
-            if (baseExponent.numerator > 0)
-                above += (above.empty() ? "" : " ")
-                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
-            else if (baseExponent.numerator < 0)
-            {
-                below += (below.empty() ? "" : " ")
-                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
-                ++belowCount;
-            }
-        };
-        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
-            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
-        for (BaseUnit const& base: bases)
-            place(base.symbol, base.exponent);
-        if (below.empty())
-            return above;
-        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
-    }
-
-    /// @p storedValue in @p shownUnit, and -- when that unit has no symbol of
-    /// its own but a dimension -- followed by the coherent unit's spelling
-    /// (`coherent_unit_text`), for an opaque output.
+    /// @p storedValue in @p shownUnit, for an opaque output.
     [[nodiscard]] inline std::string opaque_value_text(Dimension dimension,
                                                        Unit shownUnit,
                                                        std::optional<Rational> const& storedValue,
@@ -2536,10 +2549,7 @@ namespace detail
         Step<Rational> outputShape {};
         outputShape.dimension = dimension;
         outputShape.unit = shownUnit;
-        std::string valueText = value_in_declared_unit(outputShape, storedValue, numberStyle);
-        if (storedValue.has_value() && view(shownUnit.symbolText).empty() && !(dimension == dim::Scalar))
-            valueText += " " + coherent_unit_text(dimension);
-        return valueText;
+        return value_in_declared_unit(outputShape, storedValue, numberStyle);
     }
 
     /// What an opaque call's line says of whose failure it carries, bracketed:

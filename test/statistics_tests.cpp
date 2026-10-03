@@ -537,7 +537,7 @@ TEST_CASE("the spread is reported exactly: the rounded root of the variance", "[
     (void) formula::checked_evaluate<Spread>(spread, fixtureA, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 20 })
           == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
-             "2. sample_variance(#1) = 427/125000000\n"
+             "2. sample_variance(#1) = 427/125000000 kg^2\n"
              "3. round(sqrt(#2), to 2 dp of g) = 37/20 g [nearest, ties away from zero]\n");
     CHECK(formula::render(spread) == "round(sqrt(sample_variance(m(i))), to 2 dp of g)");
 }
@@ -617,10 +617,10 @@ TEST_CASE("a range checked against a critical value times a precision limit at t
              "9. 1/10 g\n"
              "10. 1/50\n"
              "11. level = 3237/80 g [bound by #14]\n"
-             "12. #10 * #11 = 3237/4000000\n"
-             "13. #9 + #12 = 3637/4000000\n"
-             "14. r at level #8 (pass 2 of 2) = #13 = 3637/4000000\n"
-             "15. #5 * #14 = 40007/200000000\n"
+             "12. #10 * #11 = 3237/4000000 kg\n"
+             "13. #9 + #12 = 3637/4000000 kg\n"
+             "14. r at level #8 (pass 2 of 2) = #13 = 3637/4000000 kg\n"
+             "15. #5 * #14 = 40007/200000000 kg\n"
              "16. require #2 <= #15 [satisfied]\n");
 }
 
@@ -631,7 +631,7 @@ TEST_CASE("the variance and the range trace, render and document as the mean doe
     (void) formula::checked_evaluate<MassVariance>(variance, fixtureA, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 20 })
           == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
-             "2. sample_variance(#1) = 427/125000000\n");
+             "2. sample_variance(#1) = 427/125000000 kg^2\n");
     formula::Trace<> ranged {};
     (void) formula::checked_evaluate<Spread>(range, fixtureA, formula::RecordingSink<> { ranged });
     CHECK(formula::render_trace(ranged, { .maxSteps = 20 })

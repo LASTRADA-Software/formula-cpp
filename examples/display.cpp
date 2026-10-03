@@ -205,7 +205,7 @@ int main()
     std::println("trace, padded style:\n{}", tareTraceText);
     check(tareFormula == "m_d - 24 g" && tareTraceText.contains("2. 24.0 g\n"),
           "a formula states the typed 24 g, a trace pads it");
-    check(tareTraceText.contains("3. #1 - #2 = 0.12\n"), "a unit nobody declared is not padded");
+    check(tareTraceText.contains("3. #1 - #2 = 0.12 kg\n"), "a unit nobody declared is not padded");
 
     // ---- 4. number_text and decimal_text ------------------------------------------------
     std::println("== 4. number_text and decimal_text ==\n");

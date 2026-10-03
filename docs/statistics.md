@@ -113,7 +113,7 @@ formula declares:
 
 ```text
 1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
-2. sample_variance(#1) = 427/125000000
+2. sample_variance(#1) = 427/125000000 kg^2
 3. round(sqrt(#2), to 2 dp of g) = 37/20 g [nearest, ties away from zero]
 ```
 
@@ -179,17 +179,17 @@ at first -- in pass 2, and pass 3 settles:
 1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
 2. 3/50
 3. pass mean = 413/10 g
-4. #2 * #3 = 1239/500000
+4. #2 * #3 = 1239/500000 kg
 5. pass 1: 6 values, mean 413/10 g
 6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)
 7. 3/50
 8. pass mean = 1019/25 g
-9. #7 * #8 = 3057/1250000
+9. #7 * #8 = 3057/1250000 kg
 10. pass 2: 5 values, mean 1019/25 g
 11. rejected element 6 of 6 (433/10 g) in pass 2: abs(x - mean) = 127/50 g > 3057/1250 g (deviation from mean)
 12. 3/50
 13. pass mean = 321/8 g
-14. #12 * #13 = 963/400000
+14. #12 * #13 = 963/400000 kg
 15. pass 3: 4 values, mean 321/8 g
 16. settled: 2 rejected, 4 remain
 17. sample_mean(#16) = 321/8 g
@@ -323,9 +323,9 @@ LaTeX: \text{require } \left\lvert x_A - x_B\right\rvert \leq r\left(1/10\,\math
 11. 1/10 g
 12. 1/50
 13. level = 16181/400 g [bound by #16]
-14. #12 * #13 = 16181/20000000
-15. #11 + #14 = 18181/20000000
-16. r at level #10 (pass 2 of 2) = #15 = 18181/20000000
+14. #12 * #13 = 16181/20000000 kg
+15. #11 + #14 = 18181/20000000 kg
+16. r at level #10 (pass 2 of 2) = #15 = 18181/20000000 kg
 17. require #4 <= #16 [satisfied]
 ```
 

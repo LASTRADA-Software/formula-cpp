@@ -545,9 +545,9 @@ In it, a calculated value it reads is one step, marked `calculated`:
 daily_load = fridge_kwh + oven_kwh + heater_kwh = 13.3 kWh
   1. fridge_kwh = 4.8 kWh, calculated
   2. oven_kwh = 2.5 kWh, calculated
-  3. #1 + #2 = 26280000
+  3. #1 + #2 = 26280000 m^2 kg/s^2
   4. heater_kwh = 6 kWh, calculated
-  5. #3 + #4 = 47880000
+  5. #3 + #4 = 47880000 m^2 kg/s^2
 ```
 
 The blocks of the calculated values it reads follow it, the last calculated
@@ -559,7 +559,7 @@ the fridge's energy reads. The inputs read come last, one line each:
 fridge_kwh = fridge_kw * fridge_h = 4.8 kWh
   1. fridge_kw = 0.4 kW, calculated
   2. fridge_h = 12 h
-  3. #1 * #2 = 17280000
+  3. #1 * #2 = 17280000 m^2 kg/s^2
 fridge_kw = fridge_w = 0.4 kW
   1. fridge_w = 400 W
 inputs
@@ -629,7 +629,7 @@ std::string const gridText = formula::render_derivation(gridCost, { .maxSteps = 
 grid_cost = net_draw * price = 62.5 EUR
   1. net_draw = 250 kWh, entered by hand
   2. price = 0.25 EUR/kWh
-  3. #1 * #2 = 62.5
+  3. #1 * #2 = 62.5 EUR
 net_draw = 250 kWh, entered by hand in place of monthly_load - self_used
 ... 1 further step not shown
 ```

@@ -380,7 +380,7 @@ TEST_CASE("a deviation from the mean of Celsius readings reads in the coherent u
                  + "2. 3 K\n"
                    "3. pass 1: 5 values, mean 1253/50 " + degreesCelsius + "\n"
                  + "4. rejected element 3 of 5 (293/10 " + degreesCelsius
-                 + ") in pass 1: abs(x - mean) = 106/25 > 3 (deviation from mean)\n"
+                 + ") in pass 1: abs(x - mean) = 106/25 K > 3 K (deviation from mean)\n"
                    "5. 3 K\n"
                    "6. pass 2: 4 values, mean 24 " + degreesCelsius + "\n"
                  + "7. settled: 1 rejected, 4 remain\n");
@@ -395,7 +395,7 @@ TEST_CASE("a deviation from the mean of Celsius readings reads in the coherent u
         formula::RecordingSink<> { squared });
     CHECK(formula::render_trace(squared, { .maxSteps = 40 }).find(
               "4. rejected element 3 of 5 (293/10 " + degreesCelsius
-              + ") in pass 1: (x - mean)^2 = 11236/625 > limit^2 * s^2 = 69433/4000 (deviation in standard deviations)\n")
+              + ") in pass 1: (x - mean)^2 = 11236/625 K^2 > limit^2 * s^2 = 69433/4000 K^2 (deviation in standard deviations)\n")
           != std::string::npos);
 }
 
@@ -418,12 +418,12 @@ TEST_CASE("a rejection over a unit with no symbol reads its means and deviations
     formula::Trace<> trace {};
     (void) formula::checked_evaluate_rejection<UnnamedMass>(twoGrams, unnamed, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 40 })
-          == "1. m_u = 201/5; 199/5; 81/2; 44\n"
+          == "1. m_u = 201/5000 kg; 199/5000 kg; 81/2000 kg; 11/250 kg\n"
              "2. 2 g\n"
-             "3. pass 1: 4 values, mean 329/8000\n"
-             "4. rejected element 4 of 4 (11/250) in pass 1: abs(x - mean) = 23/8000 > 1/500 (deviation from mean)\n"
+             "3. pass 1: 4 values, mean 329/8000 kg\n"
+             "4. rejected element 4 of 4 (11/250 kg) in pass 1: abs(x - mean) = 23/8000 kg > 1/500 kg (deviation from mean)\n"
              "5. 2 g\n"
-             "6. pass 2: 3 values, mean 241/6000\n"
+             "6. pass 2: 3 values, mean 241/6000 kg\n"
              "7. settled: 1 rejected, 3 remain\n");
 }
 
@@ -480,17 +480,17 @@ TEST_CASE("every rejection is a step naming the value, the statistic, the limit 
         == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
            "2. 3/50\n"
            "3. pass mean = 413/10 g\n"
-           "4. #2 * #3 = 1239/500000\n"
+           "4. #2 * #3 = 1239/500000 kg\n"
            "5. pass 1: 6 values, mean 413/10 g\n"
            "6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)\n"
            "7. 3/50\n"
            "8. pass mean = 1019/25 g\n"
-           "9. #7 * #8 = 3057/1250000\n"
+           "9. #7 * #8 = 3057/1250000 kg\n"
            "10. pass 2: 5 values, mean 1019/25 g\n"
            "11. rejected element 6 of 6 (433/10 g) in pass 2: abs(x - mean) = 127/50 g > 3057/1250 g (deviation from mean)\n"
            "12. 3/50\n"
            "13. pass mean = 321/8 g\n"
-           "14. #12 * #13 = 963/400000\n"
+           "14. #12 * #13 = 963/400000 kg\n"
            "15. pass 3: 4 values, mean 321/8 g\n"
            "16. settled: 2 rejected, 4 remain\n");
 
@@ -500,12 +500,12 @@ TEST_CASE("every rejection is a step naming the value, the statistic, the limit 
           == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
              "2. 3/50\n"
              "3. pass mean = 413/10 g\n"
-             "4. #2 * #3 = 1239/500000\n"
+             "4. #2 * #3 = 1239/500000 kg\n"
              "5. pass 1: 6 values, mean 413/10 g\n"
              "6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)\n"
              "7. 3/50\n"
              "8. pass mean = 1019/25 g\n"
-             "9. #7 * #8 = 3057/1250000\n"
+             "9. #7 * #8 = 3057/1250000 kg\n"
              "10. pass 2: 5 values, mean 1019/25 g\n"
              "11. element 6 of 6 would be rejection 2 of at most 1: discard the determinations and repeat the test [Example "
              "Standard, 7.4]\n");
@@ -523,7 +523,7 @@ TEST_CASE("every rejection is a step naming the value, the statistic, the limit 
           == "1. m = 201/5 g; 199/5 g; 81/2 g; 226/5 g; 40 g; 186/5 g\n"
              "2. 3/50\n"
              "3. pass mean = 2429/60 g\n"
-             "4. #2 * #3 = 2429/1000000\n"
+             "4. #2 * #3 = 2429/1000000 kg\n"
              "5. pass 1: 6 values, mean 2429/60 g\n"
              "6. elements 4 and 6 of 6 would be rejections 1 and 2 of at most 1: discard the determinations and repeat the "
              "test [Example Standard, 7.4]\n");
@@ -554,12 +554,12 @@ TEST_CASE("every rejection is a step naming the value, the statistic, the limit 
           == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
              "2. 3/50\n"
              "3. pass mean = 413/10 g\n"
-             "4. #2 * #3 = 1239/500000\n"
+             "4. #2 * #3 = 1239/500000 kg\n"
              "5. pass 1: 6 values, mean 413/10 g\n"
              "6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)\n"
              "7. 3/50\n"
              "8. pass mean = 1019/25 g\n"
-             "9. #7 * #8 = 3057/1250000\n"
+             "9. #7 * #8 = 3057/1250000 kg\n"
              "10. pass 2: 5 values, mean 1019/25 g\n"
              "11. element 6 of 6 would leave 4 of at least 5: discard the determinations and repeat the test [Example "
              "Standard, 7.4]\n");
@@ -688,17 +688,17 @@ TEST_CASE("a rejection joins a method: evaluated, overlaid, rendered, documented
         == "1. x_m = 201/5 g; 199/5 g; 81/2 g; 226/5 g; 40 g; 186/5 g\n"
            "2. t = 3/100 [fixed by jurisdiction overlay: Example Standard 1:2020 NA, NA.2]\n"
            "3. pass mean = 2429/60 g\n"
-           "4. #2 * #3 = 2429/2000000\n"
+           "4. #2 * #3 = 2429/2000000 kg\n"
            "5. pass 1: 6 values, mean 2429/60 g\n"
            "6. rejected element 4 of 6 (226/5 g) in pass 1: abs(x - mean) = 283/60 g > 2429/2000 g (deviation from mean)\n"
            "7. t = 3/100 [fixed by jurisdiction overlay: Example Standard 1:2020 NA, NA.2]\n"
            "8. pass mean = 1977/50 g\n"
-           "9. #7 * #8 = 5931/5000000\n"
+           "9. #7 * #8 = 5931/5000000 kg\n"
            "10. pass 2: 5 values, mean 1977/50 g\n"
            "11. rejected element 6 of 6 (186/5 g) in pass 2: abs(x - mean) = 117/50 g > 5931/5000 g (deviation from mean)\n"
            "12. t = 3/100 [fixed by jurisdiction overlay: Example Standard 1:2020 NA, NA.2]\n"
            "13. pass mean = 321/8 g\n"
-           "14. #12 * #13 = 963/800000\n"
+           "14. #12 * #13 = 963/800000 kg\n"
            "15. pass 3: 4 values, mean 321/8 g\n"
            "16. settled: 2 rejected, 4 remain\n"
            "17. sample_mean(#16) = 321/8 g\n"
@@ -908,7 +908,7 @@ TEST_CASE("an aborted rejection keeps its survivors, and names both bounds when 
           == "1. m = 201/5 g; 199/5 g; 81/2 g; 226/5 g; 40 g; 186/5 g\n"
              "2. 3/50\n"
              "3. pass mean = 2429/60 g\n"
-             "4. #2 * #3 = 2429/1000000\n"
+             "4. #2 * #3 = 2429/1000000 kg\n"
              "5. pass 1: 6 values, mean 2429/60 g\n"
              "6. elements 4 and 6 of 6 would be rejections 1 and 2 of at most 1 and would leave 4 of at least 5: discard "
              "the determinations and repeat the test [Example Standard, 7.4]\n");

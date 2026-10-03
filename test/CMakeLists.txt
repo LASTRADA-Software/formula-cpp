@@ -50,6 +50,7 @@ add_executable(formula-cpp-tests
     function_tests.cpp
     trace_tests.cpp
     trace_render_tests.cpp
+    trace_shown_unit_tests.cpp
     rounding_node_tests.cpp
     rounded_root_tests.cpp
     transcendental_tests.cpp

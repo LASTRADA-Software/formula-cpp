@@ -950,7 +950,7 @@ TEST_CASE("a replacement by a consumer node that forwards the sink keeps the coh
                            forwarding::quotient(var<Force>, var<EdgeX> * var<EdgeX>), replacementAnnex)),
                        threeVariants);
     CHECK(traceOfVariant<Cylinder>(byConsumer, roundSpecimen)
-              .find(" = 4000000 [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
+              .find(" = 4000000 kg/(m s^2) [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
           != std::string::npos);
 
     // And over two Celsius readings, whose difference is a rise in kelvins
@@ -967,7 +967,7 @@ TEST_CASE("a replacement by a consumer node that forwards the sink keeps the coh
     auto const temperatures = formula::environment(formula::Measured<StartTemperature> { formula::Rational { 163, 10 } },
                                                    formula::Measured<EndTemperature> { formula::Rational { 277, 10 } });
     CHECK(traceOfVariant<Cube>(consumerRise, temperatures)
-              .find(" = 57/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
+              .find(" = 57/5 K [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
           != std::string::npos);
 }
 
@@ -988,7 +988,7 @@ TEST_CASE("a replacement by a consumer node with one operand of its dimension ke
         baseRise);
     auto const reading = formula::environment(formula::Measured<EndTemperature> { formula::Rational { 277, 10 } });
     CHECK(traceOfVariant<Cube>(replaced, reading)
-              .find(" = 57/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
+              .find(" = 57/5 K [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
           != std::string::npos);
 }
 
