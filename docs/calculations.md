@@ -545,9 +545,9 @@ In it, a calculated value it reads is one step, marked `calculated`:
 daily_load = fridge_kwh + oven_kwh + heater_kwh = 13.3 kWh
   1. fridge_kwh = 4.8 kWh, calculated
   2. oven_kwh = 2.5 kWh, calculated
-  3. #1 + #2 = 26280000 m^2 kg/s^2
+  3. #1 + #2 = 7.3 kWh
   4. heater_kwh = 6 kWh, calculated
-  5. #3 + #4 = 47880000 m^2 kg/s^2
+  5. #3 + #4 = 13.3 kWh
 ```
 
 The blocks of the calculated values it reads follow it, the last calculated

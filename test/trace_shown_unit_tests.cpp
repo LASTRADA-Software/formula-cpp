@@ -43,6 +43,38 @@ struct UnnamedTotal: formula::Quantity<UnnamedTotal, "m_ut", "total mass in an u
 {
 };
 
+struct HeavyMass: formula::Quantity<HeavyMass, "M", "heavy mass", unit::Kilogram>
+{
+};
+struct StartTemperature: formula::Quantity<StartTemperature, "T_0", "start temperature", unit::Celsius>
+{
+};
+struct EndTemperature: formula::Quantity<EndTemperature, "T_1", "end temperature", unit::Celsius>
+{
+};
+struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Megapascal>
+{
+};
+
+// Grams read to four decimals: grams still, whatever the precision.
+inline constexpr formula::Unit FineGram { .dimension = formula::dim::Mass,
+                                          .magnitudeNumerator = 1,
+                                          .magnitudeDenominator = 1000,
+                                          .symbolText = formula::symbol("g"),
+                                          .decimals = 4 };
+struct FineMass: formula::Quantity<FineMass, "m_f", "finely read mass", FineGram>
+{
+};
+
+template <typename Expression, typename Bound>
+formula::Trace<> recorded_trace(Expression const& formulaExpression, Bound const& inputs)
+{
+    formula::Trace<> recorded {};
+    formula::RecordingSink<> recordingSink { recorded };
+    (void) formula::checked_evaluate_si<Rational>(formulaExpression, inputs, recordingSink);
+    return recorded;
+}
+
 template <typename Expression, typename Bound>
 std::string trace_text(Expression const& formulaExpression, Bound const& inputs)
 {
@@ -116,4 +148,106 @@ TEST_CASE("a derivation states a value in a unit with no symbol in the coherent 
              "  3. #1 * #2 = 3/500 kg\n"
              "inputs\n"
              "  m_u = 3/1000 kg\n");
+}
+
+TEST_CASE("a value scaled by a pure number reads in its own unit", "[trace-render][shown-unit]")
+{
+    auto const inputs = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } });
+    // On the right, as the outlier-rejection limit 6 % of the mean is written.
+    CHECK(trace_text(Rational { 3, 50 } * var<SampleMass>, inputs)
+          == "1. 3/50\n"
+             "2. m = 413/10 g\n"
+             "3. #1 * #2 = 1239/500 g\n");
+    // On the left.
+    CHECK(trace_text(var<SampleMass> * Rational { 3, 50 }, inputs)
+          == "1. m = 413/10 g\n"
+             "2. 3/50\n"
+             "3. #1 * #2 = 1239/500 g\n");
+    // Divided by a pure number.
+    CHECK(trace_text(var<SampleMass> / Rational { 2 }, inputs)
+          == "1. m = 413/10 g\n"
+             "2. 2\n"
+             "3. #1 / #2 = 413/20 g\n");
+    // A pure number divided by a mass is no mass: the coherent unit, 1/kg.
+    CHECK(trace_text(Rational { 2 } / var<SampleMass>, inputs)
+          == "1. 2\n"
+             "2. m = 413/10 g\n"
+             "3. #1 / #2 = 20000/413 1/kg\n");
+}
+
+TEST_CASE("a sum of two values in one unit reads in it, at the finer precision", "[trace-render][shown-unit]")
+{
+    auto const inputs = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } },
+                                             formula::Measured<TareMass> { Rational { 7 } },
+                                             formula::Measured<FineMass> { Rational { 12345, 10000 } });
+    CHECK(trace_text(var<SampleMass> - var<TareMass>, inputs)
+          == "1. m = 413/10 g\n"
+             "2. m_t = 7 g\n"
+             "3. #1 - #2 = 343/10 g\n");
+    // Grams declared at different decimals are grams: the sum is shown in
+    // grams, and at the finer of the two precisions.
+    formula::Trace<> const mixedPrecision = recorded_trace(var<SampleMass> + var<FineMass>, inputs);
+    REQUIRE(mixedPrecision.steps.size() == 3);
+    CHECK(formula::view(mixedPrecision.steps[2].unit.symbolText) == "g");
+    CHECK(mixedPrecision.steps[2].unit.decimals == 4);
+}
+
+TEST_CASE("a sum of values in two units reads in the coherent unit", "[trace-render][shown-unit]")
+{
+    auto const inputs = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } },
+                                             formula::Measured<HeavyMass> { Rational { 1 } });
+    CHECK(trace_text(var<SampleMass> + var<HeavyMass>, inputs)
+          == "1. m = 413/10 g\n"
+             "2. M = 1 kg\n"
+             "3. #1 + #2 = 10413/10000 kg\n");
+}
+
+TEST_CASE("a difference of two Celsius readings is an interval in kelvin, not a reading", "[trace-render][shown-unit]")
+{
+    auto const inputs = formula::environment(formula::Measured<StartTemperature> { Rational { 20 } },
+                                             formula::Measured<EndTemperature> { Rational { 25 } });
+    CHECK(trace_text(var<EndTemperature> - var<StartTemperature>, inputs)
+          == "1. T_1 = 25 \xc2\xb0" "C\n"
+             "2. T_0 = 20 \xc2\xb0" "C\n"
+             "3. #1 - #2 = 5 K\n");
+}
+
+TEST_CASE("a negation and an absolute value keep their operand's unit, but not an offset one", "[trace-render][shown-unit]")
+{
+    auto const grams = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } });
+    CHECK(trace_text(-var<SampleMass>, grams)
+          == "1. m = 413/10 g\n"
+             "2. -#1 = -413/10 g\n");
+    CHECK(trace_text(formula::abs(-var<SampleMass>), grams)
+          == "1. m = 413/10 g\n"
+             "2. -#1 = -413/10 g\n"
+             "3. abs(#2) = 413/10 g\n");
+    // -(20 degC) is no reading at -20 degC: the coherent unit.
+    auto const celsius = formula::environment(formula::Measured<StartTemperature> { Rational { 20 } });
+    CHECK(trace_text(-var<StartTemperature>, celsius)
+          == "1. T_0 = 20 \xc2\xb0" "C\n"
+             "2. -#1 = -5863/20 K\n");
+}
+
+TEST_CASE("a conditional reads in its chosen branch's unit, offset or not", "[trace-render][shown-unit]")
+{
+    auto const strengths = formula::environment(formula::Measured<Strength> { Rational { 60 } });
+    CHECK(trace_text(formula::when(var<Strength> > formula::constant<unit::Megapascal>(Rational { 473, 10 }),
+                                   var<Strength>,
+                                   formula::constant<unit::Megapascal>(Rational { 0 })),
+                     strengths)
+          == "1. f = 60 MPa\n"
+             "2. 473/10 MPa\n"
+             "3. f = 60 MPa\n"
+             "4. if #1 > #2 then #3 = 60 MPa\n");
+    // A branch's value is a point on its scale, so a Celsius branch reads in
+    // degrees Celsius.
+    auto const readings = formula::environment(formula::Measured<StartTemperature> { Rational { 20 } },
+                                               formula::Measured<EndTemperature> { Rational { 25 } });
+    CHECK(trace_text(formula::when(var<EndTemperature> > var<StartTemperature>, var<EndTemperature>, var<StartTemperature>),
+                     readings)
+          == "1. T_1 = 25 \xc2\xb0" "C\n"
+             "2. T_0 = 20 \xc2\xb0" "C\n"
+             "3. T_1 = 25 \xc2\xb0" "C\n"
+             "4. if #1 > #2 then #3 = 25 \xc2\xb0" "C\n");
 }

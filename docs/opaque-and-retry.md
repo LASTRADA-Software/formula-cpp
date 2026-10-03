@@ -152,7 +152,7 @@ constexpr auto highestLessLowest = formula::opaque_output<"highest">(spanCall) -
 4. r = 127 g; 103 g; 191 g; 139 g
 5. series span(#4) = lowest = 103 g; highest = 191 g; span = 88 g [inside not shown] [Spread of readings, Example Standard 12, 4.2]
 6. lowest of #5 = 103 g
-7. #3 - #6 = 11/125 kg
+7. #3 - #6 = 88 g
 ```
 
 ```text
@@ -542,11 +542,11 @@ ended:
 32. 152/25 g
 33. w(k-1) = 266/25 g
 34. 2
-35. #33 / #34 = 133/25000 kg
-36. #32 + #35 = 57/5000 kg
+35. #33 / #34 = 133/25 g
+36. #32 + #35 = 57/5 g
 37. w(k-1) = 266/25 g
 38. w(k) = 57/5 g
-39. #37 - #38 = -19/25000 kg
+39. #37 - #38 = -19/25 g
 40. -19/25 g
 41. attempt 4: w(k) = #36 = 57/5 g; judged #39 >= #40: accepted
 42. w = retry: accepted at attempt 4 of 4 = 57/5 g [Settled estimate, Example Standard 12, 6]

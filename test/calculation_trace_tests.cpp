@@ -832,7 +832,7 @@ TEST_CASE("an override between calculated blocks is one line of the budget", "[c
     std::string const everything = "energy_cost = grid_cost - feed_in_credit = 388/5 EUR\n"
                                    "  1. grid_cost = 80 EUR, calculated\n"
                                    "  2. feed_in_credit = 12/5 EUR, calculated\n"
-                                   "  3. #1 - #2 = 388/5\n"
+                                   "  3. #1 - #2 = 388/5 EUR\n"
                                    "feed_in_credit = exported * feed_in = 12/5 EUR\n"
                                    "  1. exported = 30 kWh, calculated\n"
                                    "  2. feed_in = 2/25 EUR/kWh\n"
@@ -845,11 +845,11 @@ TEST_CASE("an override between calculated blocks is one line of the budget", "[c
                                    "exported = solar - self_used = 30 kWh\n"
                                    "  1. solar = 150 kWh\n"
                                    "  2. self_used = 120 kWh, calculated\n"
-                                   "  3. #1 - #2 = 108000000 m^2 kg/s^2\n"
+                                   "  3. #1 - #2 = 30 kWh\n"
                                    "self_used = solar * 4/5 = 120 kWh\n"
                                    "  1. solar = 150 kWh\n"
                                    "  2. 4/5\n"
-                                   "  3. #1 * #2 = 432000000 m^2 kg/s^2\n"
+                                   "  3. #1 * #2 = 120 kWh\n"
                                    "inputs\n"
                                    "  solar = 150 kWh\n"
                                    "  price = 8/25 EUR/kWh\n"
@@ -880,7 +880,7 @@ TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][wo
     CHECK(formula::render_derivation(explained, { .maxSteps = 4 }) == "C_bill = S + vat = 190043/2000 EUR\n"
                                                                       "  1. S = 1597/20 EUR, calculated\n"
                                                                       "  2. vat = 30343/2000 EUR, calculated\n"
-                                                                      "  3. #1 + #2 = 190043/2000\n"
+                                                                      "  3. #1 + #2 = 190043/2000 EUR\n"
                                                                       "... 66 further steps not shown\n");
 
     // In full: the inputs close it, the typed-in price saying so.
@@ -1060,7 +1060,7 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
           == "energy_cost = grid_cost - feed_in_credit = 77.60 EUR\n"
              "  1. grid_cost = 80.00 EUR, calculated\n"
              "  2. feed_in_credit = 2.40 EUR, calculated\n"
-             "  3. #1 - #2 = 77.6\n"
+             "  3. #1 - #2 = 77.60 EUR\n"
              "feed_in_credit = exported * feed_in = 2.40 EUR\n"
              "  1. exported = 30.000 kWh, calculated\n"
              "  2. feed_in = 0.0800 EUR/kWh\n"
@@ -1073,11 +1073,11 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
              "exported = solar - self_used = 30.000 kWh\n"
              "  1. solar = 150.000 kWh\n"
              "  2. self_used = 120.000 kWh, calculated\n"
-             "  3. #1 - #2 = 108000000 m^2 kg/s^2\n"
+             "  3. #1 - #2 = 30.000 kWh\n"
              "self_used = solar * 0.8 = 120.000 kWh\n"
              "  1. solar = 150.000 kWh\n"
              "  2. 0.8\n"
-             "  3. #1 * #2 = 432000000 m^2 kg/s^2\n"
+             "  3. #1 * #2 = 120.000 kWh\n"
              "inputs\n"
              "  solar = 150.000 kWh\n"
              "  price = 0.3200 EUR/kWh\n"
@@ -1220,8 +1220,14 @@ TEST_CASE("a derivation's header says a value is not shown where its style canno
         std::string const styled = formula::render_derivation(explained, { .maxSteps = 20, .numbers = style });
         CHECK(styled.find("\nl_u = b * 2 = (not shown: overflow in exact arithmetic)\n") != std::string::npos);
         CHECK(styled.find("\n  1. l_u = (not shown: overflow in exact arithmetic), calculated\n") != std::string::npos);
-        CHECK(styled.find("\n  3. #1 * #2 = 0.006 m\n") != std::string::npos);
     }
+    std::string const padded = formula::render_derivation(
+        explained, { .maxSteps = 20, .numbers = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded) });
+    CHECK(padded.find("\n  3. #1 * #2 = 6.0 mm\n") != std::string::npos);
+    std::string const approximated = formula::render_derivation(
+        explained,
+        { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) });
+    CHECK(approximated.find("\n  3. #1 * #2 = 6 mm\n") != std::string::npos);
 }
 
 TEST_CASE("a derivation's computed price per energy shows its first significant digit, not a zero",

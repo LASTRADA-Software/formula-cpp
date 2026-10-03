@@ -101,10 +101,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- fractions, the default --
 1. m_w = 787/5 g
 2. m_d = 144 g
-3. #1 - #2 = 67/5000 kg
+3. #1 - #2 = 67/5 g
 4. m_d = 144 g
 5. 51/2 g
-6. #4 - #5 = 237/2000 kg
+6. #4 - #5 = 237/2 g
 7. #3 / #6 = 134/1185
 ```
 
@@ -112,10 +112,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- exact decimals --
 1. m_w = 157.4 g
 2. m_d = 144 g
-3. #1 - #2 = 0.0134 kg
+3. #1 - #2 = 13.4 g
 4. m_d = 144 g
 5. 25.5 g
-6. #4 - #5 = 0.1185 kg
+6. #4 - #5 = 118.5 g
 7. #3 / #6 = 134/1185
 ```
 
@@ -123,10 +123,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- rounded where no decimal ends --
 1. m_w = 157.4 g
 2. m_d = 144 g
-3. #1 - #2 = 0.0134 kg
+3. #1 - #2 = 13.4 g
 4. m_d = 144 g
 5. 25.5 g
-6. #4 - #5 = 0.1185 kg
+6. #4 - #5 = 118.5 g
 7. #3 / #6 = ≈0.113
 ```
 
@@ -134,10 +134,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- rounded and padded --
 1. m_w = 157.4 g
 2. m_d = 144.0 g
-3. #1 - #2 = 0.0134 kg
+3. #1 - #2 = 13.4 g
 4. m_d = 144.0 g
 5. 25.5 g
-6. #4 - #5 = 0.1185 kg
+6. #4 - #5 = 118.5 g
 7. #3 / #6 = ≈0.113
 ```
 
@@ -196,7 +196,7 @@ Its trace, rendered in the rounded and padded style:
 1. t = 4.21 g; 4.23 g; 4.26 g
 2. sum(#1) = 12.7 g
 3. 1/3
-4. #2 * #3 = ≈0.004 kg
+4. #2 * #3 = ≈4.2 g
 ```
 
 A series' sum keeps its quantity's unit: line 2 is in grams. The product on
@@ -365,7 +365,7 @@ formula, padded style: m_d - 24 g
 trace, padded style:
 1. m_d = 144.0 g
 2. 24.0 g
-3. #1 - #2 = 0.12 kg
+3. #1 - #2 = 120.0 g
 ```
 
 The formula states the 24 its author typed; the trace pads it to the gram's one

@@ -316,9 +316,9 @@ if rho_m < 1737 kg/m3 then rho_m * 1127/1000 else rho_m
 2. 1737 kg/m3
 3. rho_m = 1523 kg/m3
 4. 1127/1000
-5. #3 * #4 = 1716421/1000 kg/m^3
-6. if #1 < #2 then #5 = 1716421/1000 kg/m^3
-7. #6 = 1716421/1000 kg/m^3 [Compaction-adjusted bulk density, Example Standard 5:2020, 4.5]
+5. #3 * #4 = 1716421/1000 kg/m3
+6. if #1 < #2 then #5 = 1716421/1000 kg/m3
+7. #6 = 1716421/1000 kg/m3 [Compaction-adjusted bulk density, Example Standard 5:2020, 4.5]
 ```
 
 ## Worked derivation: maximum specimen diameter, alongside the circular area it validates
@@ -351,13 +351,13 @@ pi * d^2 / 4
 1. f = 33 MPa
 2. d = 127 mm
 3. lookup(#2) = 113/100 MPa [103 to under 163 mm]
-4. #1 - #3 = 31870000 kg/(m s^2)
+4. #1 - #3 = 3187/100 MPa
 5. lookup(key Cylinder) = 863/1000
-6. #4 * #5 = 27503810 kg/(m s^2)
+6. #4 * #5 = 2750381/100000 MPa
 7. t = 57 h
 8. interpolate(#7) = 147/200 [between 31 and 83 h]
-9. #6 * #8 = 404306007/20 kg/(m s^2)
-10. #9 = 404306007/20 kg/(m s^2) [Size- and age-corrected crushing strength, Example Standard 7:2020, 8.5, (8)]
+9. #6 * #8 = 404306007/20000000 MPa
+10. #9 = 404306007/20000000 MPa [Size- and age-corrected crushing strength, Example Standard 7:2020, 8.5, (8)]
 ```
 
 ## Worked derivation: a lookup that found nothing
@@ -385,7 +385,7 @@ k_s * F / a^2
 ```
 1. k_s = 1043/1000
 2. F = 226000 N
-3. #1 * #2 = 235718 m kg/s^2
+3. #1 * #2 = 235718 N
 4. a = 150 mm
 5. #4^2 = 9/400 m^2
 6. #3 / #5 = 94287200/9 kg/(m s^2)
@@ -402,7 +402,7 @@ k_s * F / a^2
 ```
 1. k_s = 887/1000 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
 2. F = 226000 N
-3. #1 * #2 = 200462 m kg/s^2
+3. #1 * #2 = 200462 N
 4. a = 150 mm
 5. #4^2 = 9/400 m^2
 6. #3 / #5 = 80184800/9 kg/(m s^2)
@@ -532,17 +532,17 @@ sample_mean(without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most e
 1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
 2. 3/50
 3. pass mean = 413/10 g
-4. #2 * #3 = 1239/500000 kg
+4. #2 * #3 = 1239/500 g
 5. pass 1: 6 values, mean 413/10 g
 6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)
 7. 3/50
 8. pass mean = 1019/25 g
-9. #7 * #8 = 3057/1250000 kg
+9. #7 * #8 = 3057/1250 g
 10. pass 2: 5 values, mean 1019/25 g
 11. rejected element 6 of 6 (433/10 g) in pass 2: abs(x - mean) = 127/50 g > 3057/1250 g (deviation from mean)
 12. 3/50
 13. pass mean = 321/8 g
-14. #12 * #13 = 963/400000 kg
+14. #12 * #13 = 963/400 g
 15. pass 3: 4 values, mean 321/8 g
 16. settled: 2 rejected, 4 remain
 17. sample_mean(#16) = 321/8 g
@@ -559,12 +559,12 @@ sample_mean(without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most e
 1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
 2. 3/50
 3. pass mean = 413/10 g
-4. #2 * #3 = 1239/500000 kg
+4. #2 * #3 = 1239/500 g
 5. pass 1: 6 values, mean 413/10 g
 6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)
 7. 3/50
 8. pass mean = 1019/25 g
-9. #7 * #8 = 3057/1250000 kg
+9. #7 * #8 = 3057/1250 g
 10. pass 2: 5 values, mean 1019/25 g
 11. element 6 of 6 would be rejection 2 of at most 1: discard the determinations and repeat the test [Outliers, Example Standard 5:2022, 7.4]
 12. sample_mean(#11) = argument outside the domain of the operation
@@ -581,20 +581,20 @@ require abs(x_A - x_B) <= r(1/10 g + 1/50 * level; level = (x_A + x_B) / 2)
 ```
 1. x_A = 40 g
 2. x_B = 8181/200 g
-3. #1 - #2 = -181/200000 kg
-4. abs(#3) = 181/200000 kg
+3. #1 - #2 = -181/200 g
+4. abs(#3) = 181/200 g
 5. x_A = 40 g
 6. x_B = 8181/200 g
-7. #5 + #6 = 16181/200000 kg
+7. #5 + #6 = 16181/200 g
 8. 2
-9. #7 / #8 = 16181/400000 kg
+9. #7 / #8 = 16181/400 g
 10. level (pass 1 of 2) = #9 = 16181/400 g
 11. 1/10 g
 12. 1/50
 13. level = 16181/400 g [bound by #16]
-14. #12 * #13 = 16181/20000000 kg
-15. #11 + #14 = 18181/20000000 kg
-16. r at level #10 (pass 2 of 2) = #15 = 18181/20000000 kg
+14. #12 * #13 = 16181/20000 g
+15. #11 + #14 = 18181/20000 g
+16. r at level #10 (pass 2 of 2) = #15 = 18181/20000 g
 17. require #4 <= #16 [satisfied]
 ```
 
@@ -659,41 +659,41 @@ up to 4 attempts: w(k) = 152/25 g + w(k-1) / 2, starting from w(0) = 0 g; accept
 2. 152/25 g
 3. w(k-1) = 0 g
 4. 2
-5. #3 / #4 = 0 kg
-6. #2 + #5 = 19/3125 kg
+5. #3 / #4 = 0 g
+6. #2 + #5 = 152/25 g
 7. w(k-1) = 0 g
 8. w(k) = 152/25 g
-9. #7 - #8 = -19/3125 kg
+9. #7 - #8 = -152/25 g
 10. -19/25 g
 11. attempt 1: w(k) = #6 = 152/25 g; judged #9 >= #10: rejected
 12. 152/25 g
 13. w(k-1) = 152/25 g
 14. 2
-15. #13 / #14 = 19/6250 kg
-16. #12 + #15 = 57/6250 kg
+15. #13 / #14 = 76/25 g
+16. #12 + #15 = 228/25 g
 17. w(k-1) = 152/25 g
 18. w(k) = 228/25 g
-19. #17 - #18 = -19/6250 kg
+19. #17 - #18 = -76/25 g
 20. -19/25 g
 21. attempt 2: w(k) = #16 = 228/25 g; judged #19 >= #20: rejected
 22. 152/25 g
 23. w(k-1) = 228/25 g
 24. 2
-25. #23 / #24 = 57/12500 kg
-26. #22 + #25 = 133/12500 kg
+25. #23 / #24 = 114/25 g
+26. #22 + #25 = 266/25 g
 27. w(k-1) = 228/25 g
 28. w(k) = 266/25 g
-29. #27 - #28 = -19/12500 kg
+29. #27 - #28 = -38/25 g
 30. -19/25 g
 31. attempt 3: w(k) = #26 = 266/25 g; judged #29 >= #30: rejected
 32. 152/25 g
 33. w(k-1) = 266/25 g
 34. 2
-35. #33 / #34 = 133/25000 kg
-36. #32 + #35 = 57/5000 kg
+35. #33 / #34 = 133/25 g
+36. #32 + #35 = 57/5 g
 37. w(k-1) = 266/25 g
 38. w(k) = 57/5 g
-39. #37 - #38 = -19/25000 kg
+39. #37 - #38 = -19/25 g
 40. -19/25 g
 41. attempt 4: w(k) = #36 = 57/5 g; judged #39 >= #40: accepted
 42. w = retry: accepted at attempt 4 of 4 = 57/5 g [Settled estimate, Example Standard 12, 6]

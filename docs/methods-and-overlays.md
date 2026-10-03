@@ -95,7 +95,7 @@ the rounded variant beneath it. The rounding step says whose rule it was:
 ```text
 1. k_s = 1043/1000
 2. F = 89300 N
-3. #1 * #2 = 931399/10 m kg/s^2
+3. #1 * #2 = 931399/10 N
 4. a = 163 mm
 5. b = 103 mm
 6. #4 * #5 = 16789/1000000 m^2
@@ -270,7 +270,7 @@ north cube: 4590000 Pa
 
 1. k_s = 863/1000 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.1]
 2. F = 89300 N
-3. #1 * #2 = 770659/10 m kg/s^2
+3. #1 * #2 = 770659/10 N
 4. a = 163 mm
 5. b = 103 mm
 6. #4 * #5 = 16789/1000000 m^2
@@ -318,7 +318,7 @@ south cube: 3400000 Pa
 3. #1 / #2 = 103/163
 4. k_s = #3 = 103/163 [derived by jurisdiction overlay: Example Standard 7:2019 A, A.3]
 5. F = 89300 N
-6. #4 * #5 = 9197900/163 m kg/s^2
+6. #4 * #5 = 9197900/163 N
 7. a = 163 mm
 8. b = 103 mm
 9. #7 * #8 = 16789/1000000 m^2
@@ -583,7 +583,7 @@ them:
 4. a = 163 mm
 5. 173/100
 6. b = 103 mm
-7. #5 * #6 = 17819/100000 m
+7. #5 * #6 = 17819/100 mm
 8. require #4 <= #7 [satisfied; jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
 9. acceptance(#3, #8) [jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
 ```

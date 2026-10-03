@@ -272,12 +272,12 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
     CHECK(traceOf(overlaid, everyNamedQuantity)
           == "1. k_s = 863/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. E = 30 MPa\n"
-             "3. #1 * #2 = 25890000 kg/(m s^2)\n"
+             "3. #1 * #2 = 2589/100 MPa\n"
              "4. D = 241 mm\n"
              "5. lookup(#4) = 1973/1000 [163 to under 331 mm]\n"
-             "6. #3 * #5 = 51080970 kg/(m s^2)\n"
+             "6. #3 * #5 = 5108097/100000 MPa\n"
              "7. R = 12 MPa\n"
-             "8. #6 - #7 = 39080970 kg/(m s^2)\n"
+             "8. #6 - #7 = 3908097/100000 MPa\n"
              "9. round(#8, in MPa) = 391/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "10. #9 = 391/10 MPa [variant Cube (1st of 1), selected by tag]\n");
 
@@ -287,12 +287,12 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
     CHECK(traceOf(overlaid)
           == "1. k = 863/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. f_c = 30 MPa\n"
-             "3. #1 * #2 = 25890000 kg/(m s^2)\n"
+             "3. #1 * #2 = 2589/100 MPa\n"
              "4. d = 241 mm\n"
              "5. lookup(#4) = 1973/1000 [163 to under 331 mm]\n"
-             "6. #3 * #5 = 51080970 kg/(m s^2)\n"
+             "6. #3 * #5 = 5108097/100000 MPa\n"
              "7. E_m = 12 MPa\n"
-             "8. #6 - #7 = 39080970 kg/(m s^2)\n"
+             "8. #6 - #7 = 3908097/100000 MPa\n"
              "9. round(#8, in MPa) = 391/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "10. #9 = 391/10 MPa [variant Cube (1st of 1), selected by tag]\n");
 }
@@ -1167,14 +1167,14 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "29. 3\n"
              "30. #28 / #29 = 1487/3000\n"
              "31. pass mean = 10409/300 g\n"
-             "32. #30 * #31 = 15478183/900000000 kg\n"
+             "32. #30 * #31 = 15478183/900000 g\n"
              "33. pass 1: 3 values, mean 10409/300 g\n"
              "34. rejected element 3 of 3 (1487/25 g) in pass 1: abs(x - mean) = 1487/60 g > 15478183/900000 g (deviation from mean)\n"
              "35. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "36. 3\n"
              "37. #35 / #36 = 1487/3000\n"
              "38. pass mean = 4461/200 g\n"
-             "39. #37 * #38 = 2211169/200000000 kg\n"
+             "39. #37 * #38 = 2211169/200000 g\n"
              "40. pass 2: 2 values, mean 4461/200 g\n"
              "41. settled: 1 rejected, 2 remain\n"
              "42. sample_count(#41) = 2\n"

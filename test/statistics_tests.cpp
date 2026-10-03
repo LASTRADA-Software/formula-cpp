@@ -617,10 +617,10 @@ TEST_CASE("a range checked against a critical value times a precision limit at t
              "9. 1/10 g\n"
              "10. 1/50\n"
              "11. level = 3237/80 g [bound by #14]\n"
-             "12. #10 * #11 = 3237/4000000 kg\n"
-             "13. #9 + #12 = 3637/4000000 kg\n"
-             "14. r at level #8 (pass 2 of 2) = #13 = 3637/4000000 kg\n"
-             "15. #5 * #14 = 40007/200000000 kg\n"
+             "12. #10 * #11 = 3237/4000 g\n"
+             "13. #9 + #12 = 3637/4000 g\n"
+             "14. r at level #8 (pass 2 of 2) = #13 = 3637/4000 g\n"
+             "15. #5 * #14 = 40007/200000 g\n"
              "16. require #2 <= #15 [satisfied]\n");
 }
 

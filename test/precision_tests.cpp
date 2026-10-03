@@ -305,20 +305,20 @@ TEST_CASE("the two passes of a precision limit are two steps, and the limit name
     CHECK(formula::render_trace(trace, { .maxSteps = 40 })
           == "1. x_A = 40 g\n"
              "2. x_B = 8181/200 g\n"
-             "3. #1 - #2 = -181/200000 kg\n"
-             "4. abs(#3) = 181/200000 kg\n"
+             "3. #1 - #2 = -181/200 g\n"
+             "4. abs(#3) = 181/200 g\n"
              "5. x_A = 40 g\n"
              "6. x_B = 8181/200 g\n"
-             "7. #5 + #6 = 16181/200000 kg\n"
+             "7. #5 + #6 = 16181/200 g\n"
              "8. 2\n"
-             "9. #7 / #8 = 16181/400000 kg\n"
+             "9. #7 / #8 = 16181/400 g\n"
              "10. level (pass 1 of 2) = #9 = 16181/400 g\n"
              "11. 1/10 g\n"
              "12. 1/50\n"
              "13. level = 16181/400 g [bound by #16]\n"
-             "14. #12 * #13 = 16181/20000000 kg\n"
-             "15. #11 + #14 = 18181/20000000 kg\n"
-             "16. r at level #10 (pass 2 of 2) = #15 = 18181/20000000 kg\n"
+             "14. #12 * #13 = 16181/20000 g\n"
+             "15. #11 + #14 = 18181/20000 g\n"
+             "16. r at level #10 (pass 2 of 2) = #15 = 18181/20000 g\n"
              "17. require #4 <= #16 [satisfied]\n");
 
     // The records behind those lines, one per precision step, keyed by step.
@@ -348,10 +348,10 @@ TEST_CASE("a nested precision limit's trace says which level each limit was eval
              "3. x_B = 8181/200 g\n"
              "4. level (pass 1 of 2) = #3 = 8181/200 g\n"
              "5. level = 8181/200 g [bound by #6]\n"
-             "6. r at level #4 (pass 2 of 2) = #5 = 8181/200000 kg\n"
+             "6. r at level #4 (pass 2 of 2) = #5 = 8181/200 g\n"
              "7. level = 40 g [bound by #9]\n"
-             "8. #6 + #7 = 16181/200000 kg\n"
-             "9. R at level #2 (pass 2 of 2) = #8 = 16181/200000 kg\n");
+             "8. #6 + #7 = 16181/200 g\n"
+             "9. R at level #2 (pass 2 of 2) = #8 = 16181/200 g\n");
 }
 
 TEST_CASE("a limit that reads its level only through a nested limit shows it in the level's own unit",
@@ -370,8 +370,8 @@ TEST_CASE("a limit that reads its level only through a nested limit shows it in 
              "3. x_B = 8181/200 g\n"
              "4. level (pass 1 of 2) = #3 = 8181/200 g\n"
              "5. level = 8181/200 g [bound by #6]\n"
-             "6. r at level #4 (pass 2 of 2) = #5 = 8181/200000 kg\n"
-             "7. R at level #2 (pass 2 of 2) = #6 = 8181/200000 kg\n");
+             "6. r at level #4 (pass 2 of 2) = #5 = 8181/200 g\n"
+             "7. R at level #2 (pass 2 of 2) = #6 = 8181/200 g\n");
 }
 
 TEST_CASE("the author's rounding of the level is its own step, between the two passes", "[precision][trace-render]")
@@ -388,17 +388,17 @@ TEST_CASE("the author's rounding of the level is its own step, between the two p
     CHECK(formula::render_trace(trace, { .maxSteps = 40 })
           == "1. x_A = 40 g\n"
              "2. x_B = 8181/200 g\n"
-             "3. #1 + #2 = 16181/200000 kg\n"
+             "3. #1 + #2 = 16181/200 g\n"
              "4. 2\n"
-             "5. #3 / #4 = 16181/400000 kg\n"
+             "5. #3 / #4 = 16181/400 g\n"
              "6. round(#5, to 0 dp of g) = 40 g [nearest, ties away from zero]\n"
              "7. level (pass 1 of 2) = #6 = 40 g\n"
              "8. 1/10 g\n"
              "9. 1/50\n"
              "10. level = 40 g [bound by #13]\n"
-             "11. #9 * #10 = 1/1250 kg\n"
-             "12. #8 + #11 = 9/10000 kg\n"
-             "13. r at level #7 (pass 2 of 2) = #12 = 9/10000 kg\n");
+             "11. #9 * #10 = 4/5 g\n"
+             "12. #8 + #11 = 9/10 g\n"
+             "13. r at level #7 (pass 2 of 2) = #12 = 9/10 g\n");
 }
 
 TEST_CASE("a level pass 1 cannot produce ends the limit there, and its trace says so", "[precision][trace-render]")
@@ -584,10 +584,10 @@ TEST_CASE("inside a precision limit, a read says where the environment says its 
              "2. level (pass 1 of 2) = #1 = 40 g\n"
              "3. 1/50\n"
              "4. level = 40 g [bound by #8]\n"
-             "5. #3 * #4 = 1/1250 kg\n"
+             "5. #3 * #4 = 4/5 g\n"
              "6. x_B = 8181/200 g, calculated\n"
-             "7. #5 + #6 = 8341/200000 kg\n"
-             "8. r at level #2 (pass 2 of 2) = #7 = 8341/200000 kg\n");
+             "7. #5 + #6 = 8341/200 g\n"
+             "8. r at level #2 (pass 2 of 2) = #7 = 8341/200 g\n");
 
     formula::Trace<> failed {};
     (void) formula::checked_evaluate<Tolerance>(
@@ -597,7 +597,7 @@ TEST_CASE("inside a precision limit, a read says where the environment says its 
              "2. level (pass 1 of 2) = #1 = 40 g\n"
              "3. 1/50\n"
              "4. level = 40 g [bound by #8]\n"
-             "5. #3 * #4 = 1/1250 kg\n"
+             "5. #3 * #4 = 4/5 g\n"
              "6. x_B = argument outside the domain of the operation, calculated\n"
              "7. #5 + #6 = argument outside the domain of the operation\n"
              "8. r at level #2 (pass 2 of 2) = #7 = argument outside the domain of the operation\n");

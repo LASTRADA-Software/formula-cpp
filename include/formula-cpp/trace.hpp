@@ -2155,6 +2155,20 @@ namespace detail
         return operandUnit.dimension == dimension && borrowable(operandUnit) ? operandUnit : fallback;
     }
 
+    /// Whether @p leftUnit and @p rightUnit show values on one scale under one
+    /// name: the same dimension, factor, offset and symbol. Their declared
+    /// decimals and bounds may differ -- two gram readings are grams whatever
+    /// precision each was declared at -- which is why this is not
+    /// `Unit::operator==`.
+    [[nodiscard]] constexpr bool same_scale_and_symbol(Unit const& leftUnit, Unit const& rightUnit) noexcept
+    {
+        return leftUnit.dimension == rightUnit.dimension && leftUnit.magnitudeNumerator == rightUnit.magnitudeNumerator
+               && leftUnit.magnitudeDenominator == rightUnit.magnitudeDenominator
+               && leftUnit.offsetNumerator == rightUnit.offsetNumerator
+               && leftUnit.offsetDenominator == rightUnit.offsetDenominator
+               && view(leftUnit.symbolText) == view(rightUnit.symbolText);
+    }
+
     /// Whether `RecordingSink` records a step of its own for @p N, a single
     /// value's node or a series': `RecordsStep`, extended to the series kinds
     /// `SeriesStepKindOf` describes.
@@ -2222,12 +2236,13 @@ namespace detail
         }
     }
 
-    /// Which operand of @p S, an elementwise binary node, its values are that
-    /// operand's scaled by a pure number -- 0 for the left, 1 for the right --
-    /// so that they read in its unit: the non-dimensionless side of a product
-    /// with exactly one dimensionless side, and the left of a quotient by a
-    /// dimensionless right. Empty for every other kind, and for a product of
-    /// two pure numbers, which says nothing about which one's unit it is in.
+    /// Which operand of @p S, a binary node -- a single value's or an
+    /// elementwise one -- its values are that operand's scaled by a pure
+    /// number -- 0 for the left, 1 for the right -- so that they read in its
+    /// unit: the non-dimensionless side of a product with exactly one
+    /// dimensionless side, and the left of a quotient by a dimensionless
+    /// right. Empty for every other kind, and for a product of two pure
+    /// numbers, which says nothing about which one's unit it is in.
     template <typename S>
     inline constexpr std::optional<std::size_t> scaled_operand = std::nullopt;
 
@@ -2239,6 +2254,97 @@ namespace detail
                 && !(Left::dimension == dim::Scalar)
             ? std::optional<std::size_t> { 0 }
             : std::nullopt;
+
+    template <BinaryOperator Op, Node Left, Node Right>
+    inline constexpr std::optional<std::size_t> scaled_operand<BinaryNode<Op, Left, Right>> =
+        Op == BinaryOperator::Multiply && Left::dimension == dim::Scalar && !(Right::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 1 }
+        : (Op == BinaryOperator::Multiply || Op == BinaryOperator::Divide) && Right::dimension == dim::Scalar
+                && !(Left::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 0 }
+            : std::nullopt;
+
+    /// The unit a single value's binary step is shown in. For a product with
+    /// exactly one pure number, or a quotient by one, it is the other
+    /// operand's unit: 3/50 of a mean in grams is grams. For a sum or a
+    /// difference of two values shown on one scale under one name, it is
+    /// that unit, at the finer of their two declared precisions. Either way
+    /// only when each side recorded the one step claimed for it, and the
+    /// unit is `borrowable` and of the step's own dimension -- read off the
+    /// operand steps, never off a type, so that what they show is what
+    /// carries over. @p fallback otherwise: the coherent unit, which the
+    /// renderer names.
+    template <typename N, typename Rep>
+    [[nodiscard]] constexpr Unit binary_unit_or(std::vector<Step<Rep>> const& steps,
+                                                std::vector<std::size_t> const& operands,
+                                                Unit fallback) noexcept
+    {
+        if constexpr (!RecordsOwnStep<typename BinarySides<N>::left> || !RecordsOwnStep<typename BinarySides<N>::right>)
+            return fallback;
+        else
+        {
+            if (operands.size() != 2)
+                return fallback;
+            Unit const& leftUnit = steps[operands[0]].unit;
+            Unit const& rightUnit = steps[operands[1]].unit;
+            if constexpr (scaled_operand<N>.has_value())
+            {
+                Unit const& scaledUnit = *scaled_operand<N> == 0 ? leftUnit : rightUnit;
+                return scaledUnit.dimension == N::dimension && borrowable(scaledUnit) ? scaledUnit : fallback;
+            }
+            else if constexpr (StepKindOf<N>::value == StepKind::Add || StepKindOf<N>::value == StepKind::Subtract)
+            {
+                if (!(leftUnit.dimension == N::dimension) || !borrowable(leftUnit)
+                    || !same_scale_and_symbol(leftUnit, rightUnit))
+                    return fallback;
+                Unit shared = leftUnit;
+                shared.decimals = leftUnit.decimals < rightUnit.decimals ? rightUnit.decimals : leftUnit.decimals;
+                return shared;
+            }
+            else
+                return fallback;
+        }
+    }
+
+    /// The one operand type of a negation or an absolute value. Undefined
+    /// for every other kind.
+    template <typename N>
+    struct UnarySide;
+
+    template <UnaryOperator Op, Node Operand>
+    struct UnarySide<UnaryNode<Op, Operand>>
+    {
+        using inner = Operand;
+    };
+
+    template <Node Operand>
+    struct UnarySide<AbsoluteValueNode<Operand>>
+    {
+        using inner = Operand;
+    };
+
+    /// The unit of a step whose value restates its last claimed step's -- a
+    /// conditional's chosen branch, a precision limit's second pass: that
+    /// step's unit, when it has a symbol, is of @p dimension, and holds
+    /// exactly @p restatedValue. The value is a point on that step's scale,
+    /// so an offset unit may be shown (`borrowable_for_a_point`). Comparing
+    /// the values means the unit can never be claimed for a number it is not.
+    /// @p fallback otherwise.
+    template <typename Rep>
+    [[nodiscard]] constexpr Unit restated_unit_or(std::vector<Step<Rep>> const& steps,
+                                                  std::vector<std::size_t> const& operands,
+                                                  Dimension dimension,
+                                                  std::optional<Rep> const& restatedValue,
+                                                  Unit fallback) noexcept
+    {
+        if (operands.empty() || !restatedValue.has_value())
+            return fallback;
+        Step<Rep> const& lastClaimed = steps[operands.back()];
+        if (!(lastClaimed.dimension == dimension) || !lastClaimed.value.has_value()
+            || !(*lastClaimed.value == *restatedValue) || !borrowable_for_a_point(lastClaimed.unit))
+            return fallback;
+        return lastClaimed.unit;
+    }
 
     template <typename Role, typename Requirement, Node Operand>
     struct StepKindOf<RecordScopeNode<Role, Requirement, Operand>>
@@ -3262,11 +3368,31 @@ class RecordingSink
                     sampleUnit.dimension == nodeStep.dimension && detail::borrowable_for_a_point(sampleUnit))
                     nodeStep.unit = sampleUnit;
 
-        // Which side a binary step's operand stood on, when it has one.
+        // Which side a binary step's operand stood on, when it has one, and
+        // the unit it is shown in: its scaled operand's or its operands'
+        // shared one, when `binary_unit_or` finds one.
         if constexpr (detail::StepKindOf<N>::value == StepKind::Add || detail::StepKindOf<N>::value == StepKind::Subtract
                       || detail::StepKindOf<N>::value == StepKind::Multiply
                       || detail::StepKindOf<N>::value == StepKind::Divide)
+        {
             detail::record_operand_sides<N>(nodeStep, _trace->steps);
+            nodeStep.unit = detail::binary_unit_or<N>(_trace->steps, nodeStep.operands, nodeStep.unit);
+        }
+
+        // A negation and an absolute value are on their operand's scale:
+        // -(3 g) is -3 g. Not on an offset one's: -(20 degC) is no reading at
+        // -20 degC (`borrowable`).
+        if constexpr (requires { typename detail::UnarySide<N>::inner; })
+            if constexpr (detail::RecordsOwnStep<typename detail::UnarySide<N>::inner>)
+                nodeStep.unit =
+                    detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
+
+        // A conditional's value is its chosen branch's, and a precision
+        // limit's is its second pass's: each reads in that step's unit.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional
+                      || detail::StepKindOf<N>::value == StepKind::PrecisionLimit)
+            nodeStep.unit = detail::restated_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.value,
+                                                     nodeStep.unit);
 
         // A read from another record is its operand's value, unchanged, so it
         // reads in the unit its operand's line does: `4 MPa` after a variable

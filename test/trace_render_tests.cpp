@@ -528,7 +528,7 @@ TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-rende
           == "1. f = 60 MPa\n"
              "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 > #2 then #3 = 60000000 kg/(m s^2)\n");
+             "4. if #1 > #2 then #3 = 60 MPa\n");
     CHECK(text.find("when(") == std::string::npos);
     CHECK(text.find("[then]") == std::string::npos);
 }
@@ -550,8 +550,8 @@ TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-rende
              "2. 473/10 MPa\n"
              "3. f = 40 MPa\n"
              "4. 2\n"
-             "5. #3 * #4 = 80000000 kg/(m s^2)\n"
-             "6. if #1 > #2 else #5 = 80000000 kg/(m s^2)\n");
+             "5. #3 * #4 = 80 MPa\n"
+             "6. if #1 > #2 else #5 = 80 MPa\n");
     CHECK(text.find("[else]") == std::string::npos);
 }
 
@@ -633,12 +633,12 @@ TEST_CASE("a derivation renders the comparison a conditional actually made", "[t
           == "1. f = 60 MPa\n"
              "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 > #2 then #3 = 60000000 kg/(m s^2)\n");
+             "4. if #1 > #2 then #3 = 60 MPa\n");
     CHECK(less
           == "1. f = 60 MPa\n"
              "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 < #2 else #3 = 60000000 kg/(m s^2)\n");
+             "4. if #1 < #2 else #3 = 60 MPa\n");
 }
 
 TEST_CASE("a derivation spells a comparison the way render() does", "[trace-render]")
@@ -2351,7 +2351,7 @@ TEST_CASE("a binary step names the side that failed, the side never evaluated an
           == "1. m_s = 137 g\n"
              "2. m_s = 137 g\n"
              "3. m_s = 137 g\n"
-             "4. #2 - #3 = 0 kg\n"
+             "4. #2 - #3 = 0 g\n"
              "5. #1 / #4 = division by zero\n"
              "6. #5 / (not evaluated) = division by zero\n");
 
@@ -3066,13 +3066,13 @@ TEST_CASE("a rejection's statistic and limit are shown exact beside the comparis
              "3. pass mean = \xe2\x89\x88"
              "42.3 g\n"
              "4. #2 * #3 = \xe2\x89\x88"
-             "0.004 kg\n"
+             "4.2 g\n"
              "5. pass 1: 3 values, mean \xe2\x89\x88"
              "42.3 g\n"
              "6. rejected element 3 of 3 (47 g) in pass 1: abs(x - mean) = 14/3 g > 127/30 g (deviation from mean)\n"
              "7. 0.1\n"
              "8. pass mean = 40 g\n"
-             "9. #7 * #8 = 0.004 kg\n"
+             "9. #7 * #8 = 4 g\n"
              "10. pass 2: 2 values, mean 40 g\n"
              "11. settled: 1 rejected, 2 remain\n");
 
