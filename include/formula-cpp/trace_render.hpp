@@ -690,10 +690,13 @@ namespace detail
     /// coherent unit, as the value it is compared with is, so that no number
     /// on the line is in a scale the line does not name.
     ///
-    /// Only that move can fail, and only for a bound whose coherent form
-    /// overflows; the bound then reads `(not shown: ...)` rather than as a
-    /// number in the wrong scale. A bound of a unit with a symbol is never
-    /// converted, and never fails.
+    /// Only that move can fail, and the bound then reads `(not shown: ...)`
+    /// rather than as a number in the wrong scale. A 64-bit pair times a
+    /// unit's 64-bit magnitude always fits a `Rational`, so the move fails for
+    /// a pair that names no rational, a zero denominator; for a unit whose
+    /// magnitude is zero; and, in principle, for a unit with an offset, whose
+    /// sum can still overflow -- never for a scale alone. A bound of a unit
+    /// with a symbol is never converted, and never fails.
     [[nodiscard]] inline std::string shown_bound_text(std::int64_t declaredNumerator,
                                                       std::int64_t declaredDenominator,
                                                       Unit const& declaredIn,
@@ -715,8 +718,8 @@ namespace detail
     /// number: compared as reduced rationals, so a row typed `14/4` is the row
     /// at `7/2`, and as the raw pairs only where a pair names no rational. Never
     /// by their spelled text, which `shown_bound_text` can make the same for two
-    /// different bounds -- two whose coherent forms both overflow both read
-    /// `(not shown: ...)`.
+    /// different bounds -- two pairs with a zero denominator, `1/0` and `2/0`,
+    /// both read `(not shown: ...)`.
     [[nodiscard]] inline bool same_declared_bound(std::int64_t firstNumerator,
                                                   std::int64_t firstDenominator,
                                                   std::int64_t secondNumerator,
