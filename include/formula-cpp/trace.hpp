@@ -2122,7 +2122,8 @@ namespace detail
     /// shown in degrees Celsius it would be off by the offset. Not when it has
     /// no symbol: the value could not say what scale it is on, and would read
     /// as the coherent unit every unlabelled computed value is shown in. The
-    /// value then reads in the coherent unit, as every computed value does.
+    /// value then reads in the coherent unit, which the renderer names, as
+    /// every computed value with no unit to borrow does.
     [[nodiscard]] constexpr bool borrowable(Unit const& shownUnit) noexcept
     {
         return shownUnit.offsetNumerator == 0 && !view(shownUnit.symbolText).empty();
@@ -2236,33 +2237,37 @@ namespace detail
         }
     }
 
+    /// Which operand of @p N, a binary node whose operator is @p Op, its
+    /// values are that operand's scaled by a pure number -- 0 for the left, 1
+    /// for the right -- so that they read in its unit: the non-dimensionless
+    /// side of a product with exactly one dimensionless side, and the left of
+    /// a quotient by a dimensionless right. Empty for every other operator,
+    /// and for a product of two pure numbers, which says nothing about which
+    /// one's unit it is in. Read off `BinarySides`, so a single value's node
+    /// and an elementwise one answer alike.
+    template <BinaryOperator Op, typename N>
+    inline constexpr std::optional<std::size_t> scaled_side =
+        Op == BinaryOperator::Multiply && BinarySides<N>::left::dimension == dim::Scalar
+                && !(BinarySides<N>::right::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 1 }
+        : (Op == BinaryOperator::Multiply || Op == BinaryOperator::Divide)
+                && BinarySides<N>::right::dimension == dim::Scalar && !(BinarySides<N>::left::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 0 }
+            : std::nullopt;
+
     /// Which operand of @p S, a binary node -- a single value's or an
     /// elementwise one -- its values are that operand's scaled by a pure
-    /// number -- 0 for the left, 1 for the right -- so that they read in its
-    /// unit: the non-dimensionless side of a product with exactly one
-    /// dimensionless side, and the left of a quotient by a dimensionless
-    /// right. Empty for every other kind, and for a product of two pure
-    /// numbers, which says nothing about which one's unit it is in.
+    /// number, as `scaled_side` rules. Empty for every other kind.
     template <typename S>
     inline constexpr std::optional<std::size_t> scaled_operand = std::nullopt;
 
     template <BinaryOperator Op, typename Left, typename Right>
     inline constexpr std::optional<std::size_t> scaled_operand<ElementwiseBinaryNode<Op, Left, Right>> =
-        Op == BinaryOperator::Multiply && Left::dimension == dim::Scalar && !(Right::dimension == dim::Scalar)
-            ? std::optional<std::size_t> { 1 }
-        : (Op == BinaryOperator::Multiply || Op == BinaryOperator::Divide) && Right::dimension == dim::Scalar
-                && !(Left::dimension == dim::Scalar)
-            ? std::optional<std::size_t> { 0 }
-            : std::nullopt;
+        scaled_side<Op, ElementwiseBinaryNode<Op, Left, Right>>;
 
     template <BinaryOperator Op, Node Left, Node Right>
     inline constexpr std::optional<std::size_t> scaled_operand<BinaryNode<Op, Left, Right>> =
-        Op == BinaryOperator::Multiply && Left::dimension == dim::Scalar && !(Right::dimension == dim::Scalar)
-            ? std::optional<std::size_t> { 1 }
-        : (Op == BinaryOperator::Multiply || Op == BinaryOperator::Divide) && Right::dimension == dim::Scalar
-                && !(Left::dimension == dim::Scalar)
-            ? std::optional<std::size_t> { 0 }
-            : std::nullopt;
+        scaled_side<Op, BinaryNode<Op, Left, Right>>;
 
     /// The unit a single value's binary step is shown in. For a product with
     /// exactly one pure number, or a quotient by one, it is the other
@@ -3396,7 +3401,7 @@ class RecordingSink
 
         // A read from another record is its operand's value, unchanged, so it
         // reads in the unit its operand's line does: `4 MPa` after a variable
-        // or a rounding in MPa, and the coherent unit after a computation --
+        // or a rounding in MPa, and whatever unit a computation's line shows --
         // never the same value in two scales on consecutive lines. The operand
         // is the last step claimed that is not a lineage attribute; a scope
         // over an unbound record claims none, reads nothing, and keeps the

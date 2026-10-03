@@ -9,6 +9,8 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
+#include "forwarding_nodes.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
@@ -66,6 +68,11 @@ struct FineMass: formula::Quantity<FineMass, "m_f", "finely read mass", FineGram
 {
 };
 
+// A dimensionless value whose unit has a symbol.
+struct Share: formula::Quantity<Share, "s", "invented share", unit::Percent>
+{
+};
+
 template <typename Expression, typename Bound>
 formula::Trace<> recorded_trace(Expression const& formulaExpression, Bound const& inputs)
 {
@@ -78,10 +85,7 @@ formula::Trace<> recorded_trace(Expression const& formulaExpression, Bound const
 template <typename Expression, typename Bound>
 std::string trace_text(Expression const& formulaExpression, Bound const& inputs)
 {
-    formula::Trace<> recorded {};
-    formula::RecordingSink<> recordingSink { recorded };
-    (void) formula::checked_evaluate_si<Rational>(formulaExpression, inputs, recordingSink);
-    return formula::render_trace(recorded, { .maxSteps = 20 });
+    return formula::render_trace(recorded_trace(formulaExpression, inputs), { .maxSteps = 20 });
 }
 } // namespace
 
@@ -250,4 +254,66 @@ TEST_CASE("a conditional reads in its chosen branch's unit, offset or not", "[tr
              "2. T_0 = 20 \xc2\xb0" "C\n"
              "3. T_1 = 25 \xc2\xb0" "C\n"
              "4. if #1 > #2 then #3 = 25 \xc2\xb0" "C\n");
+}
+
+TEST_CASE("a Celsius reading scaled by a pure number, and its absolute value, read in kelvin",
+          "[trace-render][shown-unit]")
+{
+    // Twice 20 degC is twice 293.15 K, no reading at 40 degC; nor is the
+    // absolute value of a reading shown as one.
+    auto const celsius = formula::environment(formula::Measured<StartTemperature> { Rational { 20 } });
+    CHECK(trace_text(var<StartTemperature> * Rational { 2 }, celsius)
+          == "1. T_0 = 20 \xc2\xb0" "C\n"
+             "2. 2\n"
+             "3. #1 * #2 = 5863/10 K\n");
+    CHECK(trace_text(formula::abs(var<StartTemperature>), celsius)
+          == "1. T_0 = 20 \xc2\xb0" "C\n"
+             "2. abs(#1) = 5863/20 K\n");
+}
+
+TEST_CASE("a pure number scaled by a pure number borrows no unit", "[trace-render][shown-unit]")
+{
+    // Neither of two dimensionless sides says which one's unit the product
+    // is in: it stays a bare number, whichever side the share is on.
+    auto const shares = formula::environment(formula::Measured<Share> { Rational { 50 } });
+    CHECK(trace_text(var<Share> * Rational { 3 }, shares)
+          == "1. s = 50 %\n"
+             "2. 3\n"
+             "3. #1 * #2 = 3/2\n");
+    CHECK(trace_text(Rational { 3 } * var<Share>, shares)
+          == "1. 3\n"
+             "2. s = 50 %\n"
+             "3. #1 * #2 = 3/2\n");
+}
+
+TEST_CASE("a conditional whose branch records no step of its own reads in the coherent unit",
+          "[trace-render][shown-unit]")
+{
+    // The branch is a consumer's node that forwards the sink: the step the
+    // conditional claims last is the reading under it, 25 degC, not the
+    // branch's value, 5 K below it. Shown in degrees Celsius, that value
+    // would read as the 20 degC it is not.
+    auto const readings = formula::environment(formula::Measured<StartTemperature> { Rational { 20 } },
+                                               formula::Measured<EndTemperature> { Rational { 25 } });
+    CHECK(trace_text(formula::when(var<EndTemperature> > var<StartTemperature>,
+                                   forwarding::rise_above(var<EndTemperature>, Rational { 5 }),
+                                   var<StartTemperature>),
+                     readings)
+          == "1. T_1 = 25 \xc2\xb0" "C\n"
+             "2. T_0 = 20 \xc2\xb0" "C\n"
+             "3. T_1 = 25 \xc2\xb0" "C\n"
+             "4. if #1 > #2 then #3 = 5863/20 K\n");
+}
+
+TEST_CASE("a binary step over a node that records no step of its own reads in the coherent unit",
+          "[trace-render][shown-unit]")
+{
+    // Two steps are claimed, and both are in grams, but the first is the
+    // forwarding node's operand, not the node: the product's unit is not
+    // read off it.
+    auto const grams = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } });
+    CHECK(trace_text(forwarding::rise_above(var<SampleMass>, Rational { 1, 100 }) * Rational { 2 }, grams)
+          == "1. m = 413/10 g\n"
+             "2. 2\n"
+             "3. #1 * #2 = 313/5000 kg\n");
 }

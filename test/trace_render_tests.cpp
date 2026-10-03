@@ -3527,9 +3527,9 @@ TEST_CASE("a precision limit whose limit is a typed number shows it as typed, wh
           "[trace-render][decimals]")
 {
     // Pass 2 states its limit expression's value, the constant 1/7 kg, and
-    // the product computed from it is rounded. Both passes read in the
-    // coherent unit here: no placeholder names a quantity whose unit the
-    // level could borrow.
+    // the product computed from it is rounded. Each pass reads in the unit of
+    // the constant it restates, kilograms -- which here is also the coherent
+    // unit's spelling, so the lines say the same either way.
     constexpr auto limitOfSeventh =
         formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Kilogram>(rat(1, 3)),
                                                                         formula::constant<unit::Kilogram>(rat(1, 7)))
