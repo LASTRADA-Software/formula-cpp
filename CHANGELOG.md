@@ -26,7 +26,7 @@ change is recorded here.
 - A snap's permitted values, a binning's classes, a lookup's bands and rows and a curve's rows, declared in a unit
   that has no symbol, are written in the coherent unit with its spelling, as the value beside them is, rather than
   as numbers in a scale the line does not name. A derivation's header shows a value in a unit with a symbol as it
-  is held, so a value that is too large for the coherent unit, such as 10^13 kWh in joules, no longer reads
+  is held, so a value that is too large for the coherent unit, such as 10^35 kWh in joules, no longer reads
   `(not shown: overflow in exact arithmetic)`.
 - **`Rational` stores its numerator and denominator in `formula::Int128`**, so `Rational::Int` is `Int128` and a
   `Rational` is 32 bytes. Realistic laboratory statistics that overflowed 64 bits now answer: the sample variance of

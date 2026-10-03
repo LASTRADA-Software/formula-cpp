@@ -123,18 +123,23 @@ TEST_CASE("a value in another unit is converted into the key unit before it is c
 
 TEST_CASE("distances are taken in the key unit, where a form in SI would overflow", "[snap]")
 {
-    // Invented at Rational's limit, in millimetres: the first permitted value
-    // is 1/10^16 mm, which is 1/10^19 m -- a denominator no int64 holds. In
-    // the key unit every distance is exact, and 113 mm (given in metres)
-    // snaps to 103 mm; a snap that compared in SI would have to convert that
-    // value and could only fail. Equivalent wherever both forms can be
-    // represented; told apart here.
-    constexpr formula::BreakpointTable<3> atTheLimit { breakpoint(1, 10'000'000'000'000'000),
-                                                       breakpoint(103),
-                                                       breakpoint(127) };
+    // Invented at Rational's limit: the opening is 113 * 10^33 / (10^36 - 1) m,
+    // a hair above 113 mm, with a denominator prime to ten. In millimetres its
+    // distances to the neighbours 103 mm and 127 mm keep that denominator and
+    // are exact, and it snaps to 103 mm. In metres the distance to 103/1000 m
+    // needs the denominator 1000 * (10^36 - 1), past the 2^127 a Rational
+    // holds: a snap that compared in SI could only fail. Equivalent wherever
+    // both forms can be represented; told apart here.
+    constexpr formula::Rational::Int tenToEighteen = 1'000'000'000'000'000'000;
+    constexpr formula::Rational opening { formula::Rational::Int { 113'000'000'000'000'000 } * tenToEighteen,
+                                          tenToEighteen * tenToEighteen - 1 };
+    constexpr auto distanceInSi = formula::checked_sub(opening, rat(103, 1000));
+    STATIC_REQUIRE(!distanceInSi.has_value());
+    STATIC_REQUIRE(distanceInSi.error() == formula::ArithmeticError::Overflow);
+    constexpr formula::BreakpointTable<2> neighbours { breakpoint(103), breakpoint(127) };
     constexpr auto snapped =
-        formula::checked_evaluate<Opening>(formula::snapped<unit::Millimetre, atTheLimit, lower>(formula::var<Opening>),
-                                           formula::environment(formula::Measured<Opening> { rat(113, 1000) }));
+        formula::checked_evaluate<Opening>(formula::snapped<unit::Millimetre, neighbours, lower>(formula::var<Opening>),
+                                           formula::environment(formula::Measured<Opening> { opening }));
     STATIC_REQUIRE(snapped.has_value());
     STATIC_REQUIRE(snapped->measurement().value() == rat(103, 1000));
 }

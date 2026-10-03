@@ -547,13 +547,16 @@ TEST_CASE("a binary step over a node on its right that records no step of its ow
 TEST_CASE("a derivation's header shows a value in a unit with a symbol without passing through the coherent unit",
           "[trace-render][shown-unit][worksheet]")
 {
-    // 10^13 kWh is 3.6 * 10^19 J: a header that converted it from kWh to kWh
-    // through joules took a detour that can only fail. Typed in, it reads as
-    // typed.
+    // 10^35 kWh is 3.6 * 10^41 J, past the 2^127 a Rational holds: a header
+    // that converted it from kWh to kWh through joules took a detour that can
+    // only fail. Typed in, it reads as typed.
+    constexpr Rational::Int tenToSeventeen = 100'000'000'000'000'000;
+    constexpr Rational::Int tenToThirtyFive = tenToSeventeen * tenToSeventeen * 10;
     auto sheet = formula::worksheet(household::bill, household::bill_environment(household::billValues));
-    sheet.set(formula::entered(formula::Measured<household::NetDraw> { Rational { 10'000'000'000'000 } }));
+    sheet.set(formula::entered(formula::Measured<household::NetDraw> { Rational { tenToThirtyFive } }));
     CHECK(formula::render_derivation(formula::explain_worksheet<household::NetDraw>(sheet), { .maxSteps = 20 })
-          == "net_draw = 10000000000000 kWh, entered by hand in place of monthly_load - self_used\n");
+          == "net_draw = 100000000000000000000000000000000000 kWh, entered by hand in place of monthly_load - "
+             "self_used\n");
 }
 
 TEST_CASE("a snap in a unit with no symbol states its permitted values in the coherent unit",
