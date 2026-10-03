@@ -184,11 +184,18 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
     STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { -50 }) == overflow);
     STATIC_REQUIRE(expAt<DecimalPlaces { -19 }, RoundingMode::Floor>(Rational { -50 }) == overflow);
     // An argument whose numerator or denominator does not fit 64 bits is beyond the kernel, which works on
-    // two values below 2^63: ln 2^70 and exp 2^-64 are Overflow, though a Rational holds both arguments.
+    // two values below 2^63: ln 2^70, exp 2^-64 and log10 2^70 are Overflow, though a Rational holds each
+    // argument.
     STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
                    == overflow);
     STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 64 })
                    == overflow);
+    STATIC_REQUIRE(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
+                   == overflow);
+    // A wide power of ten is a special point, answered before the kernel is asked: log10 10^30 is 30.
+    constexpr Rational::Int tenToFifteen = 1'000'000'000'000'000;
+    STATIC_REQUIRE(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { tenToFifteen * tenToFifteen })
+                   == Rational { 30 });
     // The rule below -43 comes first, whatever the argument's width: exp -2^70 is 0.
     STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { -(Rational::Int { 1 } << 70) })
                    == Rational {});

@@ -308,6 +308,9 @@ TEST_CASE("rounding precision is limited by the numerator, not the magnitude", "
     // Just below 2^52, half a unit off a whole number, it is exact at 18 places.
     CHECK(formula::rational_from_double(4503599627370495.5, formula::DecimalPlaces { 18 }, RoundingMode::Floor)
           == Rational { 9007199254740991, 2 });
+    // And 2^53 - 1, the largest whole number below 2^53, is exact at 18.
+    CHECK(formula::rational_from_double(9007199254740991.0, formula::DecimalPlaces { 18 }, RoundingMode::Floor)
+          == Rational { 9007199254740991 });
     // Past 2^53 the claim stops: a whole double's numerator is its own
     // magnitude, with nothing to cancel, so 1e21 overflows at 18 places and
     // 1e38 at 1; and at -18 places 2^-100's denominator times 10^18 does.
