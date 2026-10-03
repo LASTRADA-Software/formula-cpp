@@ -278,7 +278,8 @@ namespace detail
                                                      UncheckedCorrections<Sizes.size()>>;
 
     static_assert(sizeof(std::size_t) <= sizeof(std::uint64_t),
-                  "formula: a sample size is compared as a 64-bit count, and this platform's std::size_t is wider");
+                  "formula: a table's sample size is widened through a 64-bit count to the 128 bits it is "
+                  "compared as, and this platform's std::size_t is wider than 64 bits");
 
     /// The row of @p Sizes whose size is @p sampleSize, or nothing. A linear
     /// scan, for `find_band`'s reason, and an equality: never the nearest row.
@@ -299,8 +300,8 @@ namespace detail
     /// @p evaluatedCount as a sample size, or nothing when it is not a whole,
     /// non-negative number. The count is read in the coherent unit of its
     /// dimension, which is a bare number. A whole count larger than any size
-    /// a table can declare is still a count, and misses in `find_sample_size`:
-    /// a count beyond 2^64 - 1 is still a count, which no table declares.
+    /// a table can declare -- beyond 2^64 - 1 included -- is still a count,
+    /// and misses in `find_sample_size`.
     [[nodiscard]] constexpr std::optional<UInt128> as_sample_size(Rational evaluatedCount) noexcept
     {
         if (evaluatedCount.denominator() != 1 || evaluatedCount.numerator() < 0)

@@ -273,7 +273,8 @@ TEST_CASE("the helpers that read an integer of either width", "[checked-int]")
     STATIC_REQUIRE(formula::detail::wide_magnitude(std::int64_t { -5 }) == UInt128::from_u64(5));
     STATIC_REQUIRE(formula::detail::wide_magnitude(std::numeric_limits<std::int64_t>::min())
                    == UInt128::from_u64(std::uint64_t { 1 } << 63));
-    STATIC_REQUIRE(formula::detail::wide_magnitude(std::numeric_limits<Int128>::min()) == UInt128 { std::uint64_t { 1 } << 63, 0 });
+    STATIC_REQUIRE(formula::detail::wide_magnitude(std::numeric_limits<Int128>::min())
+                   == UInt128 { std::uint64_t { 1 } << 63, 0 });
     STATIC_REQUIRE(formula::detail::narrow_to_int64(Int128 { -7 }) == std::optional<std::int64_t> { -7 });
     STATIC_REQUIRE(formula::detail::narrow_to_int64(Int128 { 1 } << 63) == std::nullopt);
     STATIC_REQUIRE(formula::detail::int_from_pattern(UInt128 { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } - 4 },
@@ -286,6 +287,7 @@ TEST_CASE("the helpers that read an integer of either width", "[checked-int]")
     STATIC_REQUIRE(formula::detail::floor_divmod(Int128 { -7 }, Int128 { 2 }).remainder == Int128 { 1 });
     STATIC_REQUIRE(formula::detail::decimal_digits(std::numeric_limits<Int128>::max()) == 39);
     STATIC_REQUIRE(formula::detail::decimal_digits(Int128 { 0 }) == 1);
-    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 18) == std::optional<Int128> { Int128 { 3'000'000'000'000'000'000LL } });
+    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 18)
+                   == std::optional<Int128> { Int128 { 3'000'000'000'000'000'000LL } });
     STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 19) == std::nullopt);
 }

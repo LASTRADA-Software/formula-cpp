@@ -1344,7 +1344,8 @@ namespace detail
 /// Builds a `Breakpoint` from its key as an exact number: `breakpoint(12.7_r)`.
 /// An integer still takes the overload above, so `breakpoint(127)` is unchanged.
 /// A key beyond 64 bits fails to compile, naming
-/// `formula_breakpoint_key_out_of_range`.
+/// `formula_breakpoint_key_out_of_range`; reached at run time, that guard
+/// ends the program.
 [[nodiscard]] constexpr Breakpoint breakpoint(Rational keyValue) noexcept
 {
     std::optional<std::int64_t> const keyTop = detail::narrow_to_int64(keyValue.numerator());

@@ -15,7 +15,7 @@
 /// whose decimal expansion never ends is never passed off as one that does.
 ///
 /// A core header: it includes no `<string>`, and the arithmetic is plain
-/// `std::uint64_t` on the value's magnitude and denominator, never
+/// 128-bit unsigned arithmetic on the value's magnitude and denominator, never
 /// `Rational::make`, so spelling a number reports nothing to the overflow
 /// census (`detail/checked_int.hpp`). The one exception is rounding to a
 /// negative number of places, which is `checked_round`'s own arithmetic --
@@ -37,10 +37,11 @@ namespace formula
 {
 
 /// Bytes of text a `NumberText` can hold. The longest text this header
-/// spells -- the marker, a sign, 39 whole digits, then a point and 18 places
-/// or a slash and a 39-digit denominator, a space and a unit symbol of
-/// `SymbolCapacity` bytes -- is 100 bytes, and a `static_assert` below keeps
-/// it within this.
+/// spells is a fraction -- a sign, a 39-digit numerator, a slash, a 39-digit
+/// denominator, a space and a unit symbol of `SymbolCapacity` bytes -- of 97
+/// bytes, and a `static_assert` below keeps it within this. A fraction is
+/// never marked approximate, and the longest marked decimal, at 18 places, is
+/// shorter.
 inline constexpr std::size_t NumberTextCapacity = 128;
 
 /// The one spelling of "approximately": U+2248, `≈`, in UTF-8. Not `~`: a
@@ -219,24 +220,6 @@ namespace detail
                 put(spelled, each);
         }
 
-        /// Appends @p wholeNumber in decimal: at most 20 digits.
-        static constexpr void put_whole(NumberText& spelled, std::uint64_t wholeNumber) noexcept
-        {
-            char reversed[20] {};
-            std::size_t produced = 0;
-            do
-            {
-                reversed[produced] = static_cast<char>('0' + wholeNumber % 10U);
-                ++produced;
-                wholeNumber /= 10U;
-            } while (wholeNumber != 0U);
-            while (produced > 0)
-            {
-                --produced;
-                put(spelled, reversed[produced]);
-            }
-        }
-
         /// Appends @p wholeNumber in decimal: at most 39 digits.
         static constexpr void put_whole(NumberText& spelled, UInt128 wholeNumber) noexcept
         {
@@ -260,13 +243,14 @@ namespace detail
         static constexpr void mark_rounded(NumberText& spelled) noexcept { spelled._exact = false; }
     };
 
-    /// The longest text this header spells: the marker, a sign, the 39 digits
-    /// of 2^127, then a point and 18 places or a slash and a 39-digit
-    /// denominator, a space, and a unit symbol of `SymbolCapacity` bytes --
-    /// `view(Symbol const&)` returns that many from a symbol with no
-    /// terminator.
-    inline constexpr std::size_t LongestNumberText =
-        ApproximationMarker.size() + 1 + 39 + 1 + 39 + 1 + SymbolCapacity;
+    /// The longest text this header spells: a fraction of a sign, the 39
+    /// digits of 2^127, a slash, a 39-digit denominator, a space, and a unit
+    /// symbol of `SymbolCapacity` bytes -- `view(Symbol const&)` returns that
+    /// many from a symbol with no terminator. A fraction is never marked
+    /// approximate; the longest marked decimal -- the marker, a sign, 39
+    /// whole digits, a point and 18 places, a space and the symbol -- is
+    /// shorter.
+    inline constexpr std::size_t LongestNumberText = 1 + 39 + 1 + 39 + 1 + SymbolCapacity;
     static_assert(LongestNumberText <= NumberTextCapacity,
                   "formula: NumberTextCapacity is too small for the longest number this library spells");
 

@@ -128,7 +128,8 @@ namespace detail
 
 /// Builds a `Band` from its low (inclusive) and high (exclusive) bound as
 /// exact numbers: `band(83.7_r, 97.3_r)`, `band(0, 127)`. A bound beyond 64
-/// bits fails to compile, naming `formula_band_bound_out_of_range`.
+/// bits fails to compile, naming `formula_band_bound_out_of_range`; reached at
+/// run time, that guard ends the program.
 [[nodiscard]] constexpr Band band(Rational lowBound, Rational highBound) noexcept
 {
     std::optional<std::int64_t> const lowTop = detail::narrow_to_int64(lowBound.numerator());

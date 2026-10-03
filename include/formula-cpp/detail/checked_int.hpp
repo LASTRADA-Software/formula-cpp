@@ -19,8 +19,8 @@
 /// numerator and denominator `Rational::make` is handed -- is reported to
 /// `census_record`, which the census program defines
 /// (`support/census_tally.cpp`), so that it can say how many of the bits
-/// `Rational::Int` holds real formulas use (`docs/numeric-headroom.md`). A constant evaluation
-/// reports nothing. Without the macro -- every build but the census's --
+/// `Rational::Int` holds real formulas use (`docs/numeric-headroom.md`). A
+/// constant evaluation reports nothing. Without the macro -- every build but the census's --
 /// `FORMULA_CENSUS_NOTE` expands to nothing, its arguments are never
 /// evaluated, and none of the census's names exist: no call, no symbol, no
 /// cost.
@@ -221,7 +221,6 @@ struct DivMod
         return std::nullopt;
     return mul_checked_or_none(operandValue, *powerOfTen);
 }
-
 
 // ---- 128 bits: `Int128`'s checked operations, and helpers that read
 // `Rational::Int` whatever its width -------------------------------------------

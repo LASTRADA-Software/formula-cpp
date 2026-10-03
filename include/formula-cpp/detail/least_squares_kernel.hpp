@@ -128,6 +128,7 @@ template <std::size_t Wide, std::size_t Narrow>
 /// `divmod_small`, one step per limb, rather than by the lcm's gcd and long
 /// division.
 template <std::size_t L>
+    requires(L >= 4)
 [[nodiscard]] constexpr std::optional<WideUnsigned<L>> common_denominator(std::span<Rational const> observedColumn) noexcept
 {
     WideUnsigned<L> common = WideUnsigned<L>::from_u64(1);
