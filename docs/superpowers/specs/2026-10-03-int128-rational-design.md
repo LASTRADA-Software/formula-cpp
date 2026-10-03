@@ -49,22 +49,24 @@ not. `Rational` is built on it, and there is no 64-bit `Rational` beside it.
 
 A signed 128-bit two's-complement integer: one class, with one API on every compiler.
 
-### Storage
+### Storage and arithmetic
 
-| Compiler | Storage | Why |
+**One layout everywhere:** two `std::uint64_t` words in two's complement. A second, native layout would double the
+class for no gain: a conversion in and out of the compiler's own integer optimises away.
+
+| Compiler | Multiplication, division, overflow check | Why |
 |---|---|---|
-| GCC, Clang, AppleClang: `__SIZEOF_INT128__` defined, `_MSC_VER` not | `__extension__ __int128` | Hardware arithmetic. `__extension__` keeps `-Wpedantic` quiet under `CMAKE_CXX_EXTENSIONS OFF` |
-| cl, and clang-cl: any `_MSC_VER` | two `std::uint64_t` words | cl has no 128-bit integer. clang-cl accepts `__int128`, but dividing one calls compiler-rt's `__divti3`, which the MSVC linker does not supply |
+| GCC, Clang, AppleClang: `__SIZEOF_INT128__` defined, `_MSC_VER` not | `unsigned __int128`, through `__extension__ typedef` | Hardware arithmetic. `__extension__` keeps `-Wpedantic` quiet under `CMAKE_CXX_EXTENSIONS OFF` |
+| cl, and clang-cl: any `_MSC_VER` | portable `constexpr` code on the two words | cl has no 128-bit integer. clang-cl accepts `__int128`, but dividing one calls compiler-rt's `__divti3`, which the MSVC linker does not supply |
 
-- **The native member is never handed to the standard library.** In strict mode, libstdc++ does not treat
-  `__int128` as an integer type: no `std::is_integral_v`, `std::numeric_limits`, `std::make_unsigned` or `std::format`.
-- **The software operations are `constexpr` functions on two words, in `detail::`.** At run time on x64 they may use
-  `_umul128` and `_udiv128` behind `if !consteval`. Those intrinsics are not `constexpr`, so constant evaluation always
-  takes the portable code.
-- **A 64-bit fast path** applies in both storages to multiply, divide, remainder and gcd. When both operands fit 64
-  bits, the 64-bit operation runs. Nearly every value a formula forms is small, so this keeps run time close to
-  today's. It also keeps cl's constexpr step budget safe for the suite's roughly 2730 `STATIC_REQUIRE`s, and avoids a
-  call to `__divti3` or `__modti3` on the native path.
+- **The native type is never handed to the standard library.** In strict mode, libstdc++ does not treat `__int128` as
+  an integer type: no `std::is_integral_v`, `std::numeric_limits`, `std::make_unsigned` or `std::format`.
+- **The portable operations are `constexpr` functions on two words, in `detail::`.** Every compiler builds and tests
+  them. No intrinsics are used, so constant evaluation and run time take the same code.
+- **A 64-bit fast path** applies to division, remainder and gcd: when both operands fit 64 bits, the 64-bit operation
+  runs. Nearly every value a formula forms is small, so this keeps run time close to today's. It also keeps cl's
+  constexpr step budget safe for the suite's roughly 2730 `STATIC_REQUIRE`s, and avoids a call to `__udivti3` on the
+  native path.
 - **Determinism is unaffected.** Integer results are identical on every path, so the rule that the same inputs give
   the same digits on every compiler still holds. This updates the declared-precision design's "no intrinsics, no
   `__int128`" rule (`2026-09-29-declared-precision-design.md:40-41`), which existed to protect exactly that property.
@@ -76,7 +78,7 @@ A signed 128-bit two's-complement integer: one class, with one API on every comp
 | Construction | `constexpr` default (zero); implicit `constexpr` from every built-in integer type except `bool`, sign-extending signed and zero-extending unsigned values |
 | Arithmetic | `+ - * / %`, unary `-`, and their compound forms; `<<`, `>>` |
 | Comparison | `==`, `<=>` (`std::strong_ordering`) |
-| Conversion | `explicit` to every built-in integer type (modular, as a built-in conversion is); `to_double()`, rounded to nearest; `fits_int64()` and `to_int64()` returning `std::optional` |
+| Conversion | **none to a built-in integer type, implicit or explicit**, so code written for a 64-bit `Rational` cannot cut a 128-bit value in half; `to_int64()` and `to_uint64()` return `std::optional`; `fits_int64()`; `to_double()`, rounded to nearest, ties to even |
 | Standard library | a `std::numeric_limits<formula::Int128>` specialisation; `std::formatter<formula::Int128, char>`, decimal only. No `std::hash`: `Rational` has none |
 
 - **Plain operators behave like a built-in signed integer:** overflow, division by zero and an out-of-range shift are
