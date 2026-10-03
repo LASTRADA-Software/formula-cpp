@@ -189,6 +189,17 @@ inline constexpr formula::BandTable<2> UnnamedBands { formula::band(0, 1, 5, 1),
 inline constexpr formula::BreakpointTable<2> UnnamedRows { formula::breakpoint(2), formula::breakpoint(6) };
 inline constexpr formula::BreakpointTable<1> UnnamedOnlyRow { formula::breakpoint(2) };
 
+// A million tonnes with no symbol, and two rows of it whose coherent forms,
+// 10^19 and 10^20 kg, are too large to be shown: two different rows that both
+// read `(not shown: ...)`.
+inline constexpr formula::Unit UnnamedMegatonne { .dimension = formula::dim::Mass,
+                                                  .magnitudeNumerator = 1'000'000'000 };
+struct HugeMass: formula::Quantity<HugeMass, "m_h", "mass in an unnamed huge unit", UnnamedMegatonne>
+{
+};
+inline constexpr formula::BreakpointTable<2> HugeRows { formula::breakpoint(10'000'000'000),
+                                                        formula::breakpoint(100'000'000'000) };
+
 template <typename Expression>
 std::string unnamed_trace_text(Expression const& formulaExpression, Rational unnamedGrams)
 {
@@ -265,6 +276,11 @@ std::optional<ShownValue> parse_shown(std::string_view spelled)
 /// into the coherent one, is exactly the value recorded. The unit is taken
 /// from the text, not from the rule that chose it, so a value written in one
 /// scale and labelled with another fails here.
+///
+/// It reads `Step::value` only, as `value_in_declared_unit` shows it. The other
+/// numbers a line states -- an opaque call's output rows, a series' elements, a
+/// rejection's clauses, a table's bounds and rows -- come from side tables and
+/// other fields, and are pinned by their own tests.
 void check_each_value_is_in_the_unit_written_after_it(formula::Trace<> const& recorded)
 {
     std::size_t checkedSteps = 0;
@@ -604,6 +620,32 @@ TEST_CASE("a lookup keyed in a unit with no symbol states its bands and rows in 
     constexpr auto oneRow =
         formula::interpolating_lookup<UnnamedGram, UnnamedOnlyRow, unit::Percent>(var<UnnamedMass>, { Rational { 10 } });
     CHECK(unnamed_trace_text(oneRow, Rational { 3 }).ends_with("[outside the curve, whose only row is at 1/500 kg]\n"));
+}
+
+TEST_CASE("two different rows that cannot be shown are not read as one row", "[trace-render][shown-unit][lookup]")
+{
+    // A miss below both rows: the curve runs from one to the other, though
+    // neither can be written.
+    constexpr auto hugeLookup =
+        formula::interpolating_lookup<UnnamedMegatonne, HugeRows, unit::Percent>(var<HugeMass>,
+                                                                                 { Rational { 10 }, Rational { 30 } });
+    formula::Trace<> recorded =
+        recorded_trace(hugeLookup, formula::environment(formula::Measured<HugeMass> { Rational { 1 } }));
+    std::string const missed = formula::render_trace(recorded, { .maxSteps = 20 });
+    CHECK(missed.ends_with("[outside the curve, which runs (not shown: overflow in exact arithmetic) to "
+                           "(not shown: overflow in exact arithmetic) kg]\n"));
+
+    // The same step, as a hand-built trace says it landed between the two
+    // rows: two rows, not one.
+    REQUIRE(recorded.steps.size() == 2);
+    recorded.steps[1].error.reset();
+    recorded.steps[1].lookupFailure = formula::LookupFailure::None;
+    recorded.steps[1].value = Rational { 1, 5 };
+    recorded.steps[1].selectedSegment =
+        formula::Segment { formula::breakpoint(10'000'000'000), formula::breakpoint(100'000'000'000) };
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+              .ends_with("[between (not shown: overflow in exact arithmetic) and "
+                         "(not shown: overflow in exact arithmetic) kg]\n"));
 }
 
 TEST_CASE("a curve over a domain in a unit with no symbol states its rows in the coherent unit",

@@ -711,6 +711,24 @@ namespace detail
         return styled_number_text(*inCoherent, numberStyle.exact_only(), coherentUnit);
     }
 
+    /// Whether two bounds declared as numerator/denominator pairs are one
+    /// number: compared as reduced rationals, so a row typed `14/4` is the row
+    /// at `7/2`, and as the raw pairs only where a pair names no rational. Never
+    /// by their spelled text, which `shown_bound_text` can make the same for two
+    /// different bounds -- two whose coherent forms both overflow both read
+    /// `(not shown: ...)`.
+    [[nodiscard]] inline bool same_declared_bound(std::int64_t firstNumerator,
+                                                  std::int64_t firstDenominator,
+                                                  std::int64_t secondNumerator,
+                                                  std::int64_t secondDenominator)
+    {
+        std::expected<Rational, ArithmeticError> const firstBound = Rational::make(firstNumerator, firstDenominator);
+        std::expected<Rational, ArithmeticError> const secondBound = Rational::make(secondNumerator, secondDenominator);
+        if (firstBound.has_value() && secondBound.has_value())
+            return *firstBound == *secondBound;
+        return firstNumerator == secondNumerator && firstDenominator == secondDenominator;
+    }
+
     /// A half-open interval a lookup step reports about -- a selected band,
     /// or the extent a whole band table covers: `211/100 to under 307/10 mm`.
     ///
@@ -799,7 +817,10 @@ namespace detail
             shown_bound_text(lookupSegment.low.numerator, lookupSegment.low.denominator, keyUnit, numberStyle);
         std::string const highText =
             shown_bound_text(lookupSegment.high.numerator, lookupSegment.high.denominator, keyUnit, numberStyle);
-        if (lowText == highText)
+        if (same_declared_bound(lookupSegment.low.numerator,
+                                lookupSegment.low.denominator,
+                                lookupSegment.high.numerator,
+                                lookupSegment.high.denominator))
             return "on the row at " + number_with_unit(lowText, keySymbol);
         return "between " + number_with_unit(lowText + " and " + highText, keySymbol);
     }
@@ -871,9 +892,10 @@ namespace detail
         // same reason: a row is a point.
         std::string const lowText = shown_bound_text(
             recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator, keyUnit, numberStyle);
-        std::string const highText = shown_bound_text(
-            recorded.coveredRange->highNumerator, recorded.coveredRange->highDenominator, keyUnit, numberStyle);
-        if (lowText == highText)
+        if (same_declared_bound(recorded.coveredRange->lowNumerator,
+                                recorded.coveredRange->lowDenominator,
+                                recorded.coveredRange->highNumerator,
+                                recorded.coveredRange->highDenominator))
             return "outside the curve, whose only row is at "
                    + number_with_unit(lowText, shown_unit_text(keyUnit, keyUnit.dimension));
         return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keyUnit, numberStyle);
