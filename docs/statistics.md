@@ -107,9 +107,9 @@ round(sqrt(sample_variance(m(i))), to 2 dp of g) = 37/20 g
 LaTeX: \operatorname{round}_{2\,\mathrm{g}}(\sqrt{s^{2}({m}_{i})})
 ```
 
-The trace shows the variance as the evaluator holds it, in the coherent unit
-(kg², so 427/125 g² is 427/125000000), and the root rounded in the unit the
-formula declares:
+The trace shows the variance in the coherent unit, written `kg^2` after it --
+no unit of the formula's names a squared mass, so 427/125 g² reads
+427/125000000 kg^2 -- and the root rounded in the unit the formula declares:
 
 ```text
 1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
@@ -194,6 +194,10 @@ at first -- in pass 2, and pass 3 settles:
 16. settled: 2 rejected, 4 remain
 17. sample_mean(#16) = 321/8 g
 ```
+
+Each pass's limit is 3/50 of that pass's mean: a mean in grams scaled by a pure
+number, so it reads in grams as the mean does. Line 4's 1239/500 g is 2.478 g,
+and line 6 states it again beside the deviation it was compared with.
 
 **An abort is the author's verdict.** When the next rejection would pass
 `AtMost` or `KeepAtLeast`, nothing more is rejected: the trace records the

@@ -714,10 +714,10 @@ interpolation drew on:
 1. f_m = 40 MPa
 2. d = 139 mm
 3. lookup(#2) = 1051/10 % [127 to under 173 mm]
-4. #1 * #3 = 42040000
+4. #1 * #3 = 1051/25 MPa
 5. lookup(key Cylinder) = 863/10 %
-6. #4 * #5 = 36280520
-7. #6 = 36280520 [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
+6. #4 * #5 = 907013/25000 MPa
+7. #6 = 907013/25000 MPa [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
 ```
 
 The exact lookup on line 5 adds no such clause, and that is right: its key is
@@ -746,9 +746,9 @@ being included or excluded, so it needs neither a band's `to under` nor a
 curve's closed `to`.
 
 Both lookup steps report in the unit their own table is stated in — `1051/10 %`,
-`863/10 %` — while lines 4 and 6 report the products in the coherent unit, because an
-intermediate that no quantity declares a unit for has none to be shown in. That
-is ordinary trace behaviour rather than anything to do with tables; see
+`863/10 %` — and lines 4 and 6 report the products in megapascals: each scales
+a strength by a percentage, a pure number, and so reads in the strength's unit.
+That is ordinary trace behaviour rather than anything to do with tables; see
 [Tracing and audit trails](tracing.md).
 
 **On a miss, that clause is what keeps the line from lying:**

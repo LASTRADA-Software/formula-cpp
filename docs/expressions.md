@@ -600,15 +600,15 @@ parenthesis is needed to preserve the meaning:
 3. V_c = 300 l
 4. #2 / #3 = 3/5
 5. #4 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
-6. #1 * #5 = 150
-7. #6 = 150 [Cost of a mix at a given water/cement ratio, Example Standard 9:2021, 2.1]
+6. #1 * #5 = 150 EUR
+7. #6 = 150 EUR [Cost of a mix at a given water/cement ratio, Example Standard 9:2021, 2.1]
 ```
 
 Step 5 is the reused formula, carrying its own citation; step 6 consumes it.
 `c_u` is a price in euros, a dimension of its own rather than a bare number
 ([Base dimensions the SI does not have](dimensions.md#base-dimensions-the-si-does-not-have)),
-so the cost is in euros too; steps 6 and 7 show no unit only because a
-computed step carries no unit symbol of its own
+so the cost is in euros too: step 6 scales the price by a pure number, the
+ratio, and so reads in the price's unit, and step 7 restates step 6
 ([Tracing](tracing.md#reading-a-derivation)).
 
 One asymmetry is worth knowing before you rely on it. Using the same

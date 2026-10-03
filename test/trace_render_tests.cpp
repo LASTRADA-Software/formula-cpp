@@ -100,8 +100,8 @@ TEST_CASE("a derivation renders one line per step, in order", "[trace-render]")
 
     // Steps are numbered from one and name their operands by number. The two
     // leaves carry the symbol of the unit they were declared in; the squared
-    // mass and the quotient carry none, because a computed value has no
-    // declared unit and `kg2` and `kg2/m3` are not units this library writes.
+    // mass and the quotient have no declared unit and borrow none, so they
+    // read in the coherent unit, spelt from the base units.
     CHECK(text
           == "1. m = 6 kg\n"
              "2. #1^2 = 36 kg^2\n"
@@ -136,9 +136,9 @@ TEST_CASE("a value renders in the unit it was entered in, not in coherent SI", "
 TEST_CASE("a power times a time reads in the coherent unit, not in kilowatt-hours", "[trace-render]")
 {
     // The two leaves read in the units they were entered in, kW and h. Their
-    // product is 3/2 kW * 4 h = 1500 W * 14400 s = 21600000 J, a computed
-    // value with no declared unit, so it reads in the unlabelled coherent unit
-    // -- joules -- as every computed step does, and not as 6 kWh.
+    // product is 3/2 kW * 4 h = 1500 W * 14400 s = 21600000 J, a product of
+    // two dimensioned values, which borrows neither one's unit: it reads in
+    // the coherent unit, joules spelt from the base units, and not as 6 kWh.
     auto const heater = formula::environment(formula::Measured<HeaterPower> { formula::Rational { 3, 2 } },
                                              formula::Measured<RunTime> { formula::Rational { 4 } });
 
@@ -2207,8 +2207,8 @@ TEST_CASE("an elementwise step names its operands, and a broadcast scalar appear
                                                                    / formula::var<series_trace::TotalMass>,
                                                                screens,
                                                                formula::RecordingSink<> { trace });
-    // A computed step has no declared unit, as a scalar quotient has none, so
-    // the fraction is shown in the coherent unit, exactly.
+    // A quotient of two masses is a pure number and borrows no unit, so the
+    // fraction is shown bare, exactly.
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
           == "1. m_r = 130 g; 210 g; 95 g; 340 g; 28 g\n"
              "2. m_t = 1250 g\n"
@@ -3527,9 +3527,9 @@ TEST_CASE("a precision limit whose limit is a typed number shows it as typed, wh
           "[trace-render][decimals]")
 {
     // Pass 2 states its limit expression's value, the constant 1/7 kg, and
-    // the product computed from it is rounded. Each pass reads in the unit of
-    // the constant it restates, kilograms -- which here is also the coherent
-    // unit's spelling, so the lines say the same either way.
+    // the product computed from it is rounded. Pass 1 reads in the coherent
+    // unit, since no placeholder or level expression names a quantity; pass 2
+    // borrows its constant's kilograms. Both spell kg.
     constexpr auto limitOfSeventh =
         formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Kilogram>(rat(1, 3)),
                                                                         formula::constant<unit::Kilogram>(rat(1, 7)))

@@ -1128,9 +1128,9 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 
     // Every series kind: each series step in the jurisdiction's symbol, the
     // fixed factor broadcast once, the running total from the last screen,
-    // and the sum a single value. Computed steps have no declared unit, so
-    // they read in kilograms, exactly -- except a series scaled by a pure
-    // number, which reads in its series' grams.
+    // and the sum a single value. A series or a mean scaled by a pure number
+    // reads in its series' grams; a variance, and a product of two ranges,
+    // borrow no unit and read in the coherent kg^2, exactly.
     // The statistics read the fixed factor through their sample, and each
     // reads its sample's own step, with every element. The rejection reads
     // the fixed factor in its sample and again in each pass's limit, and its

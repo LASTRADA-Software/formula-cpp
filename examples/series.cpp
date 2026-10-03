@@ -214,8 +214,8 @@ int main()
     std::println("{}", passingTrace);
     check(passingTrace.contains("3. cumulative(#2, from last) = 803 g; 673 g; 463 g; 368 g; 28 g\n"),
           "the running total from the coarsest screen");
-    // A computed step has no declared unit, so it reads in the coherent one:
-    // 447/1250 is 35.76 %.
+    // A percentage less a pure number is in two units, so it borrows neither
+    // and reads in the coherent one, a plain fraction: 447/1250 is 35.76 %.
     check(passingTrace.ends_with("6. #1 - #5 = 447/1250; 577/1250; 787/1250; 441/625; 611/625\n"),
           "35.76, 46.16, 62.96, 70.56 and 97.76 % passing");
     std::println("the same, within a budget of 8:\n{}", formula::render_trace(passingRun.trace, { .maxSteps = 8 }));

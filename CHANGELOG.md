@@ -6,6 +6,22 @@ change is recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Every computed value in a trace shows a unit.** A value scaled by a pure number, and a sum or difference of
+  values shown in one unit, read in that unit: the outlier-rejection limit `#2 * #3 = 1239/500000` is now
+  `#2 * #3 = 1239/500 g`. A negation and an absolute value read in their operand's unit, and a conditional and a
+  precision limit in the unit of the step they restate. An offset unit is never borrowed for a sum, difference,
+  scaling or negation: the difference of two Celsius readings reads in `K`. Any other dimensioned value is shown in
+  the coherent unit, followed by its spelling from the base units (`427/125000000 kg^2`, `60000000 kg/(m s^2)`), and
+  so is a value in a unit that has no symbol. A dimensionless value is still a bare number. A trace text pinned in
+  a test changes wherever it showed a dimensioned value bare.
+- A snap's permitted values, a binning's classes, a lookup's bands and rows and a curve's rows, declared in a unit
+  that has no symbol, are written in the coherent unit with its spelling, as the value beside them is, rather than
+  as numbers in a scale the line does not name. A derivation's header shows a value in a unit with a symbol as it
+  is held, so a value that is too large for the coherent unit, such as 10^13 kWh in joules, no longer reads
+  `(not shown: overflow in exact arithmetic)`.
+
 ## [0.3.0] - 2026-10-01
 
 The third release. It gives a shorter spelling to everything the examples repeated, and takes no

@@ -234,9 +234,12 @@ std::print("{}", formula::render_trace(explained.trace, { .maxSteps = 10 }));
 4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
 ```
 
-Every value is shown in the unit it was declared in, not the coherent unit
-the arithmetic actually ran on — that is `9/50` cubic metres above, and nobody
-typed cubic metres. When the environment overrides the result instead of
+Every value is shown in the unit written after it: an input in the unit it
+was declared in, not the coherent unit the arithmetic actually ran on — that
+is `9/50` cubic metres above, and nobody typed cubic metres. A computed value
+borrows the unit of the values it was computed from where that is safe, and is
+otherwise shown in the coherent unit, spelt from the base units (`kg/m^3`);
+only a dimensionless value, like the ratio above, is a bare number. When the environment overrides the result instead of
 letting the formula derive it, `explained.trace` comes back empty — nothing
 ran, so nothing was recorded — and `explained.outcome.is_overridden()` says
 so instead: an overridden number shows *that a person entered it*, a

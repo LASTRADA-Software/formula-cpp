@@ -594,9 +594,11 @@ Asking for `Q` brings it up to date, as `checked_calculate` does, and counts as
 it does; recording the blocks calculates nothing again. Here nothing was out
 of date, and the example checks that neither counter moved.
 
-A computed step states its value in the coherent unit of its dimension, as
-every trace does: the fridge's 4.8 kWh reads `17280000` there, in joules,
-under a header in kilowatt-hours.
+A computed step states its value in the unit its trace step is shown in, as
+every trace does: a unit borrowed from the steps it read where that is safe,
+and otherwise the coherent unit of its dimension, spelt from its base units. A
+power times a time borrows neither one's unit, so the fridge's 4.8 kWh reads
+`17280000 m^2 kg/s^2` there, in joules, under a header in kilowatt-hours.
 
 ## A value typed in by hand
 

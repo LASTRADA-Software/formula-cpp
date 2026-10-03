@@ -22,11 +22,15 @@
 ///    unbounded render of a derivation with a hundred thousand steps is one
 ///    unusable wall of text; a default limit is a limit someone forgets, and
 ///    a required one is a limit someone chooses.
-///  - It never shows a value in a unit nobody entered. Every `Step` holds its
-///    value in the coherent unit of its dimension so that steps are
-///    comparable, and remembers the unit it was *declared* in; this converts
-///    back before showing a number, so a volume entered as 180 l reads
-///    `180 l` and not `9/50`.
+///  - It never shows a number without the unit it is in. Every `Step` holds
+///    its value in the coherent unit of its dimension so that steps are
+///    comparable, and remembers the unit it is shown in (`Step::unit`): the
+///    one it was *declared* in, one borrowed from its operands where that is
+///    safe, or the coherent unit. This converts back before showing a number
+///    and writes that unit after it, so a volume entered as 180 l reads
+///    `180 l` and not `9/50 m^3`, and a computed density whose unit has no
+///    symbol reads in the coherent unit, spelt from its base units:
+///    `2400 kg/m^3`. Only a dimensionless value is a bare number.
 ///  - It never shows an approximation as exact. Numbers are fractions unless
 ///    `TraceRenderOptions::numbers` asks for decimals, and a decimal is shown
 ///    only where it is the exact value -- `3/5` reads `0.6`, `1/3` stays
@@ -35,8 +39,9 @@
 ///    are never rounded even then: a number typed rather than computed -- a
 ///    constant, a table's row or bound, a permitted value, a limit, and a
 ///    step that only passes one on -- and either side of a comparison a line
-///    states beside its verdict. A value in a unit nobody declared, a
-///    computed product or ratio, is never padded with zeros.
+///    states beside its verdict. A value in the coherent unit -- a computed
+///    product or ratio, followed by its spelling, `kg/m^3` -- is never padded
+///    with zeros.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/error.hpp>
@@ -108,10 +113,11 @@ struct TraceRenderOptions
     /// rounds the rest in `mode` at the unit's declared decimals and marks
     /// each with `ApproximationMarker`. Whatever the style, a number typed
     /// rather than computed, and either side of a comparison a line states,
-    /// are shown exact (`NumberStyle::exact_only`), and a value in a unit
-    /// nobody declared is never padded; where its default 3 places would
-    /// round a value other than zero to `≈0`, they are extended to its first
-    /// significant digit, up to 18 (`checked_shown_text`). A value a formula
+    /// are shown exact (`NumberStyle::exact_only`), and a value in the
+    /// coherent unit -- followed by that unit's spelling, `kg/m^3` -- is
+    /// never padded; where its default 3 places would round a value other
+    /// than zero to `≈0`, they are extended to its first significant digit,
+    /// up to 18 (`checked_shown_text`). A value a formula
     /// rounded itself -- `rounded`, `rounded_sqrt`, `rounded_ln`,
     /// `rounded_log10`, `rounded_exp`, `rounded_output` -- is the step's exact
     /// value, a decimal, so it reads without `≈` in every style, its mode in
@@ -1607,20 +1613,21 @@ namespace detail
                + variant_narrowing_clause(recorded) + "]";
     }
 
-    /// @p storedValue -- a step's own, or one element of a series step's -- converted
-    /// from the coherent unit of @p recorded's dimension into the unit the
-    /// step was declared in, with that unit's symbol, or `(not measured)`
-    /// (`NotMeasuredText`) when it is empty. Shared by `step_value_text` and
-    /// `series_step_line`, so that an element of a series reads exactly as a
-    /// single value of the same quantity does.
+    /// @p storedValue -- a step's own, or one element of a series step's --
+    /// converted from the coherent unit of @p recorded's dimension into the
+    /// step's unit (`Step::unit`), with that unit's symbol, or `(not
+    /// measured)` (`NotMeasuredText`) when it is empty. Shared by
+    /// `step_value_text` and `series_step_line`, so that an element of a
+    /// series reads exactly as a single value of the same quantity does.
     ///
     /// A dimensioned value whose unit has no symbol is shown in the coherent
     /// unit instead, followed by that unit's spelling (`coherent_unit_text`),
     /// so that no dimensioned value prints as a bare number
-    /// (`shown_unit_of`). The number is spelled in @p numberStyle (`checked_shown_text`: a coherent value is
-    /// never padded); a style that cannot spell it in the shown unit is
-    /// reported as the conversion's failure is, `(not shown: ...)`. The
-    /// fraction style never fails.
+    /// (`shown_unit_of`). The number is spelled in @p numberStyle
+    /// (`checked_shown_text`: a coherent value is never padded); a style
+    /// that cannot spell it in the shown unit is reported as the
+    /// conversion's failure is, `(not shown: ...)`, with no unit after it.
+    /// The fraction style never fails.
     [[nodiscard]] inline std::string value_in_declared_unit(Step<Rational> const& recorded,
                                                             std::optional<Rational> const& storedValue,
                                                             NumberStyle numberStyle)
@@ -1658,10 +1665,11 @@ namespace detail
     /// What a step produced, as a person should read it.
     ///
     /// The value is stored in the coherent unit of the step's dimension;
-    /// this converts it back into the unit the step was declared in and
-    /// appends that unit's symbol, so an input entered as 180 l reads
-    /// `180 l`. A step that failed shows why, and one with no value at all
-    /// says so -- absence is not an error and must not be rendered as one.
+    /// this converts it back into the unit the step is shown in and appends
+    /// that unit's text (`value_in_declared_unit`), so an input entered as
+    /// 180 l reads `180 l`. A step that failed shows why, and one with no
+    /// value at all says so -- absence is not an error and must not be
+    /// rendered as one.
     [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
         if (recorded.error.has_value())
@@ -2149,8 +2157,9 @@ namespace detail
     }
 
     /// One element's outcome in a conformity step, counted from one, with
-    /// the value judged in the check's unit and the row it was judged against
-    /// when the trace kept them: `2 satisfied, 36 % (from 30 to 40 %)`, `2
+    /// the value judged and the row it was judged against when the trace kept
+    /// them, both in the unit the step's values are shown in
+    /// (`shown_unit_of`): `2 satisfied, 36 % (from 30 to 40 %)`, `2
     /// violated, 71 % (at least 60 %): reject the specimen`, `2 not checked
     /// (...)`, or `2 invalid, 71 % (from 80 to 70 %): <the arithmetic
     /// error>`. An element not measured states no value, and neither does
@@ -2212,8 +2221,9 @@ namespace detail
     }
 
     /// A conformity step's line, without its number: `conform(#1)` and every
-    /// element's outcome in one bracket, each with the value judged, in the
-    /// check's unit, and the row it was judged against -- `[1 satisfied, 36 %
+    /// element's outcome in one bracket, each with the value judged and the
+    /// row it was judged against, both in the unit the step's values are
+    /// shown in (`shown_unit_of`) -- `[1 satisfied, 36 %
     /// (from 30 to 40 %); 2 violated, 55 % (from 50 to 60 %): reject the
     /// specimen; ...]` -- as many as @p budget allows, one
     /// unit each, as a series step's elements are (`series_step_line`), and
@@ -3520,18 +3530,22 @@ namespace detail
 ///
 /// Each calculated value's block opens with a header, `symbol = definition =
 /// value` -- the definition as `render` writes it, and the value in the unit
-/// the quantity was declared in, or why calculating it failed, or `(no
-/// value)` -- followed by its steps, indented and numbered from one within
-/// the block, each line as `render_trace` writes it. An overridden value's
-/// block is the header alone: `symbol = value, entered by hand in place of
-/// definition`. The inputs read follow under a line `inputs`, one indented
-/// line each, as `render_trace` writes a variable's step. A computed step
-/// states its value in the coherent unit of its dimension, as in
-/// `render_trace` (`docs/tracing.md`, "Reading a derivation"), so it may
-/// read differently from the header above it: `fridge_kwh = fridge_kw *
-/// fridge_h = 24/5 kWh` over `3. #1 * #2 = 17280000`, in joules. Under a
-/// rounding style the two may differ in their decimals too, one reading `≈`
-/// where the other does not.
+/// it is shown in (`detail::shown_unit_of`): the quantity's declared unit, or
+/// the coherent unit with its spelling for a dimensioned unit with no symbol
+/// -- or why calculating it failed, or `(no value)` -- followed by its
+/// steps, indented and numbered from one within the block, each line as
+/// `render_trace` writes it. An overridden value's block is the header
+/// alone: `symbol = value, entered by hand in place of definition`. The
+/// inputs read follow under a line `inputs`, one indented line each, as
+/// `render_trace` writes a variable's step. A computed step states its value
+/// in the unit its step is shown in (`Step::unit`), as in `render_trace`
+/// (`docs/tracing.md`, "Reading a derivation"): a unit borrowed from its
+/// operands where that is safe, and otherwise the coherent unit of its
+/// dimension, spelt from its base units. So it may read differently from the
+/// header above it: `fridge_kwh = fridge_kw * fridge_h = 24/5 kWh` over
+/// `3. #1 * #2 = 17280000 m^2 kg/s^2`, a power times a time in joules. Under
+/// a rounding style the two may differ in their decimals too, one reading
+/// `≈` where the other does not.
 ///
 /// **Every number is spelled in @p options.numbers**, fractions unless the
 /// caller names another style, as `render_trace` spells a trace's: each
@@ -3544,7 +3558,7 @@ namespace detail
 /// there. A typed value is exact wherever the derivation states it: in its
 /// block's header, on its root's line, and on each line of another block
 /// that reads it (`WorksheetEntry::readSlots`) -- where it reads as its
-/// header does, both in the unit the quantity was declared in.
+/// header does, both in the unit the quantity's values are shown in.
 ///
 /// **One budget bounds it all.** Every header, step and input line spends
 /// one unit of @p options.maxSteps, and a step showing a series spends one

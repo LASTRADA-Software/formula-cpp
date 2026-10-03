@@ -445,12 +445,12 @@ which is why a dimension should only ever be built with `base_dimension` and
 the operators.
 
 **In a coherent unit, the name is the symbol.** A computed step in a trace
-carries no unit symbol of its own (see
-[Tracing and audit trails](tracing.md#reading-a-derivation)), but where the
-trace does spell a coherent unit out -- for an opaque operation's output that
-no input's unit fits ([Opaque operations and bounded retry](opaque-and-retry.md))
--- a named base is written by its name, ahead of the SI units on its side of
-the slash: `EUR s^2/(m^2 kg)` for euros per joule, then `1/JPY`, `EUR/JPY`,
+that has no unit to borrow from the steps it read is shown in the coherent
+unit, and the trace spells that unit out after its number (see
+[Tracing and audit trails](tracing.md#reading-a-derivation)) -- as it does for
+an opaque operation's output that no input's unit fits
+([Opaque operations and bounded retry](opaque-and-retry.md)). A named base is
+written by its name, ahead of the SI units on its side of the slash: `EUR s^2/(m^2 kg)` for euros per joule, then `1/JPY`, `EUR/JPY`,
 `EUR^(1/2)`. The money comes first because a tariff is read as money per
 energy.
 

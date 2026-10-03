@@ -452,7 +452,7 @@ And by the overlay's two checks in its place. The overlay lists the shape factor
 
 ## Worked derivation: a grading curve read between two screens
 
-The same percentages paired with the declared screens as a curve, and read at 173 m. The last step names the two screens the answer lay between. Its value, like every computed step's, reads in the coherent unit, a plain fraction for a percentage: 6927/10625 is about 65.2 %.
+The same percentages paired with the declared screens as a curve, and read at 173 m. The last step names the two screens the answer lay between. Its value is read off computed percentages -- 100 % less a ratio of two masses, in two units with no one unit to borrow -- so it reads in the coherent unit, a plain fraction: 6927/10625 is about 65.2 %.
 
 ```
 interpolate(curve(domain(103, 127, 163, 197, 241 m), 100 % - cumulative(m_r(i), from last) / m_t), at 173 m)

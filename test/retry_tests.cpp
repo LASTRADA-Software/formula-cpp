@@ -450,8 +450,9 @@ std::vector<formula::AttemptJudgement> judgements(formula::Trace<> const& record
 }
 
 // The first three attempts of the fixpoint, as the trace shows them: the same
-// for the four-attempt retry and the three-attempt one. Computed steps read in
-// the coherent unit, as everywhere in a trace.
+// for the four-attempt retry and the three-attempt one. Each computed step is a
+// mass halved, or a sum or difference of masses in grams, so it reads in grams,
+// as the values it is computed from do.
 constexpr std::string_view firstThreeAttempts = "1. 0 g\n"
                                                 "2. 152/25 g\n"
                                                 "3. w(k-1) = 0 g\n"

@@ -104,6 +104,11 @@ the rounded variant beneath it. The rounding step says whose rule it was:
 9. #8 = 11/2 MPa [variant Cube (2nd of 3), selected by tag]
 ```
 
+Each computed step reads in a unit written after it. The force scaled by the
+shape factor, a pure number, keeps the force's newtons. The area and the
+stress borrow neither operand's unit, so each reads in the coherent unit of its
+dimension, spelt from the base units: `m^2`, and `kg/(m s^2)` for the pascal.
+
 ### Naming a variant as the published method does
 
 A tag is shown under its own name, `Cube`. Where the published method words a
@@ -590,9 +595,9 @@ them:
 
 A method with no constraints still gets its `acceptance` line --
 `acceptance(none)`, with whose it is -- so a jurisdiction that removed every
-check is never silent about it. Step 7 is `1.73 x 103 mm` in coherent SI, 0.17819 m,
-written without its unit, as the computed steps of the cube's trace above are
-too.
+check is never silent about it. Step 7 is `1.73 x 103 mm`, a length scaled by a
+pure number, so it reads in the length's millimetres, `17819/100 mm`, as the
+force scaled by the shape factor in the cube's trace above reads in newtons.
 
 The constraints carry whose they are with them: `with_constraints` puts an
 `OverlaidConstraints` in the method -- the jurisdiction's set together with

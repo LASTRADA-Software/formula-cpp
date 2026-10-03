@@ -356,8 +356,8 @@ enum class StepKind : std::uint8_t
     SampleMean,
     /// A `SampleVarianceNode`: the sample variance, over n - 1. Its one
     /// operand is the sample's own step. Shown in the coherent unit of its
-    /// squared dimension, as every computed step is: no declared unit names
-    /// a squared mass.
+    /// squared dimension, as a computed step with no unit to borrow is: no
+    /// operand's unit names a squared mass.
     ///
     /// Checked on GCC under `-Wshadow`: the node is `SampleVarianceNode` and
     /// the factory `sample_variance`, so nothing in namespace `formula` is
@@ -967,22 +967,41 @@ struct Step
     /// The dimension of what this step produced.
     Dimension dimension {};
 
-    /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
-    /// for a variable or an overridden constant, the constant's own unit for
-    /// a constant, the node's own unit for a `Round`, `RoundSignificant`,
-    /// `RoundedRoot`, `RoundedOpaqueOutput` or `RoundingRuleApplied` step, the
-    /// unit of the step it wraps for a `Documented`, `ReplacedVariant` or
-    /// `VariantSelected` step --
-    /// each passes its operand's value through unchanged, so it states it as
-    /// that operand's line does, whenever that line is the wrapped node's own
-    /// and not the operands of a consumer's node -- and the coherent unit of
-    /// `dimension` for anything else computed, which has no declared unit of
-    /// its own.
+    /// The unit this step's value is shown in:
+    ///
+    ///  - a variable, constant or rounding shows its declared unit --
+    ///    `Describe<Q>::unit` for a variable or an overridden constant, the
+    ///    constant's own unit for a constant, the node's own unit for a
+    ///    `Round`, `RoundSignificant`, `RoundedRoot`, `RoundedOpaqueOutput` or
+    ///    `RoundingRuleApplied` step;
+    ///  - a `Documented`, `ReplacedVariant`, `VariantSelected` or `RecordScope`
+    ///    step passes its operand's value through unchanged, so it shows the
+    ///    unit that operand's line does, whenever that line is the wrapped
+    ///    node's own and not the operands of a consumer's node;
+    ///  - a value scaled by a pure number shows its operand's unit, and so
+    ///    does a sum or difference on one scale under one name, a series' sum
+    ///    and its range;
+    ///  - a negation and an absolute value show their operand's unit;
+    ///  - a mean and a rejection pass's mean are points on their sample's
+    ///    scale, and show its unit, offset or not;
+    ///  - a conditional and a precision limit show the unit of the step they
+    ///    restate;
+    ///  - an opaque operation's output shows an input's unit of its
+    ///    dimension, or a quotient of two (`OpaqueOutputValue::unit`);
+    ///  - an offset unit is never borrowed for a sum, difference, scaling,
+    ///    negation or absolute value: such a value is no point on its scale;
+    ///  - everything else is the coherent unit of `dimension`, which the
+    ///    renderer writes after the number, spelt from its bases (`kg/m^3`).
+    ///
+    /// A unit is borrowed only from operand steps that are provably the
+    /// operands' own, and only when it has a symbol: a value in a unit with
+    /// no symbol could not say what scale it is on, and reads in the coherent
+    /// unit instead.
     ///
     /// `value` is always in the coherent unit, so that steps are
     /// comparable; this is what a renderer converts back to before showing a
     /// number to a person. Without it a derivation restates every input in a
-    /// unit nobody typed: someone who entered 180 l reads `9/50`, which is
+    /// unit nobody typed: someone who entered 180 l reads `9/50 m^3`, which is
     /// the same volume and a worse record. The renderer cannot recover this
     /// on its own -- by the time a `Step` exists the quantity type is erased,
     /// so the recorder captures it here.
@@ -2870,9 +2889,9 @@ namespace detail
     /// reading on its scale -- a span of Celsius readings is a difference, and
     /// shown in degrees Celsius it would be off by the offset -- so it reads
     /// in kelvin. A unit with no symbol is never borrowed: its value could
-    /// not say what scale it is on, and the trace spells a unit it cannot
-    /// name as the coherent one -- a consumer's unnamed thousandth of a
-    /// metre would read as metres, a thousand times too large. And a
+    /// not say what scale it is on, and the trace shows a value in such a
+    /// unit in the coherent one anyway -- a consumer's unnamed thousandth of
+    /// a metre reads as metres. And a
     /// dimensionless output borrows nothing: a ratio of two masses is not a
     /// percentage because some input was one, and an operation declares no
     /// unit for its outputs.
@@ -3202,7 +3221,8 @@ class RecordingSink
         nodeStep.dimension = N::dimension;
 
         // Anything computed has no declared unit, so the coherent one is
-        // the truthful answer; a variable overrides it with the unit its
+        // the truthful answer -- until the rules below borrow one from the
+        // operand steps; a variable overrides it with the unit its
         // quantity is declared in. `requires { N::unit; }` now also selects
         // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode`,
         // `RoundedRootNode` and `RoundedOpaqueOutputNode` -- every one of them
@@ -3941,8 +3961,8 @@ class RecordingSink
             seriesStep.inputSource = _trace->pendingInputSource;
         }
         // A per-element constant is shown in the unit it was written in; a
-        // computed series has no declared unit, as a computed scalar has
-        // none, and keeps the coherent one.
+        // computed series keeps the coherent one, as a computed scalar does,
+        // until the rules below borrow one from its operand steps.
         else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesConstant
                            || detail::SeriesStepKindOf<S>::value == StepKind::SeriesDomain)
             seriesStep.unit = S::unit;

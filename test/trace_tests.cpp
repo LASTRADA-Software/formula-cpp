@@ -154,9 +154,9 @@ TEST_CASE("a step records the unit its value was declared in", "[trace]")
     CHECK(trace.steps[1].unit == unit::Millilitre);
     CHECK(trace.steps[1].value == formula::Rational { 1, 2000 });
 
-    // Anything computed has no declared unit of its own, so the coherent SI
-    // unit of its dimension is the truthful answer -- not the unit of either
-    // operand, which a sum of litres and millilitres shows there is no
+    // A sum of values in two units has no one unit to borrow, so the coherent
+    // SI unit of its dimension is the truthful answer -- not the unit of
+    // either operand, which a sum of litres and millilitres shows there is no
     // defensible way to pick.
     CHECK(trace.steps[2].kind == formula::StepKind::Add);
     CHECK(trace.steps[2].unit == formula::coherent(formula::dim::Volume));

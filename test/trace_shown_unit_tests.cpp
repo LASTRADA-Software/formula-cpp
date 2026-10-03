@@ -9,6 +9,8 @@
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/opaque.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/snap.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
@@ -18,7 +20,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace
 {
@@ -93,10 +103,83 @@ std::string trace_text(Expression const& formulaExpression, Bound const& inputs)
     return formula::render_trace(recorded_trace(formulaExpression, inputs), { .maxSteps = 20 });
 }
 
+// The electricity bill's money: a base dimension of its own, so that a price
+// times an energy reads in euros, the coherent unit of money.
+inline constexpr formula::Unit Euro { .dimension = formula::base_dimension("EUR"),
+                                      .symbolText = formula::symbol("EUR"),
+                                      .decimals = 2 };
+inline constexpr formula::Unit EuroPerKilowattHour { .dimension = Euro.dimension / formula::dim::Energy,
+                                                     .magnitudeNumerator = 1,
+                                                     .magnitudeDenominator = 3'600'000,
+                                                     .symbolText = formula::symbol("EUR/kWh"),
+                                                     .decimals = 4 };
+struct OvenPower: formula::Quantity<OvenPower, "oven_kw", "the oven's power", unit::Kilowatt>
+{
+};
+struct OvenHours: formula::Quantity<OvenHours, "oven_h", "the oven's hours a month", unit::Hour>
+{
+};
+struct SolarYield: formula::Quantity<SolarYield, "solar", "the solar yield of a month", unit::KilowattHour>
+{
+};
+struct SelfUsedEnergy: formula::Quantity<SelfUsedEnergy, "self_used", "the solar energy used at home", unit::KilowattHour>
+{
+};
+struct GridPrice: formula::Quantity<GridPrice, "price", "the grid price", EuroPerKilowattHour>
+{
+};
+struct BaseFee: formula::Quantity<BaseFee, "base_fee", "the monthly base fee", Euro>
+{
+};
+
 // The particles of a class, a count.
 struct ParticleCount: formula::Quantity<ParticleCount, "n", "particles in a class", unit::One>
 {
 };
+
+// A consumer's operation over a series of masses: its lowest element and the
+// span of the series, each a mass.
+struct LowestAndSpan
+{
+    static constexpr std::string_view name = "lowest and span";
+    static constexpr std::array shapes { formula::InputShape::Series };
+    static constexpr std::array<std::string_view, 2> outputs { "lowest", "span" };
+
+    static consteval std::optional<std::array<formula::Dimension, 2>> output_dimensions(
+        std::array<formula::Dimension, 1> declared) noexcept
+    {
+        return std::array { declared[0], declared[0] };
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 2>, formula::ArithmeticError> compute(
+        std::span<Rep const> readings) noexcept
+    {
+        Rep least = readings[0];
+        Rep most = readings[0];
+        for (Rep const& each: readings)
+        {
+            if (each < least)
+                least = each;
+            if (most < each)
+                most = each;
+        }
+        std::expected<Rep, formula::ArithmeticError> const spread = formula::RepTraits<Rep>::subtract(most, least);
+        if (!spread.has_value())
+            return std::unexpected { spread.error() };
+        return std::array { least, *spread };
+    }
+};
+
+inline constexpr auto lowestAndSpan =
+    formula::opaque<LowestAndSpan>({ .reference = "Example Standard 12" }, formula::series<SampleMass, 3>);
+
+// Three determinations in grams, and a tare.
+inline constexpr auto determinations = formula::environment(
+    formula::measured_series<SampleMass>(formula::Measured<SampleMass> { Rational { 402, 10 } },
+                                         formula::Measured<SampleMass> { Rational { 398, 10 } },
+                                         formula::Measured<SampleMass> { Rational { 433, 10 } }),
+    formula::Measured<TareMass> { Rational { 7 } });
 
 // The permitted values, the bands and the rows below, all in the unnamed
 // gram: a line that wrote them in that scale would write numbers a thousand
@@ -110,6 +193,106 @@ template <typename Expression>
 std::string unnamed_trace_text(Expression const& formulaExpression, Rational unnamedGrams)
 {
     return trace_text(formulaExpression, formula::environment(formula::Measured<UnnamedMass> { unnamedGrams }));
+}
+
+/// The decimal digits at the start of @p spelled, as an exact number, and
+/// @p spelled advanced past them; nothing when it does not start with one.
+std::optional<Rational> take_whole(std::string_view& spelled)
+{
+    if (spelled.empty() || spelled.front() < '0' || spelled.front() > '9')
+        return std::nullopt;
+    Rational parsed {};
+    while (!spelled.empty() && spelled.front() >= '0' && spelled.front() <= '9')
+    {
+        std::expected<Rational, formula::ArithmeticError> const shifted = formula::checked_mul(parsed, Rational { 10 });
+        if (!shifted)
+            return std::nullopt;
+        std::expected<Rational, formula::ArithmeticError> const added =
+            formula::checked_add(*shifted, Rational { spelled.front() - '0' });
+        if (!added)
+            return std::nullopt;
+        parsed = *added;
+        spelled.remove_prefix(1);
+    }
+    return parsed;
+}
+
+/// A value as a trace writes it in the fraction style: `-a/b unit`, `a`,
+/// `a/b`, each with or without a unit after a space.
+struct ShownValue
+{
+    Rational shownNumber;
+    std::string_view unitText;
+};
+
+std::optional<ShownValue> parse_shown(std::string_view spelled)
+{
+    bool const negative = spelled.starts_with('-');
+    if (negative)
+        spelled.remove_prefix(1);
+    std::optional<Rational> const wholeNumber = take_whole(spelled);
+    if (!wholeNumber)
+        return std::nullopt;
+    Rational parsed = *wholeNumber;
+    if (spelled.starts_with('/'))
+    {
+        spelled.remove_prefix(1);
+        std::optional<Rational> const below = take_whole(spelled);
+        if (!below)
+            return std::nullopt;
+        std::expected<Rational, formula::ArithmeticError> const divided = formula::checked_div(parsed, *below);
+        if (!divided)
+            return std::nullopt;
+        parsed = *divided;
+    }
+    if (negative)
+    {
+        std::expected<Rational, formula::ArithmeticError> const negated = formula::checked_negate(parsed);
+        if (!negated)
+            return std::nullopt;
+        parsed = *negated;
+    }
+    if (spelled.starts_with(' '))
+        spelled.remove_prefix(1);
+    else if (!spelled.empty())
+        return std::nullopt;
+    return ShownValue { parsed, spelled };
+}
+
+/// For every step of @p recorded that holds a value: the text after the
+/// number names the step's own unit, the coherent unit, or -- only for a
+/// dimensionless step -- nothing; and the number, read back from that unit
+/// into the coherent one, is exactly the value recorded. The unit is taken
+/// from the text, not from the rule that chose it, so a value written in one
+/// scale and labelled with another fails here.
+void check_each_value_is_in_the_unit_written_after_it(formula::Trace<> const& recorded)
+{
+    std::size_t checkedSteps = 0;
+    for (formula::Step<Rational> const& recordedStep: recorded.steps)
+    {
+        if (!recordedStep.value.has_value() || recordedStep.error.has_value())
+            continue;
+        std::string const shownText =
+            formula::detail::value_in_declared_unit(recordedStep, recordedStep.value, formula::NumberStyle::fraction());
+        INFO("step shown as: " << shownText);
+        std::optional<ShownValue> const parsed = parse_shown(shownText);
+        REQUIRE(parsed.has_value());
+        formula::Unit const coherentUnit = formula::coherent(recordedStep.dimension);
+        std::optional<formula::Unit> namedUnit;
+        if (!parsed->unitText.empty() && parsed->unitText == formula::detail::unit_symbol_text(recordedStep.unit))
+            namedUnit = recordedStep.unit;
+        else if (!parsed->unitText.empty() && parsed->unitText == formula::detail::coherent_unit_text(recordedStep.dimension))
+            namedUnit = coherentUnit;
+        else if (parsed->unitText.empty() && recordedStep.dimension == formula::dim::Scalar)
+            namedUnit = recordedStep.unit;
+        REQUIRE(namedUnit.has_value());
+        std::expected<Rational, formula::ArithmeticError> const backInCoherent =
+            formula::checked_convert(parsed->shownNumber, *namedUnit, coherentUnit);
+        REQUIRE(backInCoherent.has_value());
+        CHECK(*backInCoherent == *recordedStep.value);
+        ++checkedSteps;
+    }
+    CHECK(checkedSteps > 0);
 }
 } // namespace
 
@@ -342,11 +525,26 @@ TEST_CASE("a binary step over a node that records no step of its own reads in th
              "3. #1 * #2 = 313/5000 kg\n");
 }
 
+TEST_CASE("a binary step over a node on its right that records no step of its own reads in the coherent unit",
+          "[trace-render][shown-unit]")
+{
+    // The mirror of the case above: the pure number is the left operand and
+    // the forwarding node the right. The second step claimed is the
+    // forwarding node's operand, in grams, not the node: the product's unit
+    // is not read off it.
+    auto const grams = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } });
+    CHECK(trace_text(Rational { 2 } * forwarding::rise_above(var<SampleMass>, Rational { 1, 100 }), grams)
+          == "1. 2\n"
+             "2. m = 413/10 g\n"
+             "3. #1 * #2 = 313/5000 kg\n");
+}
+
 TEST_CASE("a derivation's header shows a value in a unit with a symbol without passing through the coherent unit",
           "[trace-render][shown-unit][worksheet]")
 {
-    // 10^13 kWh is 3.6 * 10^19 J, more than 64 bits count, but it is a
-    // perfectly good number of kilowatt-hours: typed in, it reads as typed.
+    // 10^13 kWh is 3.6 * 10^19 J: a header that converted it from kWh to kWh
+    // through joules took a detour that can only fail. Typed in, it reads as
+    // typed.
     auto sheet = formula::worksheet(household::bill, household::bill_environment(household::billValues));
     sheet.set(formula::entered(formula::Measured<household::NetDraw> { Rational { 10'000'000'000'000 } }));
     CHECK(formula::render_derivation(formula::explain_worksheet<household::NetDraw>(sheet), { .maxSteps = 20 })
@@ -417,4 +615,108 @@ TEST_CASE("a curve over a domain in a unit with no symbol states its rows in the
               .ends_with("interpolate(#3, at #4) = 15 % [between 1/500 and 3/500 kg]\n"));
     CHECK(unnamed_trace_text(formula::interpolate_at(massCurve, var<UnnamedMass>), Rational { 9 })
               .ends_with("[outside the curve, which runs 1/500 to 3/500 kg]\n"));
+}
+
+TEST_CASE("an opaque output that cannot be shown says so, with no unit after it", "[trace-render][shown-unit][opaque]")
+{
+    formula::Trace<> recorded = recorded_trace(formula::opaque_output<"span">(lowestAndSpan), determinations);
+    REQUIRE(recorded.opaqueSteps.size() == 1);
+    REQUIRE(recorded.opaqueSteps[0].outputs.size() == 2);
+    // A row built by hand, as a `Trace` is a public aggregate: the span said
+    // to be in metres, which no mass converts into.
+    recorded.opaqueSteps[0].outputs[1].unit = unit::Metre;
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+              .find("; span = (not shown: argument outside the domain of the operation) [inside not shown]")
+          != std::string::npos);
+}
+
+TEST_CASE("every value a trace shows is in the unit written after it", "[trace-render][shown-unit]")
+{
+    auto const inputs = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } },
+                                             formula::Measured<TareMass> { Rational { 7 } },
+                                             formula::Measured<HeavyMass> { Rational { 1 } },
+                                             formula::Measured<Edge> { Rational { 5 } },
+                                             formula::Measured<Breadth> { Rational { 8 } },
+                                             formula::Measured<StartTemperature> { Rational { 20 } },
+                                             formula::Measured<EndTemperature> { Rational { 25 } },
+                                             formula::Measured<Strength> { Rational { 60 } },
+                                             formula::Measured<UnnamedMass> { Rational { 3 } },
+                                             formula::Measured<FineMass> { Rational { 12345, 10000 } });
+    // A power, a quotient in the coherent unit, scaling, sums in one unit and
+    // in two, an offset difference, negations of both kinds, an absolute
+    // value, conditionals over both kinds of branch, and a unit with no symbol.
+    check_each_value_is_in_the_unit_written_after_it(
+        recorded_trace(formula::pow<2>(var<Edge>) / var<Breadth> + var<Edge>, inputs));
+    check_each_value_is_in_the_unit_written_after_it(
+        recorded_trace(formula::abs(var<SampleMass> - var<HeavyMass>) * Rational { 3, 50 } + var<FineMass>, inputs));
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::when(var<EndTemperature> > var<StartTemperature>, var<EndTemperature> - var<StartTemperature>,
+                      -var<StartTemperature>),
+        inputs));
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::when(var<Strength> > formula::constant<unit::Megapascal>(Rational { 473, 10 }), var<Strength> / Rational { 2 },
+                      -var<Strength>),
+        inputs));
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(var<UnnamedMass> * Rational { 2 } - var<TareMass>, inputs));
+}
+
+TEST_CASE("every value of a rejection, a bill, the statistics, a precision limit and an opaque call is in the unit written after it",
+          "[trace-render][shown-unit]")
+{
+    // The outlier rejection: a 6 % deviation from each pass's mean, over
+    // 40.2, 39.8, 40.5, 44.0, 40.0 and 43.3 g.
+    constexpr auto rejection =
+        formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<4>>(
+            formula::series<SampleMass, 6>,
+            formula::deviation_from_mean(Rational { 6, 100 } * formula::pass_mean<SampleMass>),
+            formula::Verdict { "discard the determinations and repeat the test" },
+            formula::Citation { .title = "Example Standard", .section = "7.4" });
+    auto const sample = formula::environment(formula::measured_series<SampleMass>(
+        formula::Measured<SampleMass> { Rational { 402, 10 } }, formula::Measured<SampleMass> { Rational { 398, 10 } },
+        formula::Measured<SampleMass> { Rational { 405, 10 } }, formula::Measured<SampleMass> { Rational { 44 } },
+        formula::Measured<SampleMass> { Rational { 40 } }, formula::Measured<SampleMass> { Rational { 433, 10 } }));
+    formula::Trace<> rejected {};
+    (void) formula::checked_evaluate_rejection<SampleMass>(rejection, sample, formula::RecordingSink<> { rejected });
+    CHECK(formula::render_trace(rejected, { .maxSteps = 20 }).find("4. #2 * #3 = 1239/500 g\n") != std::string::npos);
+    check_each_value_is_in_the_unit_written_after_it(rejected);
+
+    // An electricity bill: kWh - kWh, a power times a time, and a price per
+    // kWh times an energy, in euros.
+    auto const bill = formula::environment(formula::Measured<OvenPower> { Rational { 5, 2 } },
+                                           formula::Measured<OvenHours> { Rational { 30 } },
+                                           formula::Measured<SolarYield> { Rational { 150 } },
+                                           formula::Measured<SelfUsedEnergy> { Rational { 120 } },
+                                           formula::Measured<GridPrice> { Rational { 8, 25 } },
+                                           formula::Measured<BaseFee> { Rational { 25, 2 } });
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(var<SolarYield> - var<SelfUsedEnergy>, bill));
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        (var<OvenPower> * var<OvenHours> - var<SelfUsedEnergy> * Rational { 1, 2 }) * var<GridPrice> + var<BaseFee>, bill));
+
+    // The statistics of three determinations: a mean, a variance and a range.
+    check_each_value_is_in_the_unit_written_after_it(
+        recorded_trace(formula::sample_mean(formula::series<SampleMass, 3>) - var<TareMass>, determinations));
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::sample_variance(formula::series<SampleMass, 3>) / var<TareMass>
+            + formula::sample_range(formula::series<SampleMass, 3>),
+        determinations));
+
+    // A precision limit at the mean of two results, and one over typed
+    // constants.
+    auto const pair = formula::environment(formula::Measured<SampleMass> { Rational { 40 } },
+                                           formula::Measured<TareMass> { Rational { 40905, 1000 } },
+                                           formula::Measured<HeavyMass> { Rational { 2, 7 } });
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(
+            (var<SampleMass> + var<TareMass>) / Rational { 2 },
+            formula::constant<unit::Gram>(Rational { 1, 10 }) + Rational { 1, 50 } * formula::precision_level<SampleMass>),
+        pair));
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Kilogram>(Rational { 1, 3 }),
+                                                                        formula::constant<unit::Kilogram>(Rational { 1, 7 }))
+            * var<HeavyMass>,
+        pair));
+
+    // An opaque call, its outputs, and a sum over one of them.
+    check_each_value_is_in_the_unit_written_after_it(
+        recorded_trace(formula::opaque_output<"span">(lowestAndSpan) + var<TareMass>, determinations));
 }

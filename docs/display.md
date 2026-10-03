@@ -166,24 +166,51 @@ declares, as a line of another block that reads the value states it --
 rounded, padded or exact alike. The block's own last step agrees with the
 header on whether the value is typed, and a typed value is exact on every one
 of those lines. That is all they agree on: where the last step computed the
-value, it states it in the coherent unit, so it may differ from the header in
-its unit, its padding and its decimals, and one may read `≈` where the other
-does not. The header's definition is written as a rendered formula is (see
+value, it states it in the unit that step is shown in, which may be the
+coherent unit (below), so it may differ from the header in its unit, its
+padding and its decimals, and one may read `≈` where the other does not. The header's definition is written as a rendered formula is (see
 below), its typed numbers exact.
 
 ### A value in a unit nobody declared
 
-Line 3 reads `0.0134`, with no unit. A value the arithmetic computed -- a
-difference, a product, a ratio -- is stated in the coherent unit of its
-dimension, here the kilogram: `0.0134` is the 13.4 g the specimen lost. Nobody
-declared that unit for this formula, so its decimals are `Unit`'s default of 3,
-which is no one's statement of precision. Such a value is **never padded** --
-the padded trace in the next section writes a computed 0.12 kg as `0.12`, not
-`0.120` -- and when it is rounded it keeps those **3 places** (bar one
-exception, below): line 7's ratio reads `≈0.113`.
+Most computed values read in a unit someone declared. Lines 3 and 6 above,
+differences of two masses in grams, read in grams, as a value scaled by a pure
+number does: a computed step borrows the unit of the steps it read where that
+is safe ([Reading a derivation](tracing.md#reading-a-derivation)). A value
+computed from values in two units -- a length over a time, a product of two
+lengths -- has no such unit to borrow. It is stated in the **coherent unit** of
+its dimension, followed by that unit's spelling from the base units. A creep
+rate, an elongation in millimetres over a time in hours:
 
-Three places of a kilogram can hide almost everything. The dish's mass, the
-mean of three weighings in grams, is computed in kilograms:
+```cpp
+// A creep rate: a length over a time, which borrows neither one's unit.
+inline constexpr auto creepRate = var<Elongation> / var<HoldTime>;
+```
+
+Its trace, rendered in the rounded and padded style:
+
+```text
+1. dl = 2.4 mm
+2. t_h = 0.75 h
+3. #1 / #2 = ≈0.0000009 m/s
+```
+
+Line 3 is in metres per second, written `m/s` after it, though nobody declared
+that unit for this formula. Its decimals are `Unit`'s default of 3, which is no
+one's statement of precision, so such a value is **never padded**. When it is
+rounded it keeps those 3 places -- unless they round a value other than zero to
+`≈0`, which says nothing of it. They are then extended to its first significant
+digit, up to 18 places, and the `≈` stays: the rate, 0.00000088... m/s, reads
+`≈0.0000009`, not `≈0`. A price worked out in euros per kilowatt-hour is stated
+in euros per joule: 3401/33480000000 reads `≈0.0000001`. A value in a unit
+someone declared keeps that unit's places, whatever they round to. The result
+itself, read in the unit its quantity declares, keeps what matters:
+
+```text
+the creep rate in its declared millimetres per minute: ≈0.05 mm/min
+```
+
+The dish's mass, the mean of three weighings in grams, is computed in grams:
 
 ```cpp
 // The mean of three weighings: their sum times a typed 1/3, which has no exact decimal.
@@ -200,22 +227,14 @@ Its trace, rendered in the rounded and padded style:
 ```
 
 A series' sum keeps its quantity's unit: line 2 is in grams. The product on
-line 4 is not: it is 0.004233... kg, rounded to 3 places of a kilogram, and
-not padded: `≈0.004`. Line 1's weighings keep their second decimal, though the
-gram declares one: padding never cuts a decimal short. The `≈` says line 4 was
-rounded; the result itself, read in the unit its quantity declares, keeps what
-matters:
+line 4 is the sum scaled by a pure number, so it is in grams too, rounded at the
+gram's one decimal: `≈4.2`. Line 1's weighings keep their second decimal,
+though the gram declares one: padding never cuts a decimal short. The `≈` says
+line 4 was rounded, as the result does, read in the unit its quantity declares:
 
 ```text
 the dish's mass in its declared grams: ≈4.2 g
 ```
-
-Where those 3 places would round a value other than zero to `≈0`, which says
-nothing of it, they are extended to its first significant digit, up to 18
-places, and the `≈` stays. A price worked out in euros per kilowatt-hour is
-stated in euros per joule: 3401/33480000000 reads `≈0.0000001`, not `≈0`. A
-value in a unit someone declared keeps that unit's places, whatever they
-round to.
 
 ### What no style rounds
 
@@ -369,8 +388,8 @@ trace, padded style:
 ```
 
 The formula states the 24 its author typed; the trace pads it to the gram's one
-decimal, as it pads every value in grams. Line 3, 0.12 kg in a unit nobody
-declared, is not padded to that unit's default 3 decimals.
+decimal, as it pads every value in grams -- line 3 too, a difference of two
+values in grams, and so in grams itself.
 
 The style reaches every node through the vocabulary, the one argument every
 `render_node` already receives -- your own included

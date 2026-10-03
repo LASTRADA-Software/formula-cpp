@@ -6,7 +6,8 @@
 //   1. A trace of a soil specimen's moisture content, in the default
 //      fractions, as exact decimals, rounded where no decimal ends, and padded
 //      to each unit's declared decimals.
-//   2. A value in a unit nobody declared, and a comparison, which no style
+//   2. A value in the coherent unit, nobody's declared unit; a value in the
+//      unit it borrows from its operands; and a comparison, which no style
 //      rounds.
 //   3. The formula's own text: its typed numbers as decimals, never rounded
 //      and never padded.
@@ -48,6 +49,9 @@ using DishWeighing = formula::Quantity<struct DishWeighingTag, "t", "a weighing 
 using DishMass = formula::Quantity<struct DishMassTag, "m_t", "mass of the empty dish", unit::Gram>;
 using OvenTemperature = formula::Quantity<struct OvenTemperatureTag, "T", "oven temperature", unit::Celsius>;
 using GrainSize = formula::Quantity<struct GrainSizeTag, "D", "grain size", unit::Micrometre>;
+using Elongation = formula::Quantity<struct ElongationTag, "dl", "elongation under the held load", unit::Millimetre>;
+using HoldTime = formula::Quantity<struct HoldTimeTag, "t_h", "time the load was held", unit::Hour>;
+using CreepRate = formula::Quantity<struct CreepRateTag, "v", "creep rate", unit::MillimetrePerMinute>;
 
 // ---- 1. The moisture content -----------------------------------------------------
 // The water the specimen lost over its dry mass, the dish's typed 25.5 g taken off.
@@ -58,6 +62,12 @@ inline constexpr auto specimen =
     formula::environment(formula::Measured<WetMass> { 157.4_r }, formula::Measured<DryMass> { 144 });
 
 // ---- 2. A value in a unit nobody declared, and a comparison ------------------------
+// A creep rate: a length over a time, which borrows neither one's unit.
+inline constexpr auto creepRate = var<Elongation> / var<HoldTime>;
+
+inline constexpr auto heldLoad =
+    formula::environment(formula::Measured<Elongation> { 2.4_r }, formula::Measured<HoldTime> { 0.75_r });
+
 // The mean of three weighings: their sum times a typed 1/3, which has no exact decimal.
 inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) * formula::number(Rational { 1, 3 });
 
@@ -154,6 +164,21 @@ int main()
 
     // ---- 2. A unit nobody declared, and a comparison ---------------------------------
     std::println("== 2. A unit nobody declared, and a comparison ==\n");
+
+    auto const creep = formula::checked_explain<CreepRate>(creepRate, heldLoad);
+    if (!creep)
+    {
+        std::println("the creep rate: {}", creep.error().error);
+        return 1;
+    }
+    check(creep->outcome.is_value(), "the creep rate is a value");
+    std::string const creepTraceText = formula::render_trace(creep->trace, { .maxSteps = 20, .numbers = paddedStyle });
+    std::println("{}", creepTraceText);
+    formula::NumberText const creepText = formula::number_text(creep->outcome.measurement(), roundedStyle);
+    std::println("the creep rate in its declared millimetres per minute: {}\n", creepText.view());
+    check(creepTraceText.contains("3. #1 / #2 = \xe2\x89\x88" "0.0000009 m/s\n"),
+          "a value in the coherent unit is not padded, and is rounded at its first significant digit");
+    check(creepText == "\xe2\x89\x88" "0.05 mm/min", "the declared result rounds at its unit's two decimals");
 
     auto const dish = formula::checked_explain<DishMass>(dishMass, weighings);
     if (!dish)

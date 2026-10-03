@@ -1206,8 +1206,9 @@ TEST_CASE("a derivation's header says a value is not shown where its style canno
 {
     // A length in a unit declaring 19 decimals, more than a rounding or a
     // padding can take: under a style that pads or rounds, its header and
-    // the line reading it say it is not shown, while its root, in metres,
-    // spells it. In fractions every value is shown.
+    // the line reading it say it is not shown, while its root, a width in
+    // millimetres scaled by a pure number and so in millimetres too, spells
+    // it. In fractions every value is shown.
     auto sheet = formula::worksheet(overPrecise, formula::environment(formula::Measured<Width> { rat(3) }));
     auto const explained = formula::explain_worksheet<Depth>(sheet);
     std::string const fractions = formula::render_derivation(explained, { .maxSteps = 20 });
