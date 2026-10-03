@@ -234,21 +234,21 @@ std::print("{}", formula::render_trace(explained.trace, { .maxSteps = 10 }));
 4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
 ```
 
-Every value is shown in the unit written after it: an input in the unit it
-was declared in, not the coherent unit the arithmetic actually ran on — that
-is `9/50` cubic metres above, and nobody typed cubic metres. A computed value
+Every value is shown in the unit written after it: an input in the unit it was
+declared in, not the coherent unit the arithmetic actually ran on — that is
+`9/50` cubic metres above, and nobody typed cubic metres. A computed value
 borrows the unit of the values it was computed from where that is safe, and is
 otherwise shown in the coherent unit, spelt from the base units (`kg/m^3`);
 only a dimensionless value, like the ratio above, is a bare number. When the
 environment overrides the result instead of letting the formula derive it,
 `explained.trace` comes back empty — nothing ran, so nothing was recorded —
-and `explained.outcome.is_overridden()` says so instead: an overridden number shows *that a person entered it*, a
-different fact from how it was reached and arguably a more important one.
-See [the tracing guide](docs/tracing.md) for the detail. Tracing costs
-nothing when nobody asks for it: a sink is
-passed by value, and the untraced path — `evaluate()`, `checked_evaluate()` —
-defaults to one that does nothing, adding no instruction the evaluator would
-not already emit once the call inlines, measured on all four compilers this
+and `explained.outcome.is_overridden()` says so instead: an overridden number
+shows *that a person entered it*, a different fact from how it was reached and
+arguably a more important one. See [the tracing guide](docs/tracing.md) for
+the detail. Tracing costs nothing when nobody asks for it: a sink is passed by
+value, and the untraced path — `evaluate()`, `checked_evaluate()` — defaults
+to one that does nothing, adding no instruction the evaluator would not
+already emit once the call inlines, measured on all four compilers this
 library targets. See [the tracing guide](docs/tracing.md).
 
 ### A published table that a value falls outside of gives no number at all
