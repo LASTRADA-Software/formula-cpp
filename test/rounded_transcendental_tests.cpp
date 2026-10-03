@@ -185,10 +185,16 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
     STATIC_REQUIRE(expAt<DecimalPlaces { -19 }, RoundingMode::Floor>(Rational { -50 }) == overflow);
     // An argument whose numerator or denominator does not fit 64 bits is beyond the kernel, which works on
     // two values below 2^63: ln 2^70 and exp 2^-64 are Overflow, though a Rational holds both arguments.
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 }) == overflow);
-    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 64 }) == overflow);
+    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
+                   == overflow);
+    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 64 })
+                   == overflow);
+    // The rule below -43 comes first, whatever the argument's width: exp -2^70 is 0.
+    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { -(Rational::Int { 1 } << 70) })
+                   == Rational {});
     // 2^62 and 1/2^62, inside it, answer: ln 2^62 = 42.97512..., exp 2^-62 rounds to 1.
-    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 62 }) == Rational { 429751, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 62 })
+          == Rational { 429751, 10000 });
     CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 62 }) == Rational { 1 });
 }
 

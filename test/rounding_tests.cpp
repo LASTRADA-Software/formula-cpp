@@ -294,8 +294,9 @@ TEST_CASE("rounding precision is limited by the numerator, not the magnitude", "
     // the denominator first, so what must fit is
     //     |numerator| * (10^N / gcd(10^N, denominator)),
     // which for a binary denominator is |numerator| * 5^N. The NUMERATOR
-    // decides, and a double's has at most 53 bits: times 5^18, the most
-    // DecimalPlaces allows, it is below 2^95, so every place fits.
+    // decides. A double below 2^53 in magnitude has one of at most 53 bits,
+    // and rounding it at up to 18 places forms at most 2^53 * 5^18 * 2^18,
+    // below 2^113, so every place from 0 to 18 fits.
 
     // 0.45 as a double is exactly 8106479329266893 / 2^54 -- a 53-bit
     // numerator. Six places, which overflowed 64 bits, and eighteen fit.
@@ -304,6 +305,18 @@ TEST_CASE("rounding precision is limited by the numerator, not the magnitude", "
           == Rational { 9, 20 });
     CHECK(formula::rational_from_double(0.45, formula::DecimalPlaces { 18 }, RoundingMode::HalfAwayFromZero)
           == Rational { 450'000'000'000'000'011, 1'000'000'000'000'000'000 });
+    // Just below 2^52, half a unit off a whole number, it is exact at 18 places.
+    CHECK(formula::rational_from_double(4503599627370495.5, formula::DecimalPlaces { 18 }, RoundingMode::Floor)
+          == Rational { 9007199254740991, 2 });
+    // Past 2^53 the claim stops: a whole double's numerator is its own
+    // magnitude, with nothing to cancel, so 1e21 overflows at 18 places and
+    // 1e38 at 1; and at -18 places 2^-100's denominator times 10^18 does.
+    CHECK(error_of(formula::rational_from_double(1e21, formula::DecimalPlaces { 18 }, RoundingMode::Floor))
+          == ArithmeticError::Overflow);
+    CHECK(error_of(formula::rational_from_double(1e38, formula::DecimalPlaces { 1 }, RoundingMode::Floor))
+          == ArithmeticError::Overflow);
+    CHECK(error_of(formula::rational_from_double(0x1p-100, formula::DecimalPlaces { -18 }, RoundingMode::Floor))
+          == ArithmeticError::Overflow);
 
     // What does fail is from_double_exact, before any rounding happens, when
     // the double's exact value needs a denominator of 2^127 or more: 1e-30 is

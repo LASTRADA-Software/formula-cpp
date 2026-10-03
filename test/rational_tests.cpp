@@ -33,6 +33,13 @@ consteval Rational exact(Rational::Int numerator, Rational::Int denominator)
 
 // ---- invariants ----
 
+// Two 128-bit integers: 32 bytes.
+static_assert(sizeof(Rational) == 32);
+// Every built-in integer up to 64 bits converts, unsigned 64 bits included;
+// `bool` does not.
+static_assert(std::is_constructible_v<Rational, std::uint64_t>);
+static_assert(!std::is_constructible_v<Rational, bool>);
+
 static_assert(Rational {}.numerator() == 0);
 static_assert(Rational {}.denominator() == 1);
 static_assert(Rational { 7 }.numerator() == 7);

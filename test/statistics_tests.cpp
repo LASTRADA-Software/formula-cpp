@@ -544,13 +544,7 @@ TEST_CASE("a variance that overflows fails with Overflow, naming the determinati
     // Fixture A scaled by 2^63, where the two-pass form first fails: its mean
     // still fits, and a squared deviation does not, at the fourth
     // determination.
-    constexpr Rational::Int scale = Rational::Int { 1 } << 63;
-    constexpr auto scaledA = formula::environment(formula::measured_series<Mass>(grams(Rational { 402 * scale, 10 }),
-                                                                                 grams(Rational { 398 * scale, 10 }),
-                                                                                 grams(Rational { 405 * scale, 10 }),
-                                                                                 grams(Rational { 440 * scale, 10 }),
-                                                                                 grams(Rational { 400 * scale, 10 }),
-                                                                                 grams(Rational { 433 * scale, 10 })));
+    constexpr auto scaledA = fixture_a_scaled(Rational::Int { 1 } << 63);
     STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, scaledA).error() == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(formula::checked_evaluate_si(formula::sample_mean(determinations), scaledA).has_value());
     formula::Trace<> squaresLate {};
