@@ -249,8 +249,8 @@ contradicts itself -- so a compared value is never shown rounded.
 ### Values the exact layer cannot hold
 
 A square root, a logarithm or an exponential is irrational almost everywhere,
-and the exact sums behind a line fitted through 34 readings at three decimals
-can already leave the 64-bit integers of `Rational`
+and the exact sums behind a line fitted through 28 points, each on a different
+denominator, can already leave the 128-bit integers of `Rational`
 ([numeric headroom](numeric-headroom.md#least-squares-realistic-and-one-stress-control)).
 The library does not approximate such values. A formula that needs one
 **declares the precision it is reported at** -- a unit, decimal places and a

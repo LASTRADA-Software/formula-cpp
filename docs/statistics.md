@@ -354,10 +354,13 @@ no rendering in any dialect holds a `|`.
 
 ## How much room exact arithmetic has
 
-Statistics of determinations read at fine resolution are where a 64-bit
-exact fraction runs out first: a variance of masses read to 1 µg overflows on
-about four samples in ten, and a rejection in standard deviations sooner.
-The result is then `Overflow`, never a wrong number. See
+Statistics of determinations read at fine resolution are where an exact
+fraction's integers grow fastest: the exact variance of six masses near 40 g
+read to 1 µg needs up to 65 bits in kg². `Rational`'s 128-bit integers hold
+it for every one of the 1000 samples measured, with at least 62 of their 127
+bits to spare, and a rejection in standard deviations with at least 58.
+Where a computation does outgrow them, the result is `Overflow`, never a
+wrong number. See
 [Numeric headroom](numeric-headroom.md) for the measurements.
 
 ## What is not modelled

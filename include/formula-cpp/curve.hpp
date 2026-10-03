@@ -30,12 +30,12 @@
 /// extrapolation or a clamp. It is carried out in the coherent unit, since
 /// a computed domain has no declared unit of its own to carry it out in; a
 /// linear interpolation's answer does not depend on the scale either axis is
-/// stated in. Its exact arithmetic can: a point that is exact in its declared
-/// unit may not be in the coherent one. `domain<Millimetre, {1/10^16, 1}>`
-/// fails with `Overflow` at its first element, since 1/10^19 m has a
-/// denominator no int64 holds, where an interpolating lookup over the same
-/// table -- which interpolates in its declared key unit -- answers. The
-/// failure is conservative: it never gives a wrong number.
+/// stated in. Its exact arithmetic can: a point's denominator grows on its
+/// way to the coherent unit -- 1/10^16 mm is 1/10^19 m -- and a point or a sum
+/// that leaves `Rational::Int`'s range fails with `Overflow`, where an
+/// interpolating lookup over the same table, which interpolates in its
+/// declared key unit, may answer. The failure is conservative: it never gives
+/// a wrong number.
 ///
 /// **A splice** is the sorted union of two curves by domain, of static length
 /// `A::length + B::length`, whichever curve is written first. Two points at

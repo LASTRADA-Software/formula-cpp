@@ -2,10 +2,20 @@
 #pragma once
 
 /// @file
-/// Overflow-detecting integer primitives, all constexpr and free of compiler
-/// intrinsics. MSVC has no __builtin_*_overflow, and its <intrin.h> equivalents
-/// are not constexpr, so the checks are written in portable C++ and used on
-/// every compiler. Optimisers recognise these idioms.
+/// Overflow-detecting integer primitives, all constexpr, on two widths.
+///
+/// - **128 bits**, for `Int128`, which `Rational` stores its numerator and
+///   denominator in. The sum and the difference are formed on the two words'
+///   bit patterns; the product's overflow check is the compiler's own 128-bit
+///   integer where it has one, and portable code on the two words elsewhere
+///   (`int128.hpp`).
+/// - **64 bits**, `Int`, for what stays 64-bit: the powers of ten up to 10^18
+///   that rounding's decimal places and `from_decimal`'s exponent span, the
+///   `_r` literal's mantissa, and narrowing a value to the 64-bit fields of
+///   `Band` and `Breakpoint` (`narrow_to_int64`). MSVC has no
+///   __builtin_*_overflow, and its <intrin.h> equivalents are not constexpr,
+///   so these checks are written in portable C++ and used on every compiler.
+///   Optimisers recognise these idioms.
 ///
 /// **The overflow census.** This repository's own census programs are compiled
 /// with `FORMULA_OVERFLOW_CENSUS` defined. The macro is internal to them: it

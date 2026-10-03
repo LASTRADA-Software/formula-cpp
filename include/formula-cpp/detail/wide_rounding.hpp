@@ -10,7 +10,7 @@
 /// `checked_round` accepts, it gives the same result in all seven modes at every
 /// place from -18 to 18 (`test/wide_rounding_tests.cpp` checks 43729 such
 /// cases). It also answers some values `checked_round` refuses -- where a
-/// numerator times 10^places leaves 64 bits but the rounded result fits -- and
+/// numerator times 10^places leaves 128 bits but the rounded result fits -- and
 /// refuses, with `Overflow`, a result that does not fit `Rational`, as
 /// `checked_round` does.
 ///

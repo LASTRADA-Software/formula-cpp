@@ -319,25 +319,24 @@ namespace detail
 /// wrong number:
 ///
 /// - `from_double_exact` needs the double's exact binary value to be
-///   representable, which fails outright for a full-mantissa value below
-///   `2^-10`, about 0.00098. Measured: `0.0009765625` converts, `0.0001` does not.
+///   representable: its denominator, a power of two, must stay below 2^127.
+///   That limit is set by the value's magnitude. Measured: `0.0001`, a 53-bit
+///   numerator over 2^66, converts; `1e-30`, over 2^147, does not.
 /// - Rounding to a POSITIVE number of places `N` scales by `10^N`, cancelling
 ///   common factors of two against the denominator first, so what must fit in
-///   `Int` is `|numerator| * (10^N / gcd(10^N, denominator))` -- for a binary
-///   denominator, `|numerator| * 5^N`. There the limit is set by the
-///   **numerator's** magnitude, not the denominator's and not the value's size:
-///   `1 / 2^60` rounds at all 18 places, while `8106479329266893 / 2^54`
-///   manages 4. A `double`'s mantissa is always about 53 bits whatever its
-///   exponent, so every value from this function caps out at 4 decimal places.
-///   A value built with `from_decimal` has a tiny numerator and is unaffected
-///   at positive places.
+///   `Rational::Int` is `|numerator| * (10^N / gcd(10^N, denominator))` -- for
+///   a binary denominator, `|numerator| * 5^N`. There the limit is set by the
+///   **numerator's** magnitude, not the denominator's and not the value's
+///   size: `1 / 2^121` rounds at all 18 places, while a 100-bit numerator over
+///   the same denominator does not. A `double`'s mantissa has at most 53 bits,
+///   and times 5^18 it stays below 2^95, so every value this function reads
+///   rounds at every place `DecimalPlaces` allows.
 /// - Rounding to a NEGATIVE number of places -- to whole tens or hundreds --
 ///   uses an integer step, which multiplies the **denominator** instead. There
-///   the denominator is the constraint, and the two cases invert: `1/10^18` is
-///   refused at every negative place while `1/3` handles all of them.
+///   the denominator is the constraint.
 ///
 /// Prefer `from_decimal` for an exact decimal; use this function only for a
-/// genuinely measured `double`, and only at modest decimal precision.
+/// genuinely measured `double`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rational_from_double(double floating,
                                                                                       DecimalPlaces places,
                                                                                       RoundingMode roundingMode) noexcept

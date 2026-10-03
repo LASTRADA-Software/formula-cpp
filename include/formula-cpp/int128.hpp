@@ -52,6 +52,7 @@
     /// not part of the library's contract.
     #define FORMULA_NATIVE_INT128 1
 #else
+    /// 0: the portable code carries `Int128`'s multiplication and division.
     #define FORMULA_NATIVE_INT128 0
 #endif
 
@@ -629,27 +630,27 @@ template <>
 class numeric_limits<formula::Int128>
 {
   public:
-    static constexpr bool is_specialized = true;
-    static constexpr bool is_signed = true;
-    static constexpr bool is_integer = true;
-    static constexpr bool is_exact = true;
-    static constexpr bool has_infinity = false;
-    static constexpr bool has_quiet_NaN = false;
-    static constexpr bool has_signaling_NaN = false;
-    static constexpr std::float_round_style round_style = std::round_toward_zero;
-    static constexpr bool is_iec559 = false;
-    static constexpr bool is_bounded = true;
-    static constexpr bool is_modulo = false;
-    static constexpr int digits = 127;
-    static constexpr int digits10 = 38;
-    static constexpr int max_digits10 = 0;
-    static constexpr int radix = 2;
-    static constexpr int min_exponent = 0;
-    static constexpr int min_exponent10 = 0;
-    static constexpr int max_exponent = 0;
-    static constexpr int max_exponent10 = 0;
-    static constexpr bool traps = false;
-    static constexpr bool tinyness_before = false;
+    static constexpr bool is_specialized = true; ///< Specialized here.
+    static constexpr bool is_signed = true; ///< Signed.
+    static constexpr bool is_integer = true; ///< An integer.
+    static constexpr bool is_exact = true; ///< Exact.
+    static constexpr bool has_infinity = false; ///< No infinity.
+    static constexpr bool has_quiet_NaN = false; ///< No quiet NaN.
+    static constexpr bool has_signaling_NaN = false; ///< No signaling NaN.
+    static constexpr std::float_round_style round_style = std::round_toward_zero; ///< Division truncates toward zero.
+    static constexpr bool is_iec559 = false; ///< Not a floating-point type.
+    static constexpr bool is_bounded = true; ///< Holds a finite range.
+    static constexpr bool is_modulo = false; ///< Overflow is a precondition violation, not a wrap.
+    static constexpr int digits = 127; ///< The bits besides the sign.
+    static constexpr int digits10 = 38; ///< Every 38-digit decimal fits.
+    static constexpr int max_digits10 = 0; ///< Zero: an integer has no rounding to undo.
+    static constexpr int radix = 2; ///< Binary.
+    static constexpr int min_exponent = 0; ///< Zero: an integer has no exponent.
+    static constexpr int min_exponent10 = 0; ///< Zero: an integer has no exponent.
+    static constexpr int max_exponent = 0; ///< Zero: an integer has no exponent.
+    static constexpr int max_exponent10 = 0; ///< Zero: an integer has no exponent.
+    static constexpr bool traps = false; ///< No arithmetic traps.
+    static constexpr bool tinyness_before = false; ///< False: an integer has no tininess.
 
     /// -2^127.
     [[nodiscard]] static constexpr formula::Int128 min() noexcept

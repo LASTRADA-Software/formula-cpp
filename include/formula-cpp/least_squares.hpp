@@ -18,9 +18,8 @@
 ///
 /// **Exact in `Rational`**, and generic over `Rep` through `RepTraits`. It uses
 /// the centred sums, `S_xx = sum (x - mean x)^2` and `S_xy = sum (x - mean
-/// x)(y - mean y)`: phase 15's spike (step 3) measured them overflowing at
-/// the same first size as the uncentred sums on every data shape it tried,
-/// and at fewer sizes. `docs/numeric-headroom.md` ("Least squares") carries
+/// x)(y - mean y)`, rather than the uncentred sums of the coordinates'
+/// squares and products. `docs/numeric-headroom.md` ("Least squares") carries
 /// the census, regenerated with every build: three-decimal readings near
 /// 2410 N fit at every size from 2 to 128 points, while a different
 /// denominator on every point overflows from 28 points. **Overflow depends on

@@ -508,8 +508,12 @@ CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 2 }) == Ratio
 whose `lnAt` helper evaluates `rounded_ln<Places, Mode>` at the given ratio.)
 
 The places are the method's own, and at most 18; the result must fit a
-`Rational` there, which at 18 places means a magnitude below about 9.2, so
-the `log10` of a count near 10^18 is reported at 17. Only ln 1, log10 10^k and
+`Rational` there, which any logarithm does: the `log10` of 10^18 - 1 is
+reported to all 18 places. The integer kernel takes an argument whose
+numerator and denominator each fit 64 bits, the range it was built for: a
+wider argument, which a `Rational` can hold, is `Overflow`, and so is `exp`
+of more than 44, while `exp` of less than -43 is 0, or one unit under
+`Ceiling` and `AwayFromZero`. Only ln 1, log10 10^k and
 exp 0 can tie, and the mode breaks the tie as `rounded<>` does: `log10` of
 10^15 at -1 places is 20, 10 or 20 under `HalfAwayFromZero`,
 `HalfTowardZero` and `HalfEven`. A rounding the computation cannot decide --

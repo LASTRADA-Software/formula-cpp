@@ -255,8 +255,9 @@ namespace detail
     static_assert(LongestNumberText <= NumberTextCapacity,
                   "formula: NumberTextCapacity is too small for the longest number this library spells");
 
-    /// 10^18, the largest power of ten `Rational::Int` holds: the finest
-    /// scale this header writes a decimal on.
+    /// 10^18, the finest scale this header writes a decimal on: rounding's
+    /// places stop at 18, as `DecimalPlaces` does, though `Rational::Int`
+    /// holds powers of ten up to 10^38.
     inline constexpr std::uint64_t ExactDecimalScale = 1'000'000'000'000'000'000ULL;
 
     /// The places `ExactDecimalScale` spans -- also the largest

@@ -47,7 +47,8 @@ namespace detail
     /// quarter of the last kept unit at any places accepted, so 0, or one unit under `Ceiling` and
     /// `AwayFromZero`; everything else is the kernel's enclosure, rounded by `decide_rounding`, which
     /// answers `Overflow` when the kept integer does not fit and when the two ends round differently.
-    /// The special points are `RepFunctions<Rational>`'s, through `transcendental_of`: their value, and
+    /// The kernel takes an argument whose numerator and denominator each fit 64 bits, the range it was
+    /// built for; a wider argument, which a `Rational` can hold, is `Overflow` too. The special points are `RepFunctions<Rational>`'s, through `transcendental_of`: their value, and
     /// `Inexact` elsewhere.
     template <Transcendental F>
     [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rounded_transcendental(
@@ -133,6 +134,11 @@ template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
 }
 
 /// The exponential of `operand`, rounded exactly to `Places` decimal places.
+///
+/// Its range is the integer kernel's (`detail/transcendental.hpp`): an argument above 44 is `Overflow`,
+/// one below -43 is 0, or one last kept unit under `Ceiling` and `AwayFromZero`, and an argument whose
+/// numerator or denominator does not fit 64 bits is `Overflow`, though a `Rational` holds it. A rounding
+/// the kernel cannot decide is `Overflow` too, never a guess.
 template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
 [[nodiscard]] constexpr auto rounded_exp(Operand operand) noexcept
 {

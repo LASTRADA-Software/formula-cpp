@@ -474,8 +474,10 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 ///
 /// **Headroom, as measured.** Squaring the deviations rather than the
 /// determinations themselves keeps large *magnitudes* in range: fixture A's
-/// masses scaled by 2^62 still hold, and 2^63 is the first power of two at
-/// which this form overflows (`statistics_tests.cpp`). At fine *resolution*,
+/// masses scaled by 2^62 still hold in kg^2, and 2^63 is the first power of
+/// two at which this form overflows; the textbook one-pass form overflows
+/// from 2^57. Converting the result to a declared g^2 multiplies it by 10^6,
+/// which overflows from 2^60 (`statistics_tests.cpp`). At fine *resolution*,
 /// dividing by n before squaring puts n^2 into every deviation's
 /// denominator; at 6 dp in g near 40 g with n = 6, none of the overflow
 /// census's 1000 samples overflows, and the least of them leaves 62 of

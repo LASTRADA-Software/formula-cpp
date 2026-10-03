@@ -4,12 +4,12 @@
 /// @file
 /// Fixed-width unsigned integers wider than 64 bits, for the exact arithmetic
 /// behind a declared precision (`rounded_output`, `opaque.hpp`): a value the
-/// 64-bit `Rational` cannot hold is computed here exactly, and only its
+/// 128-bit `Rational` cannot hold is computed here exactly, and only its
 /// rounding is ever written.
 ///
 /// `WideUnsigned<Limbs>` holds `Limbs` limbs of 32 bits, least significant
 /// first. Every product of two limbs is formed in `std::uint64_t`: cl has no
-/// 128-bit integer (`rounded_root.hpp` gives the same reason), and nothing here
+/// 128-bit integer (`int128.hpp` gives the same reason), and nothing here
 /// uses an intrinsic or floating point, so a result depends on its operands
 /// alone.
 ///

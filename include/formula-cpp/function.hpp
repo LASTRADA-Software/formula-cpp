@@ -144,7 +144,7 @@ namespace detail
     }
 
     /// k when @p positive is exactly 10^k, and nothing otherwise. Read off the reduced fraction: a power
-    /// of ten is a power of ten over 1, or 1 over a power of ten, so k runs from -18 to 18, the powers of
+    /// of ten is a power of ten over 1, or 1 over a power of ten, so k runs from -38 to 38, the powers of
     /// ten `Rational::Int` holds. @pre @p positive is above zero.
     [[nodiscard]] constexpr std::optional<int> power_of_ten_exponent(Rational positive) noexcept
     {
@@ -297,7 +297,7 @@ struct RepFunctions<Rational>
         return std::unexpected { ArithmeticError::Inexact };
     }
 
-    /// The decimal logarithm of `argument`, exactly: k at 10^k, for k from -18 to 18. Every other positive
+    /// The decimal logarithm of `argument`, exactly: k at 10^k, for k from -38 to 38. Every other positive
     /// rational has an irrational one, which is `Inexact`; zero and below have none, which is
     /// `DomainError`.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> decimal_log(Rational argument) noexcept
