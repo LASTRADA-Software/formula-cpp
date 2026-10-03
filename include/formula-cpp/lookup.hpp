@@ -1603,7 +1603,7 @@ namespace detail
     /// far the computation gets before it has to report `Overflow`.
     ///
     /// **Neither order dominates**, and the comment that used to stand here
-    /// claimed one did. Measured, both directions:
+    /// claimed one did. Both directions:
     ///
     ///  - keys `{0, 10}` with values `{0, 2^126}`, asked at 5: dividing first
     ///    answers `2^125` exactly; multiplying first would form `5 * 2^126` and

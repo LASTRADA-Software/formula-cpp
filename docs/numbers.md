@@ -251,12 +251,13 @@ the answer.
 
 `Rational`'s numerator and denominator are `formula::Int128`, signed 128-bit
 integers: each holds up to 2^127 − 1, and a numerator down to −2^127 -- up to
-39 decimal digits. That is the integer width only. `DecimalPlaces` and the decimal-place form of
-`round` stay limited to ±18 places, as `from_decimal`'s exponent and the `_r`
-literal's 18 places are; an out-of-range `DecimalPlaces` reports `Overflow`,
-while an out-of-range `SignificantDigits` (fewer than 1) reports `DomainError`
--- both mean "argument outside the domain of the operation", but a caller
-switching on the code should expect either one.
+39 decimal digits. That is the integer width only. `DecimalPlaces` and the
+decimal-place form of `round` stay limited to ±18 places, as `from_decimal`'s
+exponent and the `_r` literal's 18 places are; an out-of-range
+`DecimalPlaces` reports `Overflow`, while an out-of-range `SignificantDigits`
+(fewer than 1) reports `DomainError` -- both mean "argument outside the
+domain of the operation", but a caller switching on the code should expect
+either one.
 
 Rounding to `N` decimal places scales the value by `10^N`. Common factors of
 two cancel against the denominator first, so what must fit in `Rational::Int`
@@ -278,8 +279,9 @@ every place from 0 to 18: 0,45 as a `double` is exactly
 `8106479329266893 / 2^54`, and rounds to 18 places as 0.450000000000000011.
 Past that the limit returns: a whole `double` such as 1e21 has a numerator of
 its own magnitude and nothing to cancel, so it is refused at 18 places, 1e38
-even at 1, and `2^-100` at -18 places multiplies its denominator past 2^127. `from_decimal(45, -2)` is `9/20` -- the same nominal
-value, and what a method that writes 0,45 means.
+even at 1, and `2^-100` at -18 places multiplies its denominator past 2^127.
+`from_decimal(45, -2)` is `9/20` -- the same nominal value, and what a method
+that writes 0,45 means.
 
 `from_double_exact` refuses a `double` whose exact value would need a
 denominator of `2^127` or more, before rounding is even reached. That limit is

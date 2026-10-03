@@ -133,7 +133,9 @@ template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
 
 /// The decimal logarithm of `operand`, rounded exactly to `Places` decimal places.
 ///
-/// As for `rounded_ln`, an argument whose numerator or denominator does not fit 64 bits is `Overflow`.
+/// As for `rounded_ln`, an argument whose numerator or denominator does not fit 64 bits is `Overflow`, as
+/// log10 2^70 is -- except a power of ten, 10^19 up to 10^38 or one over it, which is answered exactly
+/// before the kernel is asked: log10 10^30 is 30.
 template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
 [[nodiscard]] constexpr auto rounded_log10(Operand operand) noexcept
 {

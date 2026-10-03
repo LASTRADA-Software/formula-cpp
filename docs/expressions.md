@@ -415,8 +415,8 @@ There is one further refusal in the same function, for a different reason.
 (`IntMin`, -2^127) with `ArithmeticError::Overflow` rather than `Inexact`:
 `IntMin`'s 127th root, -2, exists and is exactly representable, but negating
 `IntMin` to reach a positive intermediate is signed overflow, undefined
-behaviour, before the root is ever taken. `Overflow` names what actually goes wrong; treating it as
-`Inexact` would blame the wrong layer.
+behaviour, before the root is ever taken. `Overflow` names what actually goes
+wrong; treating it as `Inexact` would blame the wrong layer.
 
 A root of degree zero names no operation at all and is refused at compile
 time, the same way a dimensional mismatch is, by the library's own
@@ -511,9 +511,12 @@ The places are the method's own, and at most 18; the result must fit a
 `Rational` there, which any logarithm does: the `log10` of 10^18 - 1 is
 reported to all 18 places. The integer kernel takes an argument whose
 numerator and denominator each fit 64 bits, the range it was built for: a
-wider argument, which a `Rational` can hold, is `Overflow`, and so is `exp`
-of more than 44, while `exp` of less than -43 is 0, or one unit under
-`Ceiling` and `AwayFromZero`. Only ln 1, log10 10^k and
+wider argument, which a `Rational` can hold, is `Overflow`, as `log10` of
+2^70 is, and so is `exp` of more than 44. Two kinds of wide argument never
+reach the kernel: a power of ten, 10^19 up to 10^38 or one over it, is
+answered exactly, so `log10` of 10^30 is 30; and `exp` of less than -43 is
+0, or one unit under `Ceiling` and `AwayFromZero`, whatever its width.
+Only ln 1, log10 10^k and
 exp 0 can tie, and the mode breaks the tie as `rounded<>` does: `log10` of
 10^15 at -1 places is 20, 10 or 20 under `HalfAwayFromZero`,
 `HalfTowardZero` and `HalfEven`. A rounding the computation cannot decide --
