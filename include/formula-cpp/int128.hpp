@@ -25,9 +25,11 @@
 /// not fit.
 ///
 /// **Overflow is a precondition violation**, as for a built-in signed
-/// integer. A plain operator whose exact result does not fit -- a sum,
-/// difference or product past the range, -2^127 / -1, and -(-2^127) -- has
-/// broken its precondition, and so has division or remainder by zero. A
+/// integer. An arithmetic operator -- `+ - * / %` or unary `-` -- whose
+/// exact result does not fit has broken its precondition: a sum, difference
+/// or product past the range, -2^127 / -1, and -(-2^127). So has division
+/// or remainder by zero. The shifts are not arithmetic in that sense: `<<`
+/// loses the bits shifted out, as a built-in `<<` does since C++20. A
 /// caller that needs to know whether a result fits uses the checked forms in
 /// `detail/checked_int.hpp`, as `Rational` does. `%` by -1 is 0 for every
 /// dividend, the minimum included, since that result fits.
@@ -500,9 +502,13 @@ class Int128
     /// the quotient fits: -2^127 / -1 does not.
     [[nodiscard]] friend constexpr Int128 operator/(Int128 dividend, Int128 divisor) noexcept
     {
-        Int128 const quotientMagnitude =
-            from_pattern(detail::u128_divmod(dividend.magnitude_pattern(), divisor.magnitude_pattern()).quotient);
-        return dividend.is_negative() != divisor.is_negative() ? -quotientMagnitude : quotientMagnitude;
+        detail::UInt128 const quotientMagnitude =
+            detail::u128_divmod(dividend.magnitude_pattern(), divisor.magnitude_pattern()).quotient;
+        // Negated through the bit pattern: a quotient of -2^127 fits, and its
+        // magnitude has no signed counterpart to apply unary minus to.
+        return from_pattern(dividend.is_negative() != divisor.is_negative()
+                                ? detail::portable::subtract(detail::UInt128 {}, quotientMagnitude)
+                                : quotientMagnitude);
     }
 
     /// The remainder, of the dividend's sign; by -1 it is 0 for every
@@ -514,14 +520,15 @@ class Int128
         return dividend.is_negative() ? -remainderMagnitude : remainderMagnitude;
     }
 
-    /// Shifted left by @p places, below 128.
+    /// Shifted left by @p places, below 128. The bits shifted out are lost,
+    /// as with a built-in `<<` since C++20: `1 << 127` is -2^127.
     [[nodiscard]] friend constexpr Int128 operator<<(Int128 operandValue, int places) noexcept
     {
         return from_pattern(detail::portable::shift_left(operandValue.as_pattern(), places));
     }
 
-    /// Shifted right by @p places, below 128, copying the sign into the bits
-    /// vacated: -8 >> 1 is -4.
+    /// Shifted right by @p places, below 128: arithmetic, filling the bits
+    /// vacated with the sign, so -8 >> 1 is -4.
     [[nodiscard]] friend constexpr Int128 operator>>(Int128 operandValue, int places) noexcept
     {
         detail::UInt128 const shifted = detail::portable::shift_right(operandValue.as_pattern(), places);
@@ -606,8 +613,10 @@ namespace detail
     /// @pre it fits: @p magnitudeOf is below 2^127, or is 2^127 and @p negative.
     [[nodiscard]] constexpr Int128 signed_from_magnitude(UInt128 magnitudeOf, bool negative) noexcept
     {
-        Int128 const positive = Int128::from_words(magnitudeOf.highWord, magnitudeOf.lowWord);
-        return negative ? -positive : positive;
+        // Negated through the bit pattern: 2^127 has no signed counterpart to
+        // apply unary minus to.
+        UInt128 const signedPattern = negative ? portable::subtract(UInt128 {}, magnitudeOf) : magnitudeOf;
+        return Int128::from_words(signedPattern.highWord, signedPattern.lowWord);
     }
 } // namespace detail
 

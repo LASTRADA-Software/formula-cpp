@@ -252,6 +252,10 @@ TEST_CASE("Int128 divides the minimum, and the checked product refuses exactly p
     STATIC_REQUIRE((smallest + 1) / smallest == 0);
     STATIC_REQUIRE((smallest + 1) % smallest == smallest + 1);
     STATIC_REQUIRE(smallest % -1 == 0);
+    // -2^127 / 1 fits: the quotient's magnitude, 2^127, is negated as a bit
+    // pattern.
+    STATIC_REQUIRE(smallest / 1 == smallest);
+    STATIC_REQUIRE(smallest % 1 == 0);
     // 2^64 * (2^64 - 1) is the largest product of these shapes that fits;
     // 2^64 * 2^64 is 2^128, one past.
     STATIC_REQUIRE(u128_mul_checked(UInt128 { 1, 0 }, UInt128 { 0, allOnes }) == UInt128 { allOnes, 0 });
@@ -262,6 +266,8 @@ TEST_CASE("Int128 divides the minimum, and the checked product refuses exactly p
     STATIC_REQUIRE(portable::multiply_checked(UInt128 { 1, 1 }, UInt128 { 0, allOnes }) == UInt128 { allOnes, allOnes });
     STATIC_REQUIRE(!portable::multiply_checked(UInt128 { 1, 2 }, UInt128 { 0, allOnes }).has_value());
     STATIC_REQUIRE(!portable::multiply_checked(UInt128 { 1, 0 }, UInt128 { 1, 0 }).has_value());
+    // 2^65 * 2^63 is 2^128: the cross term alone needs more than 64 bits.
+    STATIC_REQUIRE(!portable::multiply_checked(UInt128 { 2, 0 }, UInt128 { 0, std::uint64_t { 1 } << 63 }).has_value());
 }
 
 TEST_CASE("an Int128 is made from a magnitude and a sign, up to 2^127 for a negative one", "[int128]")
