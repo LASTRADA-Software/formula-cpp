@@ -298,9 +298,14 @@ TEST_CASE("function: ln log10 and exp are exact where their value is rational", 
     STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1000)) == rat(3));
     // A power of ten written as one over a power of ten.
     STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1, 100)) == rat(-2));
-    // The largest powers of ten a Rational holds, either way up.
+    // 10^18, the largest power of ten a 64-bit integer holds, either way up.
     STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1'000'000'000'000'000'000)) == rat(18));
     STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1, 1'000'000'000'000'000'000)) == rat(-18));
+    // 10^38, the largest power of ten a Rational holds, either way up.
+    constexpr formula::Rational::Int tenToNineteen = formula::Rational::Int { 1'000'000'000'000'000'000 } * 10;
+    constexpr formula::Rational::Int tenToThirtyEight = tenToNineteen * tenToNineteen;
+    STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), formula::Rational { tenToThirtyEight }) == rat(38));
+    STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), formula::Rational { 1, tenToThirtyEight }) == rat(-38));
 }
 
 TEST_CASE("function: a logarithm or an exponential of any other value is Inexact in Rational", "[function]")

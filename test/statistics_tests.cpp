@@ -440,25 +440,84 @@ TEST_CASE("one absent determination makes the variance and the range absent", "[
     STATIC_REQUIRE(formula::checked_evaluate<Spread>(range, fixtureAMissingThird)->is_empty());
 }
 
+namespace
+{
+/// The textbook one-pass sample variance, (sum x^2 - (sum x)^2 / n) / (n - 1),
+/// of @p kilograms, in exact arithmetic: the form `sample_variance` does not
+/// use, kept here to show where it runs out.
+[[nodiscard]] constexpr std::expected<Rational, formula::ArithmeticError> one_pass_variance(
+    std::span<Rational const> kilograms) noexcept
+{
+    Rational massTotal { 0 };
+    Rational squaresTotal { 0 };
+    for (Rational const& mass: kilograms)
+    {
+        std::expected<Rational, formula::ArithmeticError> const squared = formula::checked_mul(mass, mass);
+        if (!squared)
+            return std::unexpected { squared.error() };
+        std::expected<Rational, formula::ArithmeticError> const squaresSoFar = formula::checked_add(squaresTotal, *squared);
+        if (!squaresSoFar)
+            return std::unexpected { squaresSoFar.error() };
+        std::expected<Rational, formula::ArithmeticError> const massSoFar = formula::checked_add(massTotal, mass);
+        if (!massSoFar)
+            return std::unexpected { massSoFar.error() };
+        squaresTotal = *squaresSoFar;
+        massTotal = *massSoFar;
+    }
+    auto const sizeOf = static_cast<std::int64_t>(kilograms.size());
+    std::expected<Rational, formula::ArithmeticError> const totalSquared = formula::checked_mul(massTotal, massTotal);
+    if (!totalSquared)
+        return std::unexpected { totalSquared.error() };
+    std::expected<Rational, formula::ArithmeticError> const overSize = formula::checked_div(*totalSquared, rat(sizeOf));
+    if (!overSize)
+        return std::unexpected { overSize.error() };
+    std::expected<Rational, formula::ArithmeticError> const deviations = formula::checked_sub(squaresTotal, *overSize);
+    if (!deviations)
+        return std::unexpected { deviations.error() };
+    return formula::checked_div(*deviations, rat(sizeOf - 1));
+}
+
+/// Fixture A scaled by @p scaleBy, in kilograms.
+[[nodiscard]] constexpr std::array<Rational, 6> fixture_a_kilograms(Rational::Int scaleBy) noexcept
+{
+    return { Rational { 402 * scaleBy, 10'000 }, Rational { 398 * scaleBy, 10'000 }, Rational { 405 * scaleBy, 10'000 },
+             Rational { 440 * scaleBy, 10'000 }, Rational { 400 * scaleBy, 10'000 }, Rational { 433 * scaleBy, 10'000 } };
+}
+
+/// Fixture A scaled by @p scaleBy, as the evaluator reads it: in grams.
+[[nodiscard]] constexpr auto fixture_a_scaled(Rational::Int scaleBy) noexcept
+{
+    return formula::environment(formula::measured_series<Mass>(grams(Rational { 402 * scaleBy, 10 }),
+                                                               grams(Rational { 398 * scaleBy, 10 }),
+                                                               grams(Rational { 405 * scaleBy, 10 }),
+                                                               grams(Rational { 440 * scaleBy, 10 }),
+                                                               grams(Rational { 400 * scaleBy, 10 }),
+                                                               grams(Rational { 433 * scaleBy, 10 })));
+}
+} // namespace
+
 TEST_CASE("at large magnitudes the two-pass variance holds past where the one-pass formula overflows", "[statistics]")
 {
-    // Fixture A scaled by 2^25: 40.2 g becomes 1348888166.4 g. The textbook
-    // one-pass form, (sum x^2 - (sum x)^2 / n) / (n - 1), overflows Rational
-    // in coherent SI at a scale of 2^25; the two-pass form (the mean, then
-    // the squared deviations from it) holds until 2^31 -- and gives exactly
-    // 427/125 g^2 times 2^50, in kg^2. Measured with fixtures A and B
-    // alike; at 10^4, the brief's first guess, neither overflows (the forms
-    // part only between 10^11 and 10^12 when scaled by powers of ten). At
-    // fine resolution it is the other way round -- see the header.
-    constexpr std::int64_t scale = std::int64_t { 1 } << 25;
-    constexpr auto scaledA = formula::environment(formula::measured_series<Mass>(grams(rat(402 * scale, 10)),
-                                                                                 grams(rat(398 * scale, 10)),
-                                                                                 grams(rat(405 * scale, 10)),
-                                                                                 grams(rat(440 * scale, 10)),
-                                                                                 grams(rat(400 * scale, 10)),
-                                                                                 grams(rat(433 * scale, 10))));
-    STATIC_REQUIRE(formula::checked_evaluate_si(variance, scaledA)->value()
-                   == rat(427 * (std::int64_t { 1 } << 44), 1'953'125));
+    // Fixture A scaled by 2^57: 40.2 g becomes about 5.8e18 g. The textbook
+    // one-pass form, (sum x^2 - (sum x)^2 / n) / (n - 1), computed exactly in
+    // kg, first overflows at a scale of 2^57, where the square of the
+    // masses' sum, 247.8 g times 2^57, outgrows 127 bits. At 2^56 it still
+    // answers, and agrees with the two-pass form. The two-pass form (the mean, then the
+    // squared deviations from it) squares only the deviations, and holds up
+    // to 2^62 (see the overflow test below) -- at 2^57 it gives exactly
+    // 427/125 g^2 times 2^114, in kg^2. At fine resolution it is the other
+    // way round -- see the header.
+    constexpr Rational::Int below = Rational::Int { 1 } << 56;
+    constexpr Rational::Int scale = Rational::Int { 1 } << 57;
+    STATIC_REQUIRE(one_pass_variance(fixture_a_kilograms(below)).value()
+                   == Rational { Rational::Int { 427 } << 106, 1'953'125 });
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(below))->value()
+                   == Rational { Rational::Int { 427 } << 106, 1'953'125 });
+    STATIC_REQUIRE(one_pass_variance(fixture_a_kilograms(scale)).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_mul(Rational { 2478 * scale, 10'000 }, Rational { 2478 * scale, 10'000 }).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(scale))->value()
+                   == Rational { Rational::Int { 427 } << 108, 1'953'125 });
 }
 
 TEST_CASE("a variance that overflows fails with Overflow, naming the determination, in either pass",
@@ -500,6 +559,18 @@ TEST_CASE("a variance that overflows fails with Overflow, naming the determinati
           == "1. m = 1853897779407809937408/5 g; 1835451035334100385792/5 g; 373546567492618420224 g; "
              "405828369621610135552 g; 368934881474191032320 g; 1996860045979058962432/5 g\n"
              "2. sample_variance(#1) = overflow in exact arithmetic at element 4\n");
+    // Scaled by 2^62, the last power of two the two-pass form holds, the
+    // variance in kg^2 is 427/125 g^2 times 2^124: 427 * 2^118 / 1953125,
+    // a 127-bit numerator. Converted to the declared g^2 it gains 10^6 and
+    // overflows from 2^60; 2^59 is the last scale it answers at.
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(Rational::Int { 1 } << 62))->value()
+                   == Rational { Rational::Int { 427 } << 118, 1'953'125 });
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(Rational::Int { 1 } << 60)).has_value());
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, fixture_a_scaled(Rational::Int { 1 } << 60)).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(
+        formula::checked_evaluate<MassVariance>(variance, fixture_a_scaled(Rational::Int { 1 } << 59))->measurement().value()
+        == Rational { Rational::Int { 427 } << 118, 125 });
     // Scaled by 2^31, which overflowed 64 bits, the variance is fixture A's
     // 427/125 g^2 times 2^62.
     constexpr std::int64_t scale64 = std::int64_t { 1 } << 31;
