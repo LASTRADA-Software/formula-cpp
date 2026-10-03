@@ -1536,6 +1536,35 @@ namespace detail
         return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
     }
 
+    /// Whether a value of @p dimension in @p declared is shown in the coherent
+    /// unit, spelt by `coherent_unit_text`, rather than in @p declared: when
+    /// @p declared has no symbol and @p dimension is not dimensionless. A
+    /// unit with no symbol cannot say what scale its number is on, so the
+    /// number is moved into the one scale its spelling names. The one rule
+    /// for every place a value is written with its unit: a step's value, a
+    /// squared deviation, a conformity row and a derivation's header.
+    [[nodiscard]] inline bool spells_coherent_unit(Unit const& declared, Dimension dimension)
+    {
+        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
+    }
+
+    /// The unit a value of @p dimension declared in @p declared is shown in:
+    /// the coherent unit where `spells_coherent_unit` says so, @p declared
+    /// otherwise.
+    [[nodiscard]] inline Unit shown_unit_of(Unit const& declared, Dimension dimension)
+    {
+        return spells_coherent_unit(declared, dimension) ? coherent(dimension) : declared;
+    }
+
+    /// The text written after a value shown in `shown_unit_of(@p declared,
+    /// @p dimension)`: the coherent unit's spelling, the declared unit's
+    /// escaped symbol, or nothing for a dimensionless value in a unit with
+    /// no symbol.
+    [[nodiscard]] inline std::string shown_unit_text(Unit const& declared, Dimension dimension)
+    {
+        return spells_coherent_unit(declared, dimension) ? coherent_unit_text(dimension) : unit_symbol_text(declared);
+    }
+
     /// @p storedValue -- a step's own, or one element of a series step's -- converted
     /// from the coherent unit of @p recorded's dimension into the unit the
     /// step was declared in, with that unit's symbol, or `(not measured)`
@@ -1545,8 +1574,8 @@ namespace detail
     ///
     /// A dimensioned value whose unit has no symbol is shown in the coherent
     /// unit instead, followed by that unit's spelling (`coherent_unit_text`),
-    /// so that no computed value prints as a bare number. The number is
-    /// spelled in @p numberStyle (`checked_shown_text`: a coherent value is
+    /// so that no dimensioned value prints as a bare number
+    /// (`shown_unit_of`). The number is spelled in @p numberStyle (`checked_shown_text`: a coherent value is
     /// never padded); a style that cannot spell it in the shown unit is
     /// reported as the conversion's failure is, `(not shown: ...)`. The
     /// fraction style never fails.
@@ -1559,12 +1588,11 @@ namespace detail
 
         // A unit with no symbol cannot say what scale its number is on. A
         // dimensioned value is then shown in the coherent unit and followed by
-        // that unit's spelling (`coherent_unit_text`), so that no computed
+        // that unit's spelling (`shown_unit_of`), so that no dimensioned
         // value prints as a bare number and no number is shown in a scale its
         // line does not name. A dimensionless value is a bare number either
         // way.
-        bool const spellsCoherent = view(recorded.unit.symbolText).empty() && !(recorded.dimension == dim::Scalar);
-        Unit const shownUnit = spellsCoherent ? coherent(recorded.dimension) : recorded.unit;
+        Unit const shownUnit = shown_unit_of(recorded.unit, recorded.dimension);
         std::expected<Rational, ArithmeticError> const shown =
             checked_convert(*storedValue, coherent(recorded.dimension), shownUnit);
         // Unreachable for a `Step` the recorder built -- it records a unit of
@@ -1579,7 +1607,7 @@ namespace detail
             return not_shown_text(spelled.error());
 
         std::string valueText { spelled->view() };
-        std::string const unitSymbol = spellsCoherent ? coherent_unit_text(recorded.dimension) : unit_symbol_text(shownUnit);
+        std::string const unitSymbol = shown_unit_text(recorded.unit, recorded.dimension);
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
         return valueText;
@@ -2109,6 +2137,40 @@ namespace detail
         return ordinal + " unknown outcome" + rowClause;
     }
 
+    /// @p limitRow, whose limits are numbers in @p recorded's unit, as the
+    /// range it permits (`limit_row_text`), in the unit @p recorded's value
+    /// is shown in (`shown_unit_of`), so that a value and the row it was
+    /// judged against are never shown in two scales. A limit the shown unit
+    /// cannot hold is reported, `(not shown: ...)`, never restated.
+    [[nodiscard]] inline std::string conformity_row_text(ShownStep const& recorded,
+                                                         LimitRow const& limitRow,
+                                                         NumberStyle numberStyle)
+    {
+        if (!spells_coherent_unit(recorded.unit, recorded.dimension))
+            return limit_row_text(limitRow, unit_symbol_text(recorded.unit), recorded.unit, numberStyle);
+        Unit const shownUnit = shown_unit_of(recorded.unit, recorded.dimension);
+        auto const inShownUnit = [&](Limit const& side) -> std::expected<Limit, ArithmeticError> {
+            std::optional<Rational> const sideValue = side.value();
+            if (!sideValue.has_value())
+                return side;
+            std::expected<Rational, ArithmeticError> const sideInShownUnit =
+                checked_convert(*sideValue, recorded.unit, shownUnit);
+            if (!sideInShownUnit)
+                return std::unexpected { sideInShownUnit.error() };
+            return formula::limit(*sideInShownUnit);
+        };
+        std::expected<Limit, ArithmeticError> const lowerShown = inShownUnit(limitRow.lower);
+        if (!lowerShown)
+            return not_shown_text(lowerShown.error());
+        std::expected<Limit, ArithmeticError> const upperShown = inShownUnit(limitRow.upper);
+        if (!upperShown)
+            return not_shown_text(upperShown.error());
+        return limit_row_text(LimitRow { .lower = *lowerShown, .upper = *upperShown },
+                              shown_unit_text(recorded.unit, recorded.dimension),
+                              shownUnit,
+                              numberStyle);
+    }
+
     /// A conformity step's line, without its number: `conform(#1)` and every
     /// element's outcome in one bracket, each with the value judged, in the
     /// check's unit, and the row it was judged against -- `[1 satisfied, 36 %
@@ -2140,9 +2202,7 @@ namespace detail
             if (at > 0)
                 lineText += "; ";
             std::string const rowClause =
-                at < limits.size()
-                    ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit), recorded.unit, comparedStyle) + ")"
-                    : std::string {};
+                at < limits.size() ? " (" + conformity_row_text(recorded, limits[at], comparedStyle) + ")" : std::string {};
             std::string const valueClause =
                 at < recorded.elements.size() && recorded.elements[at].has_value()
                     ? ", " + value_in_declared_unit(recorded, recorded.elements[at], comparedStyle)
@@ -2270,7 +2330,10 @@ namespace detail
 
     /// @p si, a value in the coherent unit of @p recorded's dimension -- or of
     /// its square, when @p squared -- in @p recorded's unit (or its square),
-    /// with the unit's symbol: `27/10 g`, `729/100 g2`. Refuses to print, as
+    /// with the unit's symbol: `27/10 g`, `729/100 g2`. A unit with no symbol
+    /// is shown as `value_in_declared_unit` shows it, in the coherent unit
+    /// (`shown_unit_of`), and its square is spelt from the base units:
+    /// `106/25 K`, `11236/625 K^2`. Refuses to print, as
     /// `value_in_declared_unit` does, a value its unit cannot show, or one
     /// @p numberStyle cannot spell in it. A square declares no decimals of its
     /// own, so a squared value is never padded, as a value in a unit nobody
@@ -2283,8 +2346,7 @@ namespace detail
     {
         if (!squared)
             return value_in_declared_unit(recorded, si, numberStyle);
-        bool const spellsCoherent = view(recorded.unit.symbolText).empty() && !(recorded.dimension == dim::Scalar);
-        Unit const shownUnit = spellsCoherent ? coherent(recorded.dimension) : recorded.unit;
+        Unit const shownUnit = shown_unit_of(recorded.unit, recorded.dimension);
         std::expected<Rational, ArithmeticError> const magnitude =
             Rational::make(shownUnit.magnitudeNumerator, shownUnit.magnitudeDenominator);
         std::expected<Rational, ArithmeticError> const magnitudeSquared =
@@ -2300,7 +2362,7 @@ namespace detail
         std::string valueText { spelled->view() };
         // A unit with a symbol squares as the library writes squares (`g2`);
         // the coherent one is spelt from its bases (`K^2`).
-        if (spellsCoherent)
+        if (spells_coherent_unit(recorded.unit, recorded.dimension))
             valueText += " " + coherent_unit_text(recorded.dimension * recorded.dimension);
         else if (std::string const unitSymbol = unit_symbol_text(shownUnit); !unitSymbol.empty())
             valueText += " " + unitSymbol + "2";
@@ -2540,7 +2602,9 @@ namespace detail
         std::optional<std::size_t> failedInput {};
     };
 
-    /// @p storedValue in @p shownUnit, for an opaque output.
+    /// @p storedValue in @p shownUnit, for an opaque output -- or, when that
+    /// unit has no symbol but a dimension, in the coherent unit with its
+    /// spelling, as `value_in_declared_unit` shows every value.
     [[nodiscard]] inline std::string opaque_value_text(Dimension dimension,
                                                        Unit shownUnit,
                                                        std::optional<Rational> const& storedValue,
@@ -3346,7 +3410,9 @@ namespace detail
     }
 
     /// The value of @p shown's block as its header states it: in the unit it
-    /// was declared in, with that unit's symbol, spelled in @p numberStyle as
+    /// was declared in, with that unit's symbol -- or, for a dimensioned unit
+    /// with no symbol, in the coherent unit with its spelling
+    /// (`shown_unit_of`) -- spelled in @p numberStyle as
     /// a trace line spells a value (`checked_shown_text`), or `(not shown:
     /// ...)` where the style cannot spell it in that unit; why its
     /// calculation failed; or `(no value)`. Exact only when @p typed, the
@@ -3364,12 +3430,18 @@ namespace detail
             return std::string { describe(*shown.error) };
         if (!shown.value.has_value())
             return "(no value)";
+        // A unit with no symbol: the value moves into the coherent unit and
+        // says so, as a trace line's value does (`shown_unit_of`).
+        Unit const shownUnit = shown_unit_of(shown.unit, shown.unit.dimension);
+        std::expected<Rational, ArithmeticError> const inShownUnit = checked_convert(*shown.value, shown.unit, shownUnit);
+        if (!inShownUnit)
+            return not_shown_text(inShownUnit.error());
         std::expected<NumberText, ArithmeticError> const spelled =
-            checked_shown_text(*shown.value, typed ? numberStyle.exact_only() : numberStyle, shown.unit);
+            checked_shown_text(*inShownUnit, typed ? numberStyle.exact_only() : numberStyle, shownUnit);
         if (!spelled)
             return not_shown_text(spelled.error());
         std::string valueText { spelled->view() };
-        std::string const unitSymbol = unit_symbol_text(shown.unit);
+        std::string const unitSymbol = shown_unit_text(shown.unit, shown.unit.dimension);
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
         return valueText;
