@@ -72,6 +72,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/format.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/formula.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/function.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/int128.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/least_squares.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/lineage.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/lookup.hpp"

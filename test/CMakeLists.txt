@@ -25,6 +25,7 @@ add_executable(formula-cpp-tests
     cross_tu_a.cpp
     expression_cross_tu_b.cpp
     checked_int_tests.cpp
+    int128_tests.cpp
     citation_tests.cpp
     document_tests.cpp
     error_tests.cpp
@@ -1140,6 +1141,9 @@ formula_add_negative_test(format_places_out_of_range
     "formula_number_format_places_out_of_range"
     REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_spec_not_understood")
 formula_add_negative_test(format_spec_not_understood
+    "formula_number_format_spec_not_understood"
+    REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_places_out_of_range")
+formula_add_negative_test(int128_format_spec_not_understood
     "formula_number_format_spec_not_understood"
     REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_places_out_of_range")
 
