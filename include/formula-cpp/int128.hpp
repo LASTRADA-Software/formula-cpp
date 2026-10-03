@@ -28,9 +28,9 @@
 /// integer. An arithmetic operator -- `+ - * / %` or unary `-` -- whose
 /// exact result does not fit has broken its precondition: a sum, difference
 /// or product past the range, -2^127 / -1, and -(-2^127). So has division
-/// or remainder by zero. The shifts are not arithmetic in that sense: `<<`
-/// loses the bits shifted out, as a built-in `<<` does since C++20. A
-/// caller that needs to know whether a result fits uses the checked forms in
+/// or remainder by zero. The shifts are outside it: `<<` loses the bits
+/// shifted out, as a built-in `<<` does since C++20. A caller that needs to
+/// know whether a result fits uses the checked forms in
 /// `detail/checked_int.hpp`, as `Rational` does. `%` by -1 is 0 for every
 /// dividend, the minimum included, since that result fits.
 ///
@@ -521,7 +521,7 @@ class Int128
     }
 
     /// Shifted left by @p places, below 128. The bits shifted out are lost,
-    /// as with a built-in `<<` since C++20: `1 << 127` is -2^127.
+    /// as with a built-in `<<` since C++20: `Int128 { 1 } << 127` is -2^127.
     [[nodiscard]] friend constexpr Int128 operator<<(Int128 operandValue, int places) noexcept
     {
         return from_pattern(detail::portable::shift_left(operandValue.as_pattern(), places));
