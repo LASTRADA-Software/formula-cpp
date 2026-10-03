@@ -283,15 +283,15 @@ namespace detail
     /// The row of @p Sizes whose size is @p sampleSize, or nothing. A linear
     /// scan, for `find_band`'s reason, and an equality: never the nearest row.
     ///
-    /// Compared as `std::uint64_t`, into which every `std::size_t` widens
+    /// Compared as 128 bits, into which every `std::size_t` widens
     /// losslessly: the count is never narrowed to the table's type, so where
     /// `std::size_t` is 32 bits a count of 2^32 + 3 misses rather than wrap
     /// onto the row for 3.
     template <SampleSizeTable Sizes>
-    [[nodiscard]] constexpr std::optional<std::size_t> find_sample_size(std::uint64_t sampleSize) noexcept
+    [[nodiscard]] constexpr std::optional<std::size_t> find_sample_size(UInt128 sampleSize) noexcept
     {
         for (std::size_t rowIndex = 0; rowIndex < Sizes.size(); ++rowIndex)
-            if (static_cast<std::uint64_t>(Sizes[rowIndex]) == sampleSize)
+            if (UInt128::from_u64(static_cast<std::uint64_t>(Sizes[rowIndex])) == sampleSize)
                 return rowIndex;
         return std::nullopt;
     }
@@ -299,12 +299,13 @@ namespace detail
     /// @p evaluatedCount as a sample size, or nothing when it is not a whole,
     /// non-negative number. The count is read in the coherent unit of its
     /// dimension, which is a bare number. A whole count larger than any size
-    /// a table can declare is still a count, and misses in `find_sample_size`.
-    [[nodiscard]] constexpr std::optional<std::uint64_t> as_sample_size(Rational evaluatedCount) noexcept
+    /// a table can declare is still a count, and misses in `find_sample_size`:
+    /// a count beyond 2^64 - 1 is still a count, which no table declares.
+    [[nodiscard]] constexpr std::optional<UInt128> as_sample_size(Rational evaluatedCount) noexcept
     {
         if (evaluatedCount.denominator() != 1 || evaluatedCount.numerator() < 0)
             return std::nullopt;
-        return static_cast<std::uint64_t>(evaluatedCount.numerator());
+        return wide_magnitude(evaluatedCount.numerator());
     }
 
     /// How many characters `sample_size_list<Sizes>` spells.
@@ -453,7 +454,7 @@ template <typename Rep = Rational,
     }
     else
     {
-        std::optional<std::uint64_t> const sampleSize = detail::as_sample_size(**evaluatedCount);
+        std::optional<detail::UInt128> const sampleSize = detail::as_sample_size(**evaluatedCount);
         std::optional<std::size_t> const matchedRow =
             sampleSize.has_value() ? detail::find_sample_size<Sizes>(*sampleSize) : std::nullopt;
         if (!matchedRow.has_value())

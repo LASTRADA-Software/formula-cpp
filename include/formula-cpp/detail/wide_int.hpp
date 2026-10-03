@@ -28,6 +28,8 @@
 /// A signed integer is a sign beside a magnitude (`WideSigned`), and a fraction
 /// a sign beside two magnitudes (`WideRatio`). Zero is never negative.
 
+#include <formula-cpp/int128.hpp>
+
 #include <array>
 #include <compare>
 #include <cstddef>
@@ -61,6 +63,18 @@ class WideUnsigned
         return from_limbs(held);
     }
 
+    /// @p narrow, exactly. Four limbs hold it.
+    [[nodiscard]] static constexpr WideUnsigned from_u128(UInt128 narrow) noexcept
+        requires(Limbs >= 4)
+    {
+        std::array<std::uint32_t, Limbs> held {};
+        held[0] = static_cast<std::uint32_t>(narrow.lowWord & 0xFFFF'FFFFU);
+        held[1] = static_cast<std::uint32_t>(narrow.lowWord >> 32U);
+        held[2] = static_cast<std::uint32_t>(narrow.highWord & 0xFFFF'FFFFU);
+        held[3] = static_cast<std::uint32_t>(narrow.highWord >> 32U);
+        return from_limbs(held);
+    }
+
     /// The integer whose limbs are @p held, least significant first.
     [[nodiscard]] static constexpr WideUnsigned from_limbs(std::array<std::uint32_t, Limbs> const& held) noexcept
     {
@@ -82,6 +96,18 @@ class WideUnsigned
             if (_limbs[at] != 0)
                 return std::nullopt;
         return (static_cast<std::uint64_t>(_limbs[1]) << 32U) | _limbs[0];
+    }
+
+    /// This value as 128 bits, or nothing when it needs more.
+    [[nodiscard]] constexpr std::optional<UInt128> to_u128() const noexcept
+    {
+        for (std::size_t limbAt = 4; limbAt < Limbs; ++limbAt)
+            if (_limbs[limbAt] != 0U)
+                return std::nullopt;
+        auto const limbOrZero = [this](std::size_t limbIndex) -> std::uint64_t {
+            return limbIndex < Limbs ? static_cast<std::uint64_t>(_limbs[limbIndex]) : std::uint64_t { 0 };
+        };
+        return UInt128 { (limbOrZero(3) << 32U) | limbOrZero(2), (limbOrZero(1) << 32U) | limbOrZero(0) };
     }
 
     /// Whether this is zero.

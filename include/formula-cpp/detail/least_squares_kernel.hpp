@@ -133,12 +133,12 @@ template <std::size_t L>
     WideUnsigned<L> common = WideUnsigned<L>::from_u64(1);
     for (Rational const& observed: observedColumn)
     {
-        auto const denominatorValue = static_cast<std::uint64_t>(observed.denominator());
-        if (denominatorValue <= 0xFFFF'FFFFU
-            && divmod_small(common, static_cast<std::uint32_t>(denominatorValue)).remainder == 0)
+        UInt128 const denominatorValue = wide_magnitude(observed.denominator());
+        if (denominatorValue.fits_u64() && denominatorValue.lowWord <= 0xFFFF'FFFFU
+            && divmod_small(common, static_cast<std::uint32_t>(denominatorValue.lowWord)).remainder == 0)
             continue;
         std::optional<WideUnsigned<L>> const grown =
-            lcm_checked_or_none(common, WideUnsigned<L>::from_u64(denominatorValue));
+            lcm_checked_or_none(common, WideUnsigned<L>::from_u128(denominatorValue));
         if (!grown.has_value())
             return std::nullopt;
         common = *grown;

@@ -217,8 +217,14 @@ struct LogarithmMagnitude
 /// The enclosure of |ln(@p positive)| -- see the file comment. @pre @p positive > 0 and != 1.
 [[nodiscard]] constexpr std::optional<LogarithmMagnitude> natural_log_magnitude(Rational positive) noexcept
 {
-    auto larger = static_cast<std::uint64_t>(positive.numerator());
-    auto smaller = static_cast<std::uint64_t>(positive.denominator());
+    std::optional<std::int64_t> const numeratorWord = narrow_to_int64(positive.numerator());
+    std::optional<std::int64_t> const denominatorWord = narrow_to_int64(positive.denominator());
+    // The kernel works on a fraction of two values below 2^63; a wider one is
+    // beyond it.
+    if (!numeratorWord || !denominatorWord)
+        return std::nullopt;
+    auto larger = static_cast<std::uint64_t>(*numeratorWord);
+    auto smaller = static_cast<std::uint64_t>(*denominatorWord);
     LogarithmSign const logarithmSign = larger < smaller ? LogarithmSign::Negative : LogarithmSign::Positive;
     if (logarithmSign == LogarithmSign::Negative)
         std::swap(larger, smaller);
@@ -288,8 +294,14 @@ struct LogarithmMagnitude
 [[nodiscard]] constexpr std::optional<Enclosure> exponential_enclosure(Rational argument) noexcept
 {
     bool const negative = argument.sign() < 0;
+    std::optional<std::int64_t> const numeratorWord = narrow_to_int64(argument.numerator());
+    std::optional<std::int64_t> const denominatorWord = narrow_to_int64(argument.denominator());
+    // The kernel works on a fraction of two values below 2^63; a wider one is
+    // beyond it.
+    if (!numeratorWord || !denominatorWord)
+        return std::nullopt;
     ScaledQuotient const fixedMagnitude =
-        scaled_quotient(magnitude(argument.numerator()), static_cast<std::uint64_t>(argument.denominator()));
+        scaled_quotient(magnitude(*numeratorWord), static_cast<std::uint64_t>(*denominatorWord));
     std::optional<KernelWord> remainderBelow;
     std::uint32_t shifts = 0;
     if (!negative)

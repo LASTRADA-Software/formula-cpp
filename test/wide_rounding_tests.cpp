@@ -335,3 +335,16 @@ TEST_CASE("wide rounding: a Rational scaled to a common denominator keeps its si
     STATIC_REQUIRE(!formula::detail::scaled_to_denominator(Rational { 0 }, twelve)->negative);
     STATIC_REQUIRE(formula::detail::scaled_to_denominator(Rational { 0 }, twelve)->magnitude.is_zero());
 }
+
+TEST_CASE("a wide integer holds 128 bits exactly, and says when it holds more", "[wide-int]")
+{
+    using formula::detail::UInt128;
+    using formula::detail::WideUnsigned;
+    constexpr UInt128 widest { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } };
+    STATIC_REQUIRE(WideUnsigned<4>::from_u128(widest).to_u128() == std::optional<UInt128> { widest });
+    STATIC_REQUIRE(WideUnsigned<8>::from_u128(UInt128 { 0x0123456789abcdef, 0xfedcba9876543210 }).to_u128()
+                   == std::optional<UInt128> { UInt128 { 0x0123456789abcdef, 0xfedcba9876543210 } });
+    constexpr auto twoTo128 = formula::detail::shift_left_checked_or_none(WideUnsigned<8>::from_u64(1), std::size_t { 128 });
+    STATIC_REQUIRE(twoTo128.has_value());
+    STATIC_REQUIRE(twoTo128->to_u128() == std::nullopt);
+}

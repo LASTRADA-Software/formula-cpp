@@ -2545,7 +2545,11 @@ namespace detail
             checked_convert(point, coherent(pointUnit.dimension), pointUnit);
         if (!stated.has_value())
             return std::nullopt;
-        return Breakpoint { stated->numerator(), stated->denominator() };
+        std::optional<std::int64_t> const keyTop = narrow_to_int64(stated->numerator());
+        std::optional<std::int64_t> const keyBottom = narrow_to_int64(stated->denominator());
+        if (!keyTop || !keyBottom)
+            return std::nullopt;
+        return Breakpoint { *keyTop, *keyBottom };
     }
 
     /// Fills in an interpolation step along a curve: its values' unit and its
@@ -2722,12 +2726,17 @@ namespace detail
                                         Rational { under.magnitudeNumerator, under.magnitudeDenominator });
         if (!magnitude.has_value())
             return std::nullopt;
+        // A `Unit` holds its magnitude in 64 bits: a wider one is no unit.
+        std::optional<std::int64_t> const magnitudeTop = narrow_to_int64(magnitude->numerator());
+        std::optional<std::int64_t> const magnitudeBottom = narrow_to_int64(magnitude->denominator());
+        if (!magnitudeTop || !magnitudeBottom)
+            return std::nullopt;
         MergedDimension const quotientDimension = merged_dimension(over.dimension, under.dimension, true);
         if (!quotientDimension.fits)
             return std::nullopt;
         Unit quotientUnit { .dimension = quotientDimension.dimension,
-                            .magnitudeNumerator = magnitude->numerator(),
-                            .magnitudeDenominator = magnitude->denominator(),
+                            .magnitudeNumerator = *magnitudeTop,
+                            .magnitudeDenominator = *magnitudeBottom,
                             .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
         std::size_t written = 0;
         for (char const spelt: overSymbol)
@@ -2844,13 +2853,16 @@ namespace detail
                 return;
             }
 
-            std::optional<std::uint64_t> const sampleSize = as_sample_size(*operandValue);
+            std::optional<UInt128> const sampleSize = as_sample_size(*operandValue);
             if (!sampleSize.has_value())
             {
                 step.lookupFailure = LookupFailure::NotACount;
                 return;
             }
-            step.lookupKey = *sampleSize;
+            // A count beyond 2^64 - 1 is one no table declares: it misses,
+            // with no key a step can hold.
+            if (sampleSize->fits_u64())
+                step.lookupKey = sampleSize->lowWord;
 
             if (!find_sample_size<Sizes>(*sampleSize).has_value())
                 step.lookupFailure = LookupFailure::Missed;

@@ -16,6 +16,8 @@
 
 #include <cstdint>
 #include <expected>
+#include <limits>
+#include <optional>
 #include <string_view>
 
 namespace formula
@@ -209,31 +211,31 @@ namespace detail
 {
     /// Whether `|numerator| / denominator >= 10^exponent`, exactly and without
     /// ever constructing 10^exponent as a Rational -- which is impossible at the
-    /// extremes of the representable range.
-    [[nodiscard]] constexpr bool at_least_pow10(std::uint64_t magnitudeNumerator,
-                                                std::uint64_t magnitudeDenominator,
+    /// extremes of the representable range. A scaled side beyond the largest
+    /// `Rational::Int` already decides the comparison, and is never formed.
+    [[nodiscard]] constexpr bool at_least_pow10(UInt128 magnitudeNumerator,
+                                                UInt128 magnitudeDenominator,
                                                 int exponent) noexcept
     {
-        constexpr std::uint64_t Limit = static_cast<std::uint64_t>(IntMax);
+        constexpr UInt128 Largest = wide_magnitude(std::numeric_limits<Rational::Int>::max());
         if (exponent >= 0)
         {
-            if (exponent > 18)
+            std::optional<UInt128> const powerOfTen = u128_pow10(exponent);
+            std::optional<UInt128> const scaledDenominator =
+                powerOfTen ? u128_mul_checked(magnitudeDenominator, *powerOfTen) : std::nullopt;
+            // Beyond the largest numerator, the quotient is below 10^exponent.
+            if (!scaledDenominator || Largest < *scaledDenominator)
                 return false;
-            std::uint64_t const powerOfTen = static_cast<std::uint64_t>(*pow10(exponent));
-            // denominator * factor > Limit implies the scaled denominator already
-            // exceeds any possible numerator, so the quotient is below 10^exponent.
-            if (magnitudeDenominator > Limit / powerOfTen)
-                return false;
-            FORMULA_CENSUS_NOTE(Intermediate, magnitudeDenominator * powerOfTen);
-            return magnitudeNumerator >= magnitudeDenominator * powerOfTen;
+            FORMULA_CENSUS_NOTE(Intermediate, *scaledDenominator);
+            return !(magnitudeNumerator < *scaledDenominator);
         }
-        if (-exponent > 18)
+        std::optional<UInt128> const powerOfTen = u128_pow10(-exponent);
+        std::optional<UInt128> const scaledNumerator =
+            powerOfTen ? u128_mul_checked(magnitudeNumerator, *powerOfTen) : std::nullopt;
+        if (!scaledNumerator || Largest < *scaledNumerator)
             return true;
-        std::uint64_t const powerOfTen = static_cast<std::uint64_t>(*pow10(-exponent));
-        if (magnitudeNumerator > Limit / powerOfTen)
-            return true;
-        FORMULA_CENSUS_NOTE(Intermediate, magnitudeNumerator * powerOfTen);
-        return magnitudeNumerator * powerOfTen >= magnitudeDenominator;
+        FORMULA_CENSUS_NOTE(Intermediate, *scaledNumerator);
+        return !(*scaledNumerator < magnitudeDenominator);
     }
 } // namespace detail
 
@@ -245,8 +247,8 @@ namespace detail
     if (examinedValue.is_zero())
         return std::unexpected { ArithmeticError::DomainError };
 
-    std::uint64_t const magnitudeNumerator = detail::magnitude(examinedValue.numerator());
-    auto const magnitudeDenominator = static_cast<std::uint64_t>(examinedValue.denominator());
+    detail::UInt128 const magnitudeNumerator = detail::wide_magnitude(examinedValue.numerator());
+    detail::UInt128 const magnitudeDenominator = detail::wide_magnitude(examinedValue.denominator());
 
     // The digit counts bracket the answer to within one: with dn digits in the
     // numerator and dd in the denominator, floor(log10(n/d)) is either

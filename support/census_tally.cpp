@@ -7,16 +7,14 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cstddef>
-#include <cstdint>
 
 namespace
 {
 
 /// The largest magnitude of each role seen since the last reset. One
 /// program, one thread: the census programs evaluate on the main thread only.
-std::array<std::uint64_t, 4> largestSeen {};
+std::array<formula::detail::UInt128, 4> largestSeen {};
 
 [[nodiscard]] std::size_t slot(formula::detail::CensusRole role) noexcept
 {
@@ -28,9 +26,10 @@ std::array<std::uint64_t, 4> largestSeen {};
 namespace formula::detail
 {
 
-void census_record(CensusRole role, std::uint64_t magnitudeSeen) noexcept
+void census_record(CensusRole role, UInt128 magnitudeSeen) noexcept
 {
-    largestSeen[slot(role)] = std::max(largestSeen[slot(role)], magnitudeSeen);
+    if (largestSeen[slot(role)] < magnitudeSeen)
+        largestSeen[slot(role)] = magnitudeSeen;
 }
 
 } // namespace formula::detail
@@ -40,7 +39,7 @@ namespace formula_census
 
 int bits_used(formula::detail::CensusRole role) noexcept
 {
-    return static_cast<int>(std::bit_width(largestSeen[slot(role)]));
+    return largestSeen[slot(role)].bit_width();
 }
 
 int signed_bits_used() noexcept
@@ -56,7 +55,7 @@ int signed_bits_used() noexcept
 
 void reset() noexcept
 {
-    largestSeen.fill(0);
+    largestSeen.fill(formula::detail::UInt128 {});
 }
 
 } // namespace formula_census

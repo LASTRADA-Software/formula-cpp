@@ -271,12 +271,21 @@ namespace detail
         if (!factorSquared)
             return factorSquared;
 
+        // A `Unit` holds its magnitude in 64 bits: a factor or a square wider
+        // than that is beyond any scale this can build.
+        std::optional<std::int64_t> const factorTop = narrow_to_int64(unitFactor->numerator());
+        std::optional<std::int64_t> const factorBottom = narrow_to_int64(unitFactor->denominator());
+        std::optional<std::int64_t> const squaredTop = narrow_to_int64(factorSquared->numerator());
+        std::optional<std::int64_t> const squaredBottom = narrow_to_int64(factorSquared->denominator());
+        if (!factorTop || !factorBottom || !squaredTop || !squaredBottom)
+            return std::unexpected { ArithmeticError::Overflow };
+
         Unit const unitScale { .dimension = unit.dimension,
-                               .magnitudeNumerator = unitFactor->numerator(),
-                               .magnitudeDenominator = unitFactor->denominator() };
+                               .magnitudeNumerator = *factorTop,
+                               .magnitudeDenominator = *factorBottom };
         Unit const scaleSquared { .dimension = unit.dimension * unit.dimension,
-                                  .magnitudeNumerator = factorSquared->numerator(),
-                                  .magnitudeDenominator = factorSquared->denominator() };
+                                  .magnitudeNumerator = *squaredTop,
+                                  .magnitudeDenominator = *squaredBottom };
 
         std::expected<Rational, ArithmeticError> const inUnitSquared =
             checked_convert(radicandInSi, coherent(scaleSquared.dimension), scaleSquared);

@@ -283,6 +283,24 @@ class Rational
     Int _denominator { 1 };
 };
 
+namespace detail
+{
+    /// The `Rational::Int` of magnitude @p magnitudeOf, negative when
+    /// @p negative, or nothing when `Rational::Int` cannot hold it: one
+    /// spelling for code that builds a numerator from a wide magnitude,
+    /// whatever `Rational::Int`'s width.
+    [[nodiscard]] constexpr std::optional<Rational::Int> rational_int_from_magnitude(UInt128 magnitudeOf,
+                                                                                     bool negative) noexcept
+    {
+        UInt128 const largestPositive = wide_magnitude(std::numeric_limits<Rational::Int>::max());
+        UInt128 const largestAllowed = negative ? u128_add(largestPositive, UInt128::from_u64(1)) : largestPositive;
+        if (largestAllowed < magnitudeOf)
+            return std::nullopt;
+        UInt128 const wordPattern = negative ? u128_sub(UInt128 {}, magnitudeOf) : magnitudeOf;
+        return int_from_pattern(wordPattern, std::type_identity<Rational::Int> {});
+    }
+} // namespace detail
+
 /// Reciprocal. Fails on zero, and on the one value whose reciprocal is not
 /// representable. Checked-only: there is no natural infallible-looking
 /// spelling for this operation the way negation has unary `-`.

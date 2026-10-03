@@ -5,6 +5,7 @@
 
 #include <compare>
 #include <limits>
+#include <optional>
 
 using formula::ArithmeticError;
 using formula::ArithmeticException;
@@ -470,4 +471,18 @@ TEST_CASE("rational: Pi's documented error bound is pinned, exactly", "[rational
 
     STATIC_REQUIRE(formula::Pi > belowPiBy8e17);
     STATIC_REQUIRE(formula::Pi < abovePiBy8e17);
+}
+
+TEST_CASE("a Rational::Int is built from a magnitude, or refused when it does not fit", "[rational]")
+{
+    using formula::detail::UInt128;
+    using formula::detail::rational_int_from_magnitude;
+    constexpr auto largestMagnitude = formula::detail::wide_magnitude(std::numeric_limits<formula::Rational::Int>::max());
+    STATIC_REQUIRE(rational_int_from_magnitude(UInt128::from_u64(5), true) == std::optional<formula::Rational::Int> { -5 });
+    STATIC_REQUIRE(rational_int_from_magnitude(largestMagnitude, false)
+                   == std::optional<formula::Rational::Int> { std::numeric_limits<formula::Rational::Int>::max() });
+    STATIC_REQUIRE(rational_int_from_magnitude(formula::detail::u128_add(largestMagnitude, UInt128::from_u64(1)), true)
+                   == std::optional<formula::Rational::Int> { std::numeric_limits<formula::Rational::Int>::min() });
+    STATIC_REQUIRE(rational_int_from_magnitude(formula::detail::u128_add(largestMagnitude, UInt128::from_u64(1)), false)
+                   == std::nullopt);
 }

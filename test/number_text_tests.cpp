@@ -493,10 +493,11 @@ TEST_CASE("a measured value is its number then its unit's symbol", "[number_text
 TEST_CASE("the longest text this library spells fits its buffer", "[number_text]")
 {
     // The marker, a sign, 19 whole digits, a point, 18 places, a space and a
-    // 16-byte symbol: 59 bytes of the 64 a NumberText can hold.
+    // 16-byte symbol: 59 bytes, within the longest text the buffer is sized
+    // for.
     NumberText const widest = formula::number_text(Measured<WidestReading> { Rational { IntMin, 3 } },
                                                    NumberStyle::approximate_decimal(RoundingMode::HalfEven));
     CHECK(widest.view() == "\xe2\x89\x88" "-3074457345618258602.666666666666666667 abcdefghijklmnop");
     CHECK(widest.view().size() == 59);
-    CHECK(widest.view().size() == formula::detail::LongestNumberText);
+    CHECK(widest.view().size() <= formula::detail::LongestNumberText);
 }

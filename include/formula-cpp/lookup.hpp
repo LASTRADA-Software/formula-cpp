@@ -481,6 +481,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <expected>
 #include <optional>
 #include <string_view>
@@ -1327,11 +1328,30 @@ struct Breakpoint
     return { keyNumerator, keyDenominator };
 }
 
+namespace detail
+{
+    /// A `breakpoint` key that a `Breakpoint`'s `std::int64_t` numerator or
+    /// denominator cannot hold. Deliberately not `constexpr`: reaching it in a
+    /// constant expression fails to compile, naming it. At run time it ends
+    /// the program -- a `Breakpoint` is a template argument, built at compile
+    /// time, and has no way to carry a failure.
+    [[noreturn]] inline void formula_breakpoint_key_out_of_range()
+    {
+        std::abort();
+    }
+} // namespace detail
+
 /// Builds a `Breakpoint` from its key as an exact number: `breakpoint(12.7_r)`.
 /// An integer still takes the overload above, so `breakpoint(127)` is unchanged.
+/// A key beyond 64 bits fails to compile, naming
+/// `formula_breakpoint_key_out_of_range`.
 [[nodiscard]] constexpr Breakpoint breakpoint(Rational keyValue) noexcept
 {
-    return { keyValue.numerator(), keyValue.denominator() };
+    std::optional<std::int64_t> const keyTop = detail::narrow_to_int64(keyValue.numerator());
+    std::optional<std::int64_t> const keyBottom = detail::narrow_to_int64(keyValue.denominator());
+    if (!keyTop || !keyBottom)
+        detail::formula_breakpoint_key_out_of_range();
+    return { *keyTop, *keyBottom };
 }
 
 namespace detail
