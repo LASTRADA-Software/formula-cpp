@@ -328,12 +328,14 @@ namespace detail
 ///   a binary denominator, `|numerator| * 5^N`. There the limit is set by the
 ///   **numerator's** magnitude, not the denominator's and not the value's
 ///   size: `1 / 2^121` rounds at all 18 places, while a 100-bit numerator over
-///   the same denominator does not. A `double`'s mantissa has at most 53 bits,
-///   and times 5^18 it stays below 2^95, so every value this function reads
-///   rounds at every place `DecimalPlaces` allows.
+///   the same denominator does not. A `double` below 2^53 in magnitude has a
+///   numerator of at most 53 bits, and rounding it forms at most
+///   2^53 * 5^18 * 2^18, below 2^113, so it rounds at every place from 0 to
+///   18. A whole `double` past that has a numerator of its own magnitude and
+///   nothing to cancel: 1e21 is refused at 18 places, and 1e38 at 1.
 /// - Rounding to a NEGATIVE number of places -- to whole tens or hundreds --
 ///   uses an integer step, which multiplies the **denominator** instead. There
-///   the denominator is the constraint.
+///   the denominator is the constraint: `2^-100` is refused at -18 places.
 ///
 /// Prefer `from_decimal` for an exact decimal; use this function only for a
 /// genuinely measured `double`.

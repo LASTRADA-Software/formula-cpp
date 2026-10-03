@@ -116,7 +116,7 @@ compile. The diagnostic names the function that was reached:
 
 | Spelling | Why it is refused | Named in the diagnostic |
 |---|---|---|
-| `9'223'372'036'854'775'808_r` | more significant digits than the literal's 64-bit mantissa holds, though a `Rational` holds the value | `formula_rational_literal_out_of_range` |
+| `9'223'372'036'854'775'808_r` | one more than the largest 64-bit integer, 9'223'372'036'854'775'807, which bounds the literal's mantissa -- though a `Rational` holds the value | `formula_rational_literal_out_of_range` |
 | `0.0000000000000000001_r` | a denominator of 10^19: the literal's scale, like `from_decimal`'s, stops at 10^18 | `formula_rational_literal_out_of_range` |
 | `0x1F_r`, `0b101_r` | not a decimal | `formula_rational_literal_not_a_decimal` |
 | `017_r` | C++ reads a leading zero as octal, so it is not the decimal 17 | `formula_rational_literal_not_a_decimal` |
@@ -250,8 +250,8 @@ the answer.
 ## Limits
 
 `Rational`'s numerator and denominator are `formula::Int128`, signed 128-bit
-integers: each holds magnitudes up to 2^127 − 1, and 39 decimal digits. That
-is the integer width only. `DecimalPlaces` and the decimal-place form of
+integers: each holds up to 2^127 − 1, and a numerator down to −2^127 -- up to
+39 decimal digits. That is the integer width only. `DecimalPlaces` and the decimal-place form of
 `round` stay limited to ±18 places, as `from_decimal`'s exponent and the `_r`
 literal's 18 places are; an out-of-range `DecimalPlaces` reports `Overflow`,
 while an out-of-range `SignificantDigits` (fewer than 1) reports `DomainError`
@@ -271,11 +271,14 @@ by the numerator's magnitude**, not by the denominator and not by the size of
 the value: `1 / 2^121` rounds correctly at all 18 places, while a 100-bit
 numerator over the same denominator is refused at 18.
 
-A `double`'s mantissa has at most 53 bits whatever its exponent, and times
-5^18 it stays below 2^95, so a value from `from_double_exact` or
-`rational_from_double` rounds at every place `DecimalPlaces` allows: 0,45 as a
-`double` is exactly `8106479329266893 / 2^54`, and rounds to 18 places as
-0.450000000000000011. `from_decimal(45, -2)` is `9/20` -- the same nominal
+A `double` below 2^53 in magnitude has a numerator of at most 53 bits, and
+rounding it at up to 18 places forms at most 2^53 · 5^18 · 2^18, below 2^113,
+so such a value from `from_double_exact` or `rational_from_double` rounds at
+every place from 0 to 18: 0,45 as a `double` is exactly
+`8106479329266893 / 2^54`, and rounds to 18 places as 0.450000000000000011.
+Past that the limit returns: a whole `double` such as 1e21 has a numerator of
+its own magnitude and nothing to cancel, so it is refused at 18 places, 1e38
+even at 1, and `2^-100` at -18 places multiplies its denominator past 2^127. `from_decimal(45, -2)` is `9/20` -- the same nominal
 value, and what a method that writes 0,45 means.
 
 `from_double_exact` refuses a `double` whose exact value would need a

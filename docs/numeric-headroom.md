@@ -35,7 +35,9 @@ the wider integers of its rounded route from 58.
 
 The project's decision rule stays: **any realistic case under 8 bits of
 headroom recommends wider arithmetic.** No realistic formula measured here is
-under it. The rule is what a change that quietly spends headroom is judged by.
+under it; the one program the examples table shows under it, `opaque_and_retry`,
+fits a stress control there on purpose (below). The rule is what a change that
+quietly spends headroom is judged by.
 
 **Headroom** here is `127` minus the bits used by the largest integer an
 evaluation formed -- numerators, denominators *and* the intermediates between
@@ -51,14 +53,14 @@ At 64 bits, the variance and the rejection at fine resolution, the cylinder's
 strength and the least-squares line were all under the 8-bit line, and many
 of their evaluations overflowed. Three findings decided the remedy:
 
-- **128-bit intermediates alone could not have helped.** `checked_mul`
+- **128-bit intermediates alone could not have been enough.** `checked_mul`
   reduces across its operands before it multiplies, so its product is already
   in lowest terms: a product that overflows is a result that overflows. Only a
   sum can overflow before it reduces.
 - **The values are stored in SI.** Every node's `Evaluated<Rational>`, and
-  every trace step's value, is in the coherent unit, and the exact variances
-  in kg² and strengths in Pa need 64 bits or more there -- up to 65 and 64 --
-  though at most 45 and 44 in the declared g² and MPa (the exact sizes
+  every trace step's value, is in the coherent unit, and there the widest
+  exact variance in kg² needs 65 bits and the widest strength in Pa 64, though
+  in the declared g² and MPa they need at most 45 and 44 (the exact sizes
   below). Storing them in the declared unit would change the evaluator's rule
   that every leaf is converted to SI, and a variance node has no declared unit
   to work in.

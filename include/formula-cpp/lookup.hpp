@@ -409,7 +409,7 @@
 /// a row whose value is representable can never come back as an `Overflow` at
 /// all. It can. `checked_evaluate_si` still hands the answer to
 /// `detail::in_si`, which converts it out of `ResultUnit` into the coherent
-/// unit, and **a unit conversion is arithmetic** -- a row stating `2^62`
+/// unit, and **a unit conversion is arithmetic** -- a row stating `2^126`
 /// kilometres is a perfectly representable `Rational` that overflows on the way
 /// to metres. That path is shared with the banded and the exact lookup, which
 /// have it for exactly the same reason, and nothing about it is particular to
@@ -1605,10 +1605,13 @@ namespace detail
     /// **Neither order dominates**, and the comment that used to stand here
     /// claimed one did. Measured, both directions:
     ///
-    ///  - keys `{0, 10}` with values `{0, 2^62}`, asked at 5: dividing first
-    ///    answers `2^61` exactly; multiplying first reports `Overflow`.
-    ///  - keys `{0, 4e9}` with values `{0, 4e9}`, asked at `1/4e9`: multiplying
-    ///    first answers `1/4e9` exactly; dividing first reports `Overflow`.
+    ///  - keys `{0, 10}` with values `{0, 2^126}`, asked at 5: dividing first
+    ///    answers `2^125` exactly; multiplying first would form `5 * 2^126` and
+    ///    report `Overflow`.
+    ///  - keys `{0, 4e9}` with values `{0, 4e9}`, asked at `2^-100`: multiplying
+    ///    first would answer `2^-100` exactly; dividing first forms the weight
+    ///    `2^-100 / 4e9`, which does not fit, and reports `Overflow`. Asked at
+    ///    `1/4e9`, the same table answers `1/4e9` in the chosen order.
     ///
     /// Dividing first is chosen because it is the better order for the tables
     /// this library is actually for. A published curve states its rows on a

@@ -412,10 +412,10 @@ integers, as `linear_least_squares` does
 
 There is one further refusal in the same function, for a different reason.
 `checked_exact_nth_root` rejects the most negative representable numerator
-(`IntMin`) with `ArithmeticError::Overflow` rather than `Inexact`: `IntMin`'s
-cube root exists and is exactly representable, but negating `IntMin` to reach
-a positive intermediate is signed overflow, undefined behaviour, before the
-root is ever taken. `Overflow` names what actually goes wrong; treating it as
+(`IntMin`, -2^127) with `ArithmeticError::Overflow` rather than `Inexact`:
+`IntMin`'s 127th root, -2, exists and is exactly representable, but negating
+`IntMin` to reach a positive intermediate is signed overflow, undefined
+behaviour, before the root is ever taken. `Overflow` names what actually goes wrong; treating it as
 `Inexact` would blame the wrong layer.
 
 A root of degree zero names no operation at all and is refused at compile

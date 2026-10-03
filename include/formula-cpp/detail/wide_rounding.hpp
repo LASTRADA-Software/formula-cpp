@@ -19,7 +19,7 @@
 /// it was reached.
 ///
 /// Integer arithmetic only (`detail/wide_int.hpp`): no floating point, no
-/// intrinsic, no 128-bit integer type.
+/// intrinsic, no compiler 128-bit integer (`__int128`).
 
 #include <formula-cpp/detail/wide_int.hpp>
 #include <formula-cpp/error.hpp>
