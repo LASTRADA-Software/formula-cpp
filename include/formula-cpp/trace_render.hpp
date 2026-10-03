@@ -580,25 +580,161 @@ namespace detail
                                              : std::to_string(recorded.lookupKey));
     }
 
+    /// A value no line can spell, and why: `(not shown: <reason>)`. The one
+    /// spelling of it, for a value its unit cannot show and for a value its
+    /// style cannot spell in that unit alike.
+    [[nodiscard]] inline std::string not_shown_text(ArithmeticError whyNot)
+    {
+        return "(not shown: " + std::string { describe(whyNot) } + ")";
+    }
+
+    /// The coherent unit of @p dimension, spelt from its base units:
+    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
+    /// one. Written after every dimensioned value whose unit has no symbol, so
+    /// that a slope in metres per second does not read as a pure number.
+    ///
+    /// A named base dimension is spelt by its name -- the name is also the
+    /// symbol of its coherent unit -- ahead of the SI units on its side of the
+    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
+    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
+    /// read as money per energy, not as seconds squared of money per metre.
+    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
+    /// only letters and digits, but a hand-filled `namedBases` can hold
+    /// anything.
+    [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
+    {
+        struct BaseUnit
+        {
+            std::string_view symbol;
+            Exponent exponent;
+        };
+        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
+                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
+                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
+                                              BaseUnit { "cd", dimension.luminosity } };
+        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
+            std::string factorText { symbolText };
+            if (denominatorPart != 1)
+                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
+            else if (numeratorPart != 1)
+                factorText += "^" + std::to_string(numeratorPart);
+            return factorText;
+        };
+        std::string above;
+        std::string below;
+        std::size_t belowCount = 0;
+        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
+            if (baseExponent.numerator > 0)
+                above += (above.empty() ? "" : " ")
+                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
+            else if (baseExponent.numerator < 0)
+            {
+                below += (below.empty() ? "" : " ")
+                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
+                ++belowCount;
+            }
+        };
+        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
+            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
+        for (BaseUnit const& base: bases)
+            place(base.symbol, base.exponent);
+        if (below.empty())
+            return above;
+        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
+    }
+
+    /// Whether a value of @p dimension in @p declared is shown in the coherent
+    /// unit, spelt by `coherent_unit_text`, rather than in @p declared: when
+    /// @p declared has no symbol and @p dimension is not dimensionless. A
+    /// unit with no symbol cannot say what scale its number is on, so the
+    /// number is moved into the one scale its spelling names. The one rule
+    /// for every place a number is written with its unit: a step's value, a
+    /// squared deviation, a conformity row, a derivation's header, and a
+    /// bound a table, a curve or a permitted set declared
+    /// (`shown_bound_text`), so that every number on a line is in the unit
+    /// written after it.
+    [[nodiscard]] inline bool spells_coherent_unit(Unit const& declared, Dimension dimension)
+    {
+        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
+    }
+
+    /// The unit a value of @p dimension declared in @p declared is shown in:
+    /// the coherent unit where `spells_coherent_unit` says so, @p declared
+    /// otherwise.
+    [[nodiscard]] inline Unit shown_unit_of(Unit const& declared, Dimension dimension)
+    {
+        return spells_coherent_unit(declared, dimension) ? coherent(dimension) : declared;
+    }
+
+    /// The text written after a value shown in `shown_unit_of(@p declared,
+    /// @p dimension)`: the coherent unit's spelling, the declared unit's
+    /// escaped symbol, or nothing for a dimensionless value in a unit with
+    /// no symbol.
+    [[nodiscard]] inline std::string shown_unit_text(Unit const& declared, Dimension dimension)
+    {
+        return spells_coherent_unit(declared, dimension) ? coherent_unit_text(dimension) : unit_symbol_text(declared);
+    }
+
+    /// A bound declared in @p declaredIn as a numerator/denominator pair -- a
+    /// band's, a curve's row or a permitted value -- spelled exact
+    /// (`declared_number_text`) in the unit a value declared in @p declaredIn
+    /// is shown in (`shown_unit_of`), without that unit's text: the caller
+    /// writes `shown_unit_text(declaredIn, declaredIn.dimension)` after the
+    /// bounds it lists. A bound of a unit with no symbol is moved into the
+    /// coherent unit, as the value it is compared with is, so that no number
+    /// on the line is in a scale the line does not name.
+    ///
+    /// Only that move can fail, and only for a bound whose coherent form
+    /// overflows; the bound then reads `(not shown: ...)` rather than as a
+    /// number in the wrong scale. A bound of a unit with a symbol is never
+    /// converted, and never fails.
+    [[nodiscard]] inline std::string shown_bound_text(std::int64_t declaredNumerator,
+                                                      std::int64_t declaredDenominator,
+                                                      Unit const& declaredIn,
+                                                      NumberStyle numberStyle)
+    {
+        if (!spells_coherent_unit(declaredIn, declaredIn.dimension))
+            return declared_number_text(declaredNumerator, declaredDenominator, declaredIn, numberStyle);
+        std::expected<Rational, ArithmeticError> const declared = Rational::make(declaredNumerator, declaredDenominator);
+        if (!declared)
+            return not_shown_text(declared.error());
+        Unit const coherentUnit = coherent(declaredIn.dimension);
+        std::expected<Rational, ArithmeticError> const inCoherent = checked_convert(*declared, declaredIn, coherentUnit);
+        if (!inCoherent)
+            return not_shown_text(inCoherent.error());
+        return styled_number_text(*inCoherent, numberStyle.exact_only(), coherentUnit);
+    }
+
     /// A half-open interval a lookup step reports about -- a selected band,
     /// or the extent a whole band table covers: `211/100 to under 307/10 mm`.
     ///
-    /// Delegates to `render.hpp`'s `band_text`, which is **the** spelling of a
-    /// half-open interval in this library, so that a derivation and the
-    /// formula it derives cannot name one band two ways. That ruling, and the
-    /// published defect that bought it, are in `render.hpp`'s file comment.
+    /// Written by `render.hpp`'s `half_open_text`, the words of `band_text`,
+    /// which is **the** spelling of a half-open interval in this library, so
+    /// that a derivation and the formula it derives cannot name one band two
+    /// ways. That ruling, and the published defect that bought it, are in
+    /// `render.hpp`'s file comment. The bounds are in @p keyUnit, and read as
+    /// `shown_bound_text` shows them.
     [[nodiscard]] inline std::string half_open_range_text(LookupRange const& lookupRange,
-                                                          std::string_view keySymbol,
                                                           Unit const& keyUnit,
                                                           NumberStyle numberStyle)
     {
-        return band_text(Band { lookupRange.lowNumerator,
-                                lookupRange.lowDenominator,
-                                lookupRange.highNumerator,
-                                lookupRange.highDenominator },
-                         keySymbol,
-                         keyUnit,
-                         numberStyle);
+        return half_open_text(
+            shown_bound_text(lookupRange.lowNumerator, lookupRange.lowDenominator, keyUnit, numberStyle),
+            shown_bound_text(lookupRange.highNumerator, lookupRange.highDenominator, keyUnit, numberStyle),
+            shown_unit_text(keyUnit, keyUnit.dimension));
+    }
+
+    /// A band a lookup selected, as `half_open_range_text` writes an interval.
+    [[nodiscard]] inline std::string selected_band_text(Band const& selectedBand,
+                                                        Unit const& keyUnit,
+                                                        NumberStyle numberStyle)
+    {
+        return half_open_range_text(LookupRange { selectedBand.lowNumerator,
+                                                  selectedBand.lowDenominator,
+                                                  selectedBand.highNumerator,
+                                                  selectedBand.highDenominator },
+                                    keyUnit,
+                                    numberStyle);
     }
 
     /// A **closed** range an interpolating curve runs over: `209/10 to 293/10 mm`.
@@ -616,16 +752,16 @@ namespace detail
     /// The bounds are reduced through `declared_number_text`, the same helper
     /// every other declared bound in this library is printed with, so a curve
     /// whose first row was typed `1474/200` reads `737/100` here exactly as it
-    /// does in `render()`.
+    /// does in `render()` -- in @p keyUnit's own scale, or in the coherent unit
+    /// for a unit with no symbol (`shown_bound_text`).
     [[nodiscard]] inline std::string closed_range_text(LookupRange const& lookupRange,
-                                                       std::string_view keySymbol,
                                                        Unit const& keyUnit,
                                                        NumberStyle numberStyle)
     {
         return number_with_unit(
-            declared_number_text(lookupRange.lowNumerator, lookupRange.lowDenominator, keyUnit, numberStyle) + " to "
-                + declared_number_text(lookupRange.highNumerator, lookupRange.highDenominator, keyUnit, numberStyle),
-            keySymbol);
+            shown_bound_text(lookupRange.lowNumerator, lookupRange.lowDenominator, keyUnit, numberStyle) + " to "
+                + shown_bound_text(lookupRange.highNumerator, lookupRange.highDenominator, keyUnit, numberStyle),
+            shown_unit_text(keyUnit, keyUnit.dimension));
     }
 
     /// The two rows an interpolating answer came from: `between 331/100 and
@@ -646,16 +782,17 @@ namespace detail
     /// is why it needs neither `band_text`'s `to under` nor
     /// `closed_range_text`'s `to`. The numbers go through
     /// `declared_number_text` like every other declared bound, so a row typed
-    /// `14/4` reads `7/2` here exactly as it does in `render()`.
+    /// `14/4` reads `7/2` here exactly as it does in `render()`, and are shown
+    /// as `shown_bound_text` shows a bound.
     [[nodiscard]] inline std::string segment_text(Segment const& lookupSegment,
-                                                  std::string_view keySymbol,
                                                   Unit const& keyUnit,
                                                   NumberStyle numberStyle)
     {
+        std::string const keySymbol = shown_unit_text(keyUnit, keyUnit.dimension);
         std::string const lowText =
-            declared_number_text(lookupSegment.low.numerator, lookupSegment.low.denominator, keyUnit, numberStyle);
+            shown_bound_text(lookupSegment.low.numerator, lookupSegment.low.denominator, keyUnit, numberStyle);
         std::string const highText =
-            declared_number_text(lookupSegment.high.numerator, lookupSegment.high.denominator, keyUnit, numberStyle);
+            shown_bound_text(lookupSegment.high.numerator, lookupSegment.high.denominator, keyUnit, numberStyle);
         if (lowText == highText)
             return "on the row at " + number_with_unit(lowText, keySymbol);
         return "between " + number_with_unit(lowText + " and " + highText, keySymbol);
@@ -699,12 +836,11 @@ namespace detail
     /// genuinely different questions: a value in none of a table's bands, a
     /// key in none of its rows, a value off the ends of a curve.
     ///
-    /// @p keySymbol is `recorded.sourceUnit`'s symbol, escaped; the table's
-    /// bounds are numbers in that unit.
+    /// The table's bounds are numbers in `recorded.sourceUnit`, shown as
+    /// `shown_bound_text` shows them.
     [[nodiscard]] inline std::string lookup_miss_text(Trace<Rational> const& trace,
                                                       std::size_t stepIndex,
                                                       Step<Rational> const& recorded,
-                                                      std::string_view keySymbol,
                                                       NumberStyle numberStyle)
     {
         if (recorded.kind == StepKind::ExactLookup)
@@ -721,20 +857,20 @@ namespace detail
 
         Unit const& keyUnit = recorded.sourceUnit;
         if (recorded.kind == StepKind::BandedLookup)
-            return "in no band; the bands cover "
-                   + half_open_range_text(*recorded.coveredRange, keySymbol, keyUnit, numberStyle);
+            return "in no band; the bands cover " + half_open_range_text(*recorded.coveredRange, keyUnit, numberStyle);
 
         // A curve with exactly one row covers that one key and nothing else,
         // and "runs 15/2 to 15/2 mm" would describe it as a range it is not.
         // `at <key>` is the spelling `render()` gives a breakpoint, for the
         // same reason: a row is a point.
-        std::string const lowText = declared_number_text(
+        std::string const lowText = shown_bound_text(
             recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator, keyUnit, numberStyle);
-        std::string const highText = declared_number_text(
+        std::string const highText = shown_bound_text(
             recorded.coveredRange->highNumerator, recorded.coveredRange->highDenominator, keyUnit, numberStyle);
         if (lowText == highText)
-            return "outside the curve, whose only row is at " + number_with_unit(lowText, keySymbol);
-        return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keySymbol, keyUnit, numberStyle);
+            return "outside the curve, whose only row is at "
+                   + number_with_unit(lowText, shown_unit_text(keyUnit, keyUnit.dimension));
+        return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keyUnit, numberStyle);
     }
 
     /// A lookup step's trailing clause: which row it selected, or -- when it
@@ -767,7 +903,6 @@ namespace detail
                                                    Step<Rational> const& recorded,
                                                    NumberStyle numberStyle)
     {
-        std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
         switch (recorded.lookupFailure)
         {
             case LookupFailure::None:
@@ -787,13 +922,12 @@ namespace detail
                 if (recorded.kind == StepKind::SampleSizeLookup && recorded.value.has_value() && !recorded.operands.empty())
                     return " [critical value at n = " + std::to_string(recorded.lookupKey) + "]";
                 if (recorded.selectedBand.has_value())
-                    return " [" + band_text(*recorded.selectedBand, keySymbol, recorded.sourceUnit, numberStyle) + "]";
+                    return " [" + selected_band_text(*recorded.selectedBand, recorded.sourceUnit, numberStyle) + "]";
                 if (recorded.selectedSegment.has_value())
-                    return " [" + segment_text(*recorded.selectedSegment, keySymbol, recorded.sourceUnit, numberStyle)
-                           + "]";
+                    return " [" + segment_text(*recorded.selectedSegment, recorded.sourceUnit, numberStyle) + "]";
                 return {};
             case LookupFailure::Missed:
-                return " [" + lookup_miss_text(trace, stepIndex, recorded, keySymbol, numberStyle) + "]";
+                return " [" + lookup_miss_text(trace, stepIndex, recorded, numberStyle) + "]";
             case LookupFailure::Computation:
                 return " [the interpolation itself overflowed, not anything below it]";
             case LookupFailure::Conversion:
@@ -1473,98 +1607,6 @@ namespace detail
                + variant_narrowing_clause(recorded) + "]";
     }
 
-    /// A value no line can spell, and why: `(not shown: <reason>)`. The one
-    /// spelling of it, for a value its unit cannot show and for a value its
-    /// style cannot spell in that unit alike.
-    [[nodiscard]] inline std::string not_shown_text(ArithmeticError whyNot)
-    {
-        return "(not shown: " + std::string { describe(whyNot) } + ")";
-    }
-
-    /// The coherent unit of @p dimension, spelt from its base units:
-    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
-    /// one. Written after every dimensioned value whose unit has no symbol, so
-    /// that a slope in metres per second does not read as a pure number.
-    ///
-    /// A named base dimension is spelt by its name -- the name is also the
-    /// symbol of its coherent unit -- ahead of the SI units on its side of the
-    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
-    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
-    /// read as money per energy, not as seconds squared of money per metre.
-    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
-    /// only letters and digits, but a hand-filled `namedBases` can hold
-    /// anything.
-    [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
-    {
-        struct BaseUnit
-        {
-            std::string_view symbol;
-            Exponent exponent;
-        };
-        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
-                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
-                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
-                                              BaseUnit { "cd", dimension.luminosity } };
-        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
-            std::string factorText { symbolText };
-            if (denominatorPart != 1)
-                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
-            else if (numeratorPart != 1)
-                factorText += "^" + std::to_string(numeratorPart);
-            return factorText;
-        };
-        std::string above;
-        std::string below;
-        std::size_t belowCount = 0;
-        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
-            if (baseExponent.numerator > 0)
-                above += (above.empty() ? "" : " ")
-                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
-            else if (baseExponent.numerator < 0)
-            {
-                below += (below.empty() ? "" : " ")
-                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
-                ++belowCount;
-            }
-        };
-        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
-            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
-        for (BaseUnit const& base: bases)
-            place(base.symbol, base.exponent);
-        if (below.empty())
-            return above;
-        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
-    }
-
-    /// Whether a value of @p dimension in @p declared is shown in the coherent
-    /// unit, spelt by `coherent_unit_text`, rather than in @p declared: when
-    /// @p declared has no symbol and @p dimension is not dimensionless. A
-    /// unit with no symbol cannot say what scale its number is on, so the
-    /// number is moved into the one scale its spelling names. The one rule
-    /// for every place a value is written with its unit: a step's value, a
-    /// squared deviation, a conformity row and a derivation's header.
-    [[nodiscard]] inline bool spells_coherent_unit(Unit const& declared, Dimension dimension)
-    {
-        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
-    }
-
-    /// The unit a value of @p dimension declared in @p declared is shown in:
-    /// the coherent unit where `spells_coherent_unit` says so, @p declared
-    /// otherwise.
-    [[nodiscard]] inline Unit shown_unit_of(Unit const& declared, Dimension dimension)
-    {
-        return spells_coherent_unit(declared, dimension) ? coherent(dimension) : declared;
-    }
-
-    /// The text written after a value shown in `shown_unit_of(@p declared,
-    /// @p dimension)`: the coherent unit's spelling, the declared unit's
-    /// escaped symbol, or nothing for a dimensionless value in a unit with
-    /// no symbol.
-    [[nodiscard]] inline std::string shown_unit_text(Unit const& declared, Dimension dimension)
-    {
-        return spells_coherent_unit(declared, dimension) ? coherent_unit_text(dimension) : unit_symbol_text(declared);
-    }
-
     /// @p storedValue -- a step's own, or one element of a series step's -- converted
     /// from the coherent unit of @p recorded's dimension into the unit the
     /// step was declared in, with that unit's symbol, or `(not measured)`
@@ -1826,12 +1868,11 @@ namespace detail
         Step<Rational> observationShape {};
         observationShape.dimension = recorded.sourceUnit.dimension;
         observationShape.unit = recorded.sourceUnit;
-        std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
         NumberStyle const comparedStyle = numberStyle.exact_only();
         return positionText + " ["
                + value_in_declared_unit(observationShape, recorded.domainElements[failedAt], comparedStyle)
                + " in no class; the classes cover "
-               + half_open_range_text(*recorded.coveredRange, keySymbol, recorded.sourceUnit, comparedStyle) + "]";
+               + half_open_range_text(*recorded.coveredRange, recorded.sourceUnit, comparedStyle) + "]";
     }
 
     /// A series step's line, without its number: the expression, an `=`, and
@@ -1980,15 +2021,14 @@ namespace detail
     /// nothing was located: a failed or absent curve or point.
     [[nodiscard]] inline std::string curve_interpolation_suffix(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
-        std::string const pointSymbol = unit_symbol_text(recorded.sourceUnit);
         // The points the value lay between, or the ends it lay outside, are
         // one side of the comparison the clause states: `declared_number_text`
         // spells them in `exact_only()`.
         if (recorded.selectedSegment.has_value())
-            return " [" + segment_text(*recorded.selectedSegment, pointSymbol, recorded.sourceUnit, numberStyle) + "]";
+            return " [" + segment_text(*recorded.selectedSegment, recorded.sourceUnit, numberStyle) + "]";
         if (recorded.coveredRange.has_value())
             return " [outside the curve, which runs "
-                   + closed_range_text(*recorded.coveredRange, pointSymbol, recorded.sourceUnit, numberStyle) + "]";
+                   + closed_range_text(*recorded.coveredRange, recorded.sourceUnit, numberStyle) + "]";
         return {};
     }
 
@@ -2062,19 +2102,20 @@ namespace detail
     /// the one it snapped to, named after `nearer`, is one of them: it is
     /// spelled in `numberStyle.exact_only()` too, so that it reads exactly as
     /// the neighbour it names -- and as the step's own value, a typed number
-    /// (`states_typed_value`), reads before the bracket.
+    /// (`states_typed_value`), reads before the bracket. All of them are in
+    /// the unit the step's value is shown in (`shown_bound_text`), so a set
+    /// declared in a unit with no symbol reads in the coherent unit throughout.
     [[nodiscard]] inline std::string snap_suffix(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
-        std::string const keySymbol = unit_symbol_text(recorded.unit);
         Unit const& keyUnit = recorded.unit;
+        std::string const keySymbol = shown_unit_text(keyUnit, keyUnit.dimension);
         if (recorded.selectedSegment.has_value())
         {
             Segment const& neighbours = *recorded.selectedSegment;
             std::string const lowText = number_with_unit(
-                declared_number_text(neighbours.low.numerator, neighbours.low.denominator, keyUnit, numberStyle), keySymbol);
+                shown_bound_text(neighbours.low.numerator, neighbours.low.denominator, keyUnit, numberStyle), keySymbol);
             std::string const highText = number_with_unit(
-                declared_number_text(neighbours.high.numerator, neighbours.high.denominator, keyUnit, numberStyle),
-                keySymbol);
+                shown_bound_text(neighbours.high.numerator, neighbours.high.denominator, keyUnit, numberStyle), keySymbol);
             if (neighbours.low == neighbours.high)
                 return " [on " + lowText + "]";
             if (recorded.tieBroken)
@@ -2089,11 +2130,10 @@ namespace detail
             LookupRange const& covered = *recorded.coveredRange;
             return " [outside the permitted set, "
                    + number_with_unit(
-                       declared_number_text(covered.lowNumerator, covered.lowDenominator, keyUnit, numberStyle), keySymbol)
+                       shown_bound_text(covered.lowNumerator, covered.lowDenominator, keyUnit, numberStyle), keySymbol)
                    + " to "
                    + number_with_unit(
-                       declared_number_text(covered.highNumerator, covered.highDenominator, keyUnit, numberStyle),
-                       keySymbol)
+                       shown_bound_text(covered.highNumerator, covered.highDenominator, keyUnit, numberStyle), keySymbol)
                    + "]";
         }
         return {};
@@ -3412,28 +3452,36 @@ namespace detail
     /// The value of @p shown's block as its header states it: in the unit it
     /// was declared in, with that unit's symbol -- or, for a dimensioned unit
     /// with no symbol, in the coherent unit with its spelling
-    /// (`shown_unit_of`) -- spelled in @p numberStyle as
-    /// a trace line spells a value (`checked_shown_text`), or `(not shown:
-    /// ...)` where the style cannot spell it in that unit; why its
-    /// calculation failed; or `(no value)`. Exact only when @p typed, the
-    /// block's value being a number typed rather than computed
-    /// (`derivation_value_is_typed`), so that the header, the block's root
-    /// and every line reading the value agree on whether it is typed. That
-    /// is all they agree on: a computed root states the value in the
+    /// (`shown_unit_of`) -- spelled in @p numberStyle as a trace line spells
+    /// a value (`checked_shown_text`), or `(not shown: ...)` where the style
+    /// cannot spell it in that unit or the move into the coherent unit
+    /// overflows; why its calculation failed; or `(no value)`. Exact only
+    /// when @p typed, the block's value being a number typed rather than
+    /// computed (`derivation_value_is_typed`), so that the header, the
+    /// block's root and every line reading the value agree on whether it is
+    /// typed. That is all they agree on: a computed root states the value in
+    /// the unit its step is shown in (`Step::unit`), which may be the
     /// coherent unit, so it may differ from the header in its unit, its
     /// padding and its decimals, and one may read `≈` where the other does
     /// not -- a length of `1 u`, in a unit of a third of a metre, is
-    /// `≈0.333` metres at its root.
+    /// `≈0.333 m` at a root computed in the coherent unit.
     [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown, NumberStyle numberStyle, bool typed)
     {
         if (shown.error.has_value())
             return std::string { describe(*shown.error) };
         if (!shown.value.has_value())
             return "(no value)";
-        // A unit with no symbol: the value moves into the coherent unit and
-        // says so, as a trace line's value does (`shown_unit_of`).
+        // The value is held in its declared unit. One with a symbol is shown
+        // as it is: converting it to itself would pass through the coherent
+        // unit, which can overflow for a value its own unit holds well, a
+        // great many kilowatt-hours counted in joules. One with no symbol
+        // moves into the coherent unit and says so, as a trace line's value
+        // does (`shown_unit_of`); that move is the one that can fail, and
+        // only for a value whose coherent form overflows.
         Unit const shownUnit = shown_unit_of(shown.unit, shown.unit.dimension);
-        std::expected<Rational, ArithmeticError> const inShownUnit = checked_convert(*shown.value, shown.unit, shownUnit);
+        std::expected<Rational, ArithmeticError> const inShownUnit =
+            spells_coherent_unit(shown.unit, shown.unit.dimension) ? checked_convert(*shown.value, shown.unit, shownUnit)
+                                                                    : std::expected<Rational, ArithmeticError> { *shown.value };
         if (!inShownUnit)
             return not_shown_text(inShownUnit.error());
         std::expected<NumberText, ArithmeticError> const spelled =

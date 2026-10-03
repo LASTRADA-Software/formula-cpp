@@ -501,6 +501,18 @@ namespace detail
         return std::to_string(declaredNumerator) + "/" + std::to_string(declaredDenominator);
     }
 
+    /// The words of a half-open interval whose bounds are already spelled:
+    /// `103 to under 197 mm`, or the bounds alone when @p unitSymbol is
+    /// empty. `band_text` writes every band through it, and so does a trace
+    /// that shows a band's bounds in another unit than they were declared in
+    /// (`trace_render.hpp`), so that the one spelling stays one.
+    [[nodiscard]] inline std::string half_open_text(std::string const& lowText,
+                                                    std::string const& highText,
+                                                    std::string_view unitSymbol)
+    {
+        return number_with_unit(lowText + " to under " + highText, unitSymbol);
+    }
+
     /// A half-open band as text: `103 to under 197 mm`. **The one spelling of a
     /// half-open interval in this library** -- see this file's comment for the
     /// ruling and for the published defect that bought it.
@@ -513,9 +525,9 @@ namespace detail
                                                Unit const& keyUnit,
                                                NumberStyle numberStyle)
     {
-        return number_with_unit(
-            declared_number_text(shownBand.lowNumerator, shownBand.lowDenominator, keyUnit, numberStyle) + " to under "
-                + declared_number_text(shownBand.highNumerator, shownBand.highDenominator, keyUnit, numberStyle),
+        return half_open_text(
+            declared_number_text(shownBand.lowNumerator, shownBand.lowDenominator, keyUnit, numberStyle),
+            declared_number_text(shownBand.highNumerator, shownBand.highDenominator, keyUnit, numberStyle),
             keySymbol);
     }
 

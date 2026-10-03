@@ -3,13 +3,18 @@
 // A trace step's number is always shown with the unit it is in: borrowed from
 // the operand steps where that is safe, the coherent unit's symbol otherwise,
 // and nothing only for a dimensionless value.
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/calculation.hpp>
 #include <formula-cpp/conformity.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/formula.hpp>
+#include <formula-cpp/lookup.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
 #include "forwarding_nodes.hpp"
+#include "household_bill.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -86,6 +91,25 @@ template <typename Expression, typename Bound>
 std::string trace_text(Expression const& formulaExpression, Bound const& inputs)
 {
     return formula::render_trace(recorded_trace(formulaExpression, inputs), { .maxSteps = 20 });
+}
+
+// The particles of a class, a count.
+struct ParticleCount: formula::Quantity<ParticleCount, "n", "particles in a class", unit::One>
+{
+};
+
+// The permitted values, the bands and the rows below, all in the unnamed
+// gram: a line that wrote them in that scale would write numbers a thousand
+// times those of the kilograms written after them.
+inline constexpr formula::BreakpointTable<2> UnnamedPermitted { formula::breakpoint(3), formula::breakpoint(5) };
+inline constexpr formula::BandTable<2> UnnamedBands { formula::band(0, 1, 5, 1), formula::band(5, 1, 8, 1) };
+inline constexpr formula::BreakpointTable<2> UnnamedRows { formula::breakpoint(2), formula::breakpoint(6) };
+inline constexpr formula::BreakpointTable<1> UnnamedOnlyRow { formula::breakpoint(2) };
+
+template <typename Expression>
+std::string unnamed_trace_text(Expression const& formulaExpression, Rational unnamedGrams)
+{
+    return trace_text(formulaExpression, formula::environment(formula::Measured<UnnamedMass> { unnamedGrams }));
 }
 } // namespace
 
@@ -308,12 +332,89 @@ TEST_CASE("a conditional whose branch records no step of its own reads in the co
 TEST_CASE("a binary step over a node that records no step of its own reads in the coherent unit",
           "[trace-render][shown-unit]")
 {
-    // Two steps are claimed, and both are in grams, but the first is the
-    // forwarding node's operand, not the node: the product's unit is not
-    // read off it.
+    // Two steps are claimed: the first, in grams, is the forwarding node's
+    // operand, not the node, and the second the bare 2. The product's unit is
+    // not read off the first.
     auto const grams = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } });
     CHECK(trace_text(forwarding::rise_above(var<SampleMass>, Rational { 1, 100 }) * Rational { 2 }, grams)
           == "1. m = 413/10 g\n"
              "2. 2\n"
              "3. #1 * #2 = 313/5000 kg\n");
+}
+
+TEST_CASE("a derivation's header shows a value in a unit with a symbol without passing through the coherent unit",
+          "[trace-render][shown-unit][worksheet]")
+{
+    // 10^13 kWh is 3.6 * 10^19 J, more than 64 bits count, but it is a
+    // perfectly good number of kilowatt-hours: typed in, it reads as typed.
+    auto sheet = formula::worksheet(household::bill, household::bill_environment(household::billValues));
+    sheet.set(formula::entered(formula::Measured<household::NetDraw> { Rational { 10'000'000'000'000 } }));
+    CHECK(formula::render_derivation(formula::explain_worksheet<household::NetDraw>(sheet), { .maxSteps = 20 })
+          == "net_draw = 10000000000000 kWh, entered by hand in place of monthly_load - self_used\n");
+}
+
+TEST_CASE("a snap in a unit with no symbol states its permitted values in the coherent unit",
+          "[trace-render][shown-unit][snap]")
+{
+    // The permitted values are 3 and 5 of the unnamed gram: 3/1000 and
+    // 1/200 kg, as the value snapped is.
+    auto const snappedTo = [](Rational unnamedGrams) {
+        return unnamed_trace_text(
+            formula::snapped<UnnamedGram, UnnamedPermitted, formula::SnapTie::TowardHigher>(var<UnnamedMass>),
+            unnamedGrams);
+    };
+    CHECK(snappedTo(Rational { 4 })
+          == "1. m_u = 1/250 kg\n"
+             "2. snap(#1) = 1/200 kg [3/1000 kg to 1/200 kg; tie, toward higher]\n");
+    CHECK(snappedTo(Rational { 7, 2 }).ends_with("2. snap(#1) = 3/1000 kg [3/1000 kg to 1/200 kg; nearer 3/1000 kg]\n"));
+    CHECK(snappedTo(Rational { 3 }).ends_with("2. snap(#1) = 3/1000 kg [on 3/1000 kg]\n"));
+    CHECK(snappedTo(Rational { 6 }).ends_with("[outside the permitted set, 3/1000 kg to 1/200 kg]\n"));
+}
+
+TEST_CASE("a binning's miss in a unit with no symbol states the classes in the coherent unit",
+          "[trace-render][shown-unit][binning]")
+{
+    // 9 of the unnamed gram is in no class; the classes cover 0 to under 8
+    // of it: 9/1000 kg against 0 to under 1/125 kg.
+    formula::Trace<> recorded {};
+    (void) formula::checked_evaluate_series<ParticleCount>(
+        formula::binned<UnnamedGram, UnnamedBands>(formula::observations<UnnamedMass, 3>),
+        formula::environment(formula::MeasuredObservations<UnnamedMass, 3>(Rational { 1 }, Rational { 9 }, Rational { 6 })),
+        formula::RecordingSink<> { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+              .ends_with("at observation 2 [9/1000 kg in no class; the classes cover 0 to under 1/125 kg]\n"));
+}
+
+TEST_CASE("a lookup keyed in a unit with no symbol states its bands and rows in the coherent unit",
+          "[trace-render][shown-unit][lookup]")
+{
+    constexpr auto banded = formula::banded_lookup<UnnamedGram, UnnamedBands, unit::Percent>(
+        var<UnnamedMass>, { Rational { 10 }, Rational { 20 } });
+    CHECK(unnamed_trace_text(banded, Rational { 3 })
+          == "1. m_u = 3/1000 kg\n"
+             "2. lookup(#1) = 10 % [0 to under 1/200 kg]\n");
+    CHECK(unnamed_trace_text(banded, Rational { 9 }).ends_with("[in no band; the bands cover 0 to under 1/125 kg]\n"));
+
+    constexpr auto interpolated = formula::interpolating_lookup<UnnamedGram, UnnamedRows, unit::Percent>(
+        var<UnnamedMass>, { Rational { 10 }, Rational { 30 } });
+    CHECK(unnamed_trace_text(interpolated, Rational { 3 })
+          == "1. m_u = 3/1000 kg\n"
+             "2. interpolate(#1) = 15 % [between 1/500 and 3/500 kg]\n");
+    CHECK(unnamed_trace_text(interpolated, Rational { 2 }).ends_with("[on the row at 1/500 kg]\n"));
+    CHECK(unnamed_trace_text(interpolated, Rational { 9 }).ends_with("[outside the curve, which runs 1/500 to 3/500 kg]\n"));
+
+    constexpr auto oneRow =
+        formula::interpolating_lookup<UnnamedGram, UnnamedOnlyRow, unit::Percent>(var<UnnamedMass>, { Rational { 10 } });
+    CHECK(unnamed_trace_text(oneRow, Rational { 3 }).ends_with("[outside the curve, whose only row is at 1/500 kg]\n"));
+}
+
+TEST_CASE("a curve over a domain in a unit with no symbol states its rows in the coherent unit",
+          "[trace-render][shown-unit][curve]")
+{
+    constexpr auto massCurve =
+        formula::curve(formula::domain<UnnamedGram, UnnamedRows>, formula::series_constant<unit::Percent>(Rational { 10 }, Rational { 30 }));
+    CHECK(unnamed_trace_text(formula::interpolate_at(massCurve, var<UnnamedMass>), Rational { 3 })
+              .ends_with("interpolate(#3, at #4) = 15 % [between 1/500 and 3/500 kg]\n"));
+    CHECK(unnamed_trace_text(formula::interpolate_at(massCurve, var<UnnamedMass>), Rational { 9 })
+              .ends_with("[outside the curve, which runs 1/500 to 3/500 kg]\n"));
 }
