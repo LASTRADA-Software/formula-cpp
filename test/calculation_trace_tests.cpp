@@ -888,8 +888,9 @@ TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][wo
     CHECK(full.find("further step") == std::string::npos);
     CHECK(full.find("\nvat = S * 19/100 = 30343/2000 EUR\n  1. S = 1597/20 EUR, calculated\n") != std::string::npos);
     CHECK(full.find("\nfridge_kw = fridge_w = 1/5 kW\n  1. fridge_w = 200 W\n") != std::string::npos);
-    // A computed step states its value in the coherent unit, as render_trace
-    // does: 24/5 kWh in joules.
+    // A computed step states its value as render_trace does: a power times a
+    // time borrows neither one's unit, so 24/5 kWh reads in the coherent
+    // unit, joules spelt from the base units.
     CHECK(full.find("\nfridge_kwh = fridge_kw * fridge_h = 24/5 kWh\n"
                     "  1. fridge_kw = 1/5 kW, calculated\n"
                     "  2. fridge_h = 24 h\n"
@@ -1047,9 +1048,12 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
     // The bill with the energy drawn entered by hand, rendered rounded and
     // padded: each value in a unit that declares decimals is padded to them
     // -- the euro's two, the kilowatt-hour's three, the tariff's four -- in a
-    // header and on the line that reads it alike. A computed step, stated in
-    // the coherent unit nobody declared, is never padded, and the typed 4/5
-    // is written exactly, 0.8, in the definition and on its step.
+    // header and on the line that reads it alike. A computed step that
+    // borrows its operands' unit -- a difference of euros, of kilowatt-hours
+    // -- is padded as that unit is; one in the coherent unit nobody declared,
+    // a product of an energy and a tariff, is a bare number here, never
+    // padded. The typed 4/5 is written exactly, 0.8, in the definition and on
+    // its step.
     using namespace household;
     auto sheet = formula::worksheet(bill, bill_environment(billValues));
     sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
@@ -1316,8 +1320,10 @@ TEST_CASE("money of its own is calculated, derived, documented and spelled in it
     formula::NumberStyle const decimals = formula::NumberStyle::exact_decimal();
 
     // The derivation in exact decimals, each value in its quantity's unit. A
-    // computed step is in the coherent unit, the rate's in euros per joule,
-    // and neither it nor the rate, 3401/9300 EUR/kWh, has an exact decimal.
+    // sum of euros reads in euros; the rate, an amount over an energy,
+    // borrows neither unit and reads in the coherent euros per joule, and
+    // neither it nor the rate's header, 3401/9300 EUR/kWh, has an exact
+    // decimal.
     auto const explained = formula::explain_worksheet<MeanRate>(sheet);
     CHECK(explained.entries.front().unit == MoneyEuroPerKwh);
     CHECK(formula::render_derivation(explained, { .maxSteps = 30, .numbers = decimals })

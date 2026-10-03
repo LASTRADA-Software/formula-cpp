@@ -110,8 +110,9 @@ times one of each
 [named base dimension](dimensions.md#base-dimensions-the-si-does-not-have) it
 carries -- the euro, for an amount in euros -- written after the number. A
 ratio of two masses is a pure number, and a percentage less a pure number is
-in two units, so for steps 6 and 7 that is a plain fraction: 447/1250 is
-35.76 % and 6927/10625 is 27708/425 %. For a mass it is `kg`.
+in two units, so for steps 6 and 7 that is a plain fraction, and for step 10,
+read off step 7's values, too: 447/1250 is 35.76 % and 6927/10625 is
+27708/425 %. For a mass it is `kg`.
 
 A few computed steps are still in their series' unit, and say so: a running
 total, a `sum` and a range read in the unit of the series they add up, and a

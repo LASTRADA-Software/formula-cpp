@@ -168,26 +168,55 @@ header on whether the value is typed, and a typed value is exact on every one
 of those lines. That is all they agree on: where the last step computed the
 value, it states it in the unit that step is shown in, which may be the
 coherent unit (below), so it may differ from the header in its unit, its
-padding and its decimals, and one may read `≈` where the other does not. The header's definition is written as a rendered formula is (see
-below), its typed numbers exact.
+padding and its decimals, and one may read `≈` where the other does not. The
+header's definition is written as a rendered formula is (see below), its typed
+numbers exact.
 
 ### A value in a unit nobody declared
 
 Most computed values read in a unit someone declared. Lines 3 and 6 above,
 differences of two masses in grams, read in grams, as a value scaled by a pure
 number does: a computed step borrows the unit of the steps it read where that
-is safe ([Reading a derivation](tracing.md#reading-a-derivation)). A value
-computed from values in two units -- a length over a time, a product of two
-lengths -- has no such unit to borrow. It is stated in the **coherent unit** of
-its dimension, followed by that unit's spelling from the base units. A creep
-rate, an elongation in millimetres over a time in hours:
+is safe ([Reading a derivation](tracing.md#reading-a-derivation)). A product
+or a quotient of two dimensioned values borrows nothing, even of two values in
+one unit: a length times a length is no length, and a length over a time
+neither. It is stated in the **coherent unit** of its dimension, followed by
+that unit's spelling from the base units. A bearing plate's area, from its two
+edges in millimetres:
+
+```cpp
+// A bearing plate's area: a product of two lengths, which borrows neither one's unit.
+inline constexpr auto plateArea = var<PlateLength> * var<PlateWidth>;
+```
+
+Its trace, rendered in the rounded and padded style:
+
+```text
+1. l_p = 100.0 mm
+2. b_p = 200.0 mm
+3. #1 * #2 = 0.02 m^2
+```
+
+Line 3 is in square metres, written `m^2` after it, though nobody declared that
+unit for this formula. Its decimals are `Unit`'s default of 3, which is no
+one's statement of precision, so such a value is **never padded**: the edges
+are padded to the millimetre's one decimal, and the area reads `0.02`, not
+`0.020`. Read in the unit its quantity declares, the result keeps what
+matters:
+
+```text
+the plate's area in its declared square millimetres: 20000 mm2
+```
+
+When a value in the coherent unit is rounded it keeps those 3 places -- unless
+they round a value other than zero to `≈0`, which says nothing of it. They are
+then extended to its first significant digit, up to 18 places, and the `≈`
+stays. A creep rate, an elongation in millimetres over a time in hours:
 
 ```cpp
 // A creep rate: a length over a time, which borrows neither one's unit.
 inline constexpr auto creepRate = var<Elongation> / var<HoldTime>;
 ```
-
-Its trace, rendered in the rounded and padded style:
 
 ```text
 1. dl = 2.4 mm
@@ -195,16 +224,10 @@ Its trace, rendered in the rounded and padded style:
 3. #1 / #2 = ≈0.0000009 m/s
 ```
 
-Line 3 is in metres per second, written `m/s` after it, though nobody declared
-that unit for this formula. Its decimals are `Unit`'s default of 3, which is no
-one's statement of precision, so such a value is **never padded**. When it is
-rounded it keeps those 3 places -- unless they round a value other than zero to
-`≈0`, which says nothing of it. They are then extended to its first significant
-digit, up to 18 places, and the `≈` stays: the rate, 0.00000088... m/s, reads
-`≈0.0000009`, not `≈0`. A price worked out in euros per kilowatt-hour is stated
-in euros per joule: 3401/33480000000 reads `≈0.0000001`. A value in a unit
-someone declared keeps that unit's places, whatever they round to. The result
-itself, read in the unit its quantity declares, keeps what matters:
+The rate, 0.00000088... m/s, reads `≈0.0000009`, not `≈0`. A price worked out
+in euros per kilowatt-hour is stated in euros per joule: 3401/33480000000 reads
+`≈0.0000001`. A value in a unit someone declared keeps that unit's places,
+whatever they round to:
 
 ```text
 the creep rate in its declared millimetres per minute: ≈0.05 mm/min

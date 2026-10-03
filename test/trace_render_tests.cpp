@@ -1492,8 +1492,8 @@ TEST_CASE("a documented Celsius reading reads in Celsius, and a documented diffe
 TEST_CASE("a documented step over a node that recorded no step keeps the coherent SI unit", "[trace-render][citation]")
 {
     // With no line below to take a unit from, the documented step says what
-    // any computed step says -- its value in coherent SI -- rather than
-    // guessing one.
+    // a computed step with no unit to borrow says -- its value in the
+    // coherent SI unit, spelt after it -- rather than guessing one.
     constexpr auto node = formula::documented(UntracedLength {}, { .title = "Untraced length" });
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1509,8 +1509,8 @@ TEST_CASE("a documented step over a consumer node that forwards the sink keeps t
     // claims the node's operands -- the two readings -- and neither of them
     // is the value it documents. Taking a unit from one would state a 57/5 K
     // rise as a Celsius reading of it, and a density in litres, which the
-    // renderer refuses. The documented step says what any computed step
-    // says instead: its value in coherent SI.
+    // renderer refuses. The documented step says what a computed step with
+    // no unit to borrow says instead: its value in the coherent SI unit.
     constexpr formula::Citation cited { .title = "Consumer formula",
                                         .reference = "Example Standard 1:2020",
                                         .section = "6.4" };
