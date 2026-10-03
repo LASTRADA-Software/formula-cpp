@@ -498,7 +498,8 @@ filled by hand is checked by none of them.
 
 `Unit`'s `magnitudeNumerator`, `magnitudeDenominator`,
 `offsetNumerator`, `offsetDenominator` and the four fields of `Bounds` are all
-`std::int64_t`, the same width as `Rational`'s own numerator and denominator.
+`std::int64_t`. `Rational`'s own numerator and denominator are 128-bit, so every
+value these fields state converts to one exactly.
 
 Conversion is built on `formula::Rational` and the `checked_` arithmetic
 functions, so it inherits their overflow behaviour and rounding limits

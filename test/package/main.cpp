@@ -28,9 +28,9 @@ int main()
     formula::Rational const rounded =
         formula::round(measured, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero);
 
-    std::println("formula-cpp {} consumed successfully: {}/{}",
-                 FORMULA_VERSION_STRING,
-                 rounded.numerator(),
-                 rounded.denominator());
+    // 62/5, spelled by the library: a numerator or denominator is 128 bits,
+    // which no built-in integer holds.
+    formula::NumberText const roundedText = formula::fraction_text(rounded);
+    std::println("formula-cpp {} consumed successfully: {}", FORMULA_VERSION_STRING, roundedText.view());
     return 0;
 }

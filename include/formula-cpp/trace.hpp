@@ -306,7 +306,8 @@ enum class StepKind : std::uint8_t
     /// A `SampleSizeLookupNode`: a critical value read from an author's table
     /// by sample size (`critical_value.hpp`). A lookup like the three above:
     /// `Step::lookupFailure` says whose failure a failed step carries,
-    /// `Step::lookupKey` holds the count it selected with, and
+    /// `Step::lookupKey` holds the count it selected with (its high word,
+    /// for a count past 2^64 - 1, in `Step::lookupKeyHigh`), and
     /// `Trace::sampleSizeRecords` the sizes the table declares, keyed by the
     /// step's index, so that a miss can say which counts would have hit.
     ///
@@ -1174,14 +1175,21 @@ struct Step
     /// the same case `key_text` spells its two casts separately for.
     ///
     /// For `SampleSizeLookup`: the count this lookup selected with, when it
-    /// was a whole, non-negative number, read unsigned. A count that was not
-    /// one (`LookupFailure::NotACount`) leaves this zero, and its value stays
-    /// in the operand's own step, where the renderer points.
+    /// was a whole, non-negative number, read unsigned -- its low 64 bits,
+    /// with the rest in `lookupKeyHigh` below. A count that was not one
+    /// (`LookupFailure::NotACount`) leaves both zero, and its value stays in
+    /// the operand's own step, where the renderer points.
     std::uint64_t lookupKey {};
 
     /// Whether `lookupKey` above is to be read as a signed value. Meaningful
     /// only when `kind` is `ExactLookup`, exactly as `lookupKey` itself is.
     bool lookupKeyIsSigned {};
+
+    /// For `SampleSizeLookup`: bits 64 to 127 of the count, whose low 64 bits
+    /// are `lookupKey`'s. Zero for every count a table can declare; a count
+    /// past 2^64 - 1 misses every table, and the line spells it in full from
+    /// the two. Zero for every other kind.
+    std::uint64_t lookupKeyHigh {};
 
     /// For `ExactLookup`: the name of the key this lookup selected with --
     /// `Cylinder`, or the author's own spelling of it through
@@ -2675,7 +2683,11 @@ namespace detail
             checked_convert(point, coherent(pointUnit.dimension), pointUnit);
         if (!stated.has_value())
             return std::nullopt;
-        return Breakpoint { stated->numerator(), stated->denominator() };
+        std::optional<std::int64_t> const keyTop = narrow_to_int64(stated->numerator());
+        std::optional<std::int64_t> const keyBottom = narrow_to_int64(stated->denominator());
+        if (!keyTop || !keyBottom)
+            return std::nullopt;
+        return Breakpoint { *keyTop, *keyBottom };
     }
 
     /// Fills in an interpolation step along a curve: its values' unit and its
@@ -2852,12 +2864,17 @@ namespace detail
                                         Rational { under.magnitudeNumerator, under.magnitudeDenominator });
         if (!magnitude.has_value())
             return std::nullopt;
+        // A `Unit` holds its magnitude in 64 bits: a wider one is no unit.
+        std::optional<std::int64_t> const magnitudeTop = narrow_to_int64(magnitude->numerator());
+        std::optional<std::int64_t> const magnitudeBottom = narrow_to_int64(magnitude->denominator());
+        if (!magnitudeTop || !magnitudeBottom)
+            return std::nullopt;
         MergedDimension const quotientDimension = merged_dimension(over.dimension, under.dimension, true);
         if (!quotientDimension.fits)
             return std::nullopt;
         Unit quotientUnit { .dimension = quotientDimension.dimension,
-                            .magnitudeNumerator = magnitude->numerator(),
-                            .magnitudeDenominator = magnitude->denominator(),
+                            .magnitudeNumerator = *magnitudeTop,
+                            .magnitudeDenominator = *magnitudeBottom,
                             .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
         std::size_t written = 0;
         for (char const spelt: overSymbol)
@@ -2974,13 +2991,16 @@ namespace detail
                 return;
             }
 
-            std::optional<std::uint64_t> const sampleSize = as_sample_size(*operandValue);
+            std::optional<UInt128> const sampleSize = as_sample_size(*operandValue);
             if (!sampleSize.has_value())
             {
                 step.lookupFailure = LookupFailure::NotACount;
                 return;
             }
-            step.lookupKey = *sampleSize;
+            // All of the count, in two words: one beyond 2^64 - 1 is one no
+            // table declares, and its miss still names it.
+            step.lookupKey = sampleSize->lowWord;
+            step.lookupKeyHigh = sampleSize->highWord;
 
             if (!find_sample_size<Sizes>(*sampleSize).has_value())
                 step.lookupFailure = LookupFailure::Missed;

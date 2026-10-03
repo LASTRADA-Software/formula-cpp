@@ -1040,9 +1040,13 @@ inline constexpr BreakpointTable<2> SteepKeyRange { breakpoint(0), breakpoint(40
 /// the two above.
 inline constexpr BreakpointTable<2> UnrepresentableAnswer { breakpoint(0), breakpoint(4) };
 
-/// `2^62`, an ordinary representable `Rational`, used as a row value where the
+/// `2^126`, an ordinary representable `Rational`, used as a row value where the
 /// scale rather than the arithmetic is the point.
-constexpr std::int64_t Huge = std::int64_t { 1 } << 62;
+constexpr formula::Rational::Int Huge = formula::Rational::Int { 1 } << 126;
+
+/// `2^62`, the same scale for a `Rational` of 64 bits, which these tables
+/// once overflowed at.
+constexpr std::int64_t Huge64 = std::int64_t { 1 } << 62;
 } // namespace
 
 TEST_CASE("an unevenly spaced curve interpolates against the bracketing pair, not the first one", "[lookup]")
@@ -1084,20 +1088,20 @@ TEST_CASE("the interpolation divides the span out before multiplying the rise in
     //
     // Keys on a common grid (0 and 10) and a value at the top of `Rational`'s
     // range. Dividing first cancels `5/10` to the weight `1/2` before the value
-    // is ever touched, and answers 2^61 exactly. Multiplying first forms
-    // `5 * 2^62`, the one product that mixes key magnitude with value
+    // is ever touched, and answers 2^125 exactly. Multiplying first forms
+    // `5 * 2^126`, the one product that mixes key magnitude with value
     // magnitude, and reports Overflow -- for a table whose exact answer is a
     // plain integer.
     //
     // Common-grid keys are what published curves actually have, which is why
     // this direction was chosen. The other direction exists and is asserted in
     // the test just below.
-    constexpr auto node =
-        interpolating_lookup<unit::Millimetre, WideValueRange, unit::One>(var<Diameter>, { rat(0), rat(Huge) });
+    constexpr auto node = interpolating_lookup<unit::Millimetre, WideValueRange, unit::One>(
+        var<Diameter>, { rat(0), formula::Rational { Huge } });
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(5));
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());
-    STATIC_REQUIRE(computed->measurement().value() == rat(Huge / 2));
+    STATIC_REQUIRE(computed->measurement().value() == formula::Rational { Huge / 2 });
 }
 
 TEST_CASE("dividing the span out first is a trade-off, and this is the table it loses on", "[lookup]")
@@ -1105,9 +1109,9 @@ TEST_CASE("dividing the span out first is a trade-off, and this is the table it 
     // The honest other half of the test above: neither order dominates, and a
     // comment saying so is worth less than a table saying so.
     //
-    // Keys 0 and 4e9 with a probe at 1/4e9 mm: the weight `(1/4e9) / 4e9`
+    // Keys 0 and 4e9 with a probe at 2^-100 mm: the weight `2^-100 / 4e9`
     // cannot cancel, and forming it overflows -- where multiplying first would
-    // have cancelled the offset against the rise and answered 1/4e9 exactly.
+    // have cancelled the offset against the rise and answered 2^-100 exactly.
     // The library refuses rather than approximating, which is the property that
     // matters; that it refuses here at all is the price of the order chosen
     // above.
@@ -1117,9 +1121,18 @@ TEST_CASE("dividing the span out first is a trade-off, and this is the table it 
     // where to look.
     constexpr auto node = interpolating_lookup<unit::Millimetre, SteepKeyRange, unit::One>(
         var<Diameter>, { rat(0), rat(4000000000) });
-    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(1, 4000000000));
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(
+        node,
+        formula::environment(formula::Measured<Diameter> { formula::Rational { 1, formula::Rational::Int { 1 } << 100 } }));
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::Overflow);
+
+    // At a probe of 1/4e9 mm the weight's denominator, 1.6e19, is past 64
+    // bits but inside 128, and the answer is exact.
+    constexpr auto finer = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(1, 4000000000));
+    STATIC_REQUIRE(finer.has_value());
+    STATIC_REQUIRE(finer->is_value());
+    STATIC_REQUIRE(finer->measurement().value() == rat(1, 4000000000));
 }
 
 TEST_CASE("an interpolation whose exact answer is not representable is reported, never rounded", "[lookup]")
@@ -1128,9 +1141,9 @@ TEST_CASE("an interpolation whose exact answer is not representable is reported,
     // about: where the exact rational the two rows imply does not exist inside
     // `Rational`, the library says so and hands back nothing.
     //
-    // Keys 0 and 4, values 0 and 2^62 - 1 (odd, so nothing cancels), probed at
-    // 3. The exact answer is 3(2^62 - 1)/4, whose reduced numerator is
-    // 13835058055282163709 -- above `Rational`'s maximum, so the answer is not
+    // Keys 0 and 4, values 0 and 2^126 - 1 (odd, so nothing cancels), probed
+    // at 3. The exact answer is 3(2^126 - 1)/4, whose reduced numerator is
+    // about 2.55 * 10^38 -- above `Rational`'s maximum, so the answer is not
     // merely awkward to reach, it does not exist. A representation that rounded
     // would hand back something near it and say nothing; this reports
     // `Overflow`, which is the only honest answer.
@@ -1140,10 +1153,19 @@ TEST_CASE("an interpolation whose exact answer is not representable is reported,
     // curve that does not cover the specimen. Both orders of the interpolation
     // overflow here, so this test says nothing about that choice -- deliberately.
     constexpr auto node = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
-        var<Diameter>, { rat(0), rat(Huge - 1) });
+        var<Diameter>, { rat(0), formula::Rational { Huge - 1 } });
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(3));
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::Overflow);
+
+    // With 2^62 - 1, whose answer 3(2^62 - 1)/4 overflowed 64 bits, it exists.
+    constexpr auto node64 = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
+        var<Diameter>, { rat(0), rat(Huge64 - 1) });
+    constexpr auto computed64 = formula::checked_evaluate<SizeCorrection>(node64, millimetresOfDiameter(3));
+    STATIC_REQUIRE(computed64.has_value());
+    STATIC_REQUIRE(computed64->is_value());
+    STATIC_REQUIRE(computed64->measurement().value()
+                   == formula::Rational { formula::Rational::Int { Huge64 - 1 } * 3, 4 });
 }
 
 TEST_CASE("a row hit can still overflow in the result-unit conversion, and says so", "[lookup]")
@@ -1154,18 +1176,26 @@ TEST_CASE("a row hit can still overflow in the result-unit conversion, and says 
     // 0 mm sits exactly on the first row, so the interpolation performs no
     // arithmetic at all and cannot overflow. The value is then converted out of
     // the node's result unit (kilometres) into the coherent SI unit (metres) --
-    // and 2^62 km is a perfectly representable `Rational` that does not survive
-    // being multiplied by 1000.
+    // and 2^126 km is a perfectly representable `Rational` that does not
+    // survive being multiplied by 1000.
     //
     // This path is shared with the banded and the exact lookup, which convert
     // their selected row the same way for the same reason; nothing about it is
     // particular to interpolation. It is asserted here because this is the file
     // where the claim was made.
     constexpr auto node = interpolating_lookup<unit::Centimetre, TwoPoints, unit::Kilometre>(
-        var<Diameter>, { rat(Huge), rat(1) });
+        var<Diameter>, { formula::Rational { Huge }, rat(1) });
     constexpr auto computed = formula::checked_evaluate<CorrectedSize>(node, millimetresOfDiameter(0));
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::Overflow);
+
+    // 2^62 km, which overflowed 64 bits, is 2^62 * 10^6 mm.
+    constexpr auto node64 = interpolating_lookup<unit::Centimetre, TwoPoints, unit::Kilometre>(
+        var<Diameter>, { rat(Huge64), rat(1) });
+    constexpr auto computed64 = formula::checked_evaluate<CorrectedSize>(node64, millimetresOfDiameter(0));
+    STATIC_REQUIRE(computed64.has_value());
+    STATIC_REQUIRE(computed64->is_value());
+    STATIC_REQUIRE(computed64->measurement().value() == formula::Rational { formula::Rational::Int { Huge64 } * 1000000 });
 }
 
 TEST_CASE("breakpoint: a key given as an exact number", "[lookup]")

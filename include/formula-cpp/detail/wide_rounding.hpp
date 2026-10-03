@@ -10,7 +10,7 @@
 /// `checked_round` accepts, it gives the same result in all seven modes at every
 /// place from -18 to 18 (`test/wide_rounding_tests.cpp` checks 43729 such
 /// cases). It also answers some values `checked_round` refuses -- where a
-/// numerator times 10^places leaves 64 bits but the rounded result fits -- and
+/// numerator times 10^places leaves 128 bits but the rounded result fits -- and
 /// refuses, with `Overflow`, a result that does not fit `Rational`, as
 /// `checked_round` does.
 ///
@@ -19,7 +19,7 @@
 /// it was reached.
 ///
 /// Integer arithmetic only (`detail/wide_int.hpp`): no floating point, no
-/// intrinsic, no 128-bit integer type.
+/// intrinsic, no compiler 128-bit integer (`__int128`).
 
 #include <formula-cpp/detail/wide_int.hpp>
 #include <formula-cpp/error.hpp>
@@ -51,27 +51,28 @@ template <std::size_t L>
                           divmod(unreduced.denominator, common).quotient };
 }
 
-/// @p exact as a wide fraction. Four limbs at least, so that the product of
-/// its numerator and a 64-bit factor always fits.
+/// @p exact as a wide fraction. Four limbs at least, so that a 128-bit
+/// numerator fits.
 template <std::size_t L>
     requires(L >= 4)
 [[nodiscard]] constexpr WideRatio<L> wide_from_rational(Rational exact) noexcept
 {
     return WideRatio<L> { exact.numerator() < 0,
-                          WideUnsigned<L>::from_u64(magnitude(exact.numerator())),
-                          WideUnsigned<L>::from_u64(static_cast<std::uint64_t>(exact.denominator())) };
+                          WideUnsigned<L>::from_u128(wide_magnitude(exact.numerator())),
+                          WideUnsigned<L>::from_u128(wide_magnitude(exact.denominator())) };
 }
 
 /// @p exact times @p commonDenominator, an integer; nothing when it does not
 /// fit. @pre `exact.denominator()` divides @p commonDenominator.
 template <std::size_t L>
+    requires(L >= 4)
 [[nodiscard]] constexpr std::optional<WideSigned<L>> scaled_to_denominator(Rational exact,
                                                                            WideUnsigned<L> const& commonDenominator) noexcept
 {
     WideUnsigned<L> const cofactor =
-        divmod(commonDenominator, WideUnsigned<L>::from_u64(static_cast<std::uint64_t>(exact.denominator()))).quotient;
+        divmod(commonDenominator, WideUnsigned<L>::from_u128(wide_magnitude(exact.denominator()))).quotient;
     std::optional<WideUnsigned<L>> const scaledMagnitude =
-        mul_checked_or_none(WideUnsigned<L>::from_u64(magnitude(exact.numerator())), cofactor);
+        mul_checked_or_none(WideUnsigned<L>::from_u128(wide_magnitude(exact.numerator())), cofactor);
     if (!scaledMagnitude)
         return std::nullopt;
     return WideSigned<L> { exact.numerator() < 0, *scaledMagnitude };
@@ -145,14 +146,12 @@ template <std::size_t L>
     }
     std::optional<WideUnsigned<L>> const kept =
         awayFromZero ? add_small_checked_or_none(split.quotient, 1U) : split.quotient;
-    std::optional<std::uint64_t> const keptMagnitude = kept ? kept->to_u64() : std::nullopt;
-    constexpr std::uint64_t positiveLimit = static_cast<std::uint64_t>(IntMax);
-    if (!keptMagnitude || *keptMagnitude > (inLowestTerms.negative ? positiveLimit + 1U : positiveLimit))
+    std::optional<UInt128> const keptMagnitude = kept ? kept->to_u128() : std::nullopt;
+    std::optional<Rational::Int> const mantissa =
+        keptMagnitude ? rational_int_from_magnitude(*keptMagnitude, inLowestTerms.negative) : std::nullopt;
+    if (!mantissa)
         return std::unexpected { ArithmeticError::Overflow };
-    // Well defined since C++20: conversion to a signed type is modular.
-    auto const mantissa = inLowestTerms.negative ? static_cast<Rational::Int>(0U - *keptMagnitude)
-                                                 : static_cast<Rational::Int>(*keptMagnitude);
-    return Rational::from_decimal(mantissa, -places.value);
+    return Rational::from_decimal(*mantissa, -places.value);
 }
 
 /// @p unreduced as the `Rational` of the same value: reduced first, then
@@ -164,15 +163,15 @@ template <std::size_t L>
     if (unreduced.denominator.is_zero())
         return std::unexpected { ArithmeticError::DivisionByZero };
     WideRatio<L> const inLowestTerms = reduced(unreduced);
-    std::optional<std::uint64_t> const numeratorMagnitude = inLowestTerms.numerator.to_u64();
-    std::optional<std::uint64_t> const denominatorMagnitude = inLowestTerms.denominator.to_u64();
-    constexpr std::uint64_t positiveLimit = static_cast<std::uint64_t>(IntMax);
-    if (!numeratorMagnitude || !denominatorMagnitude || *denominatorMagnitude > positiveLimit
-        || *numeratorMagnitude > (inLowestTerms.negative ? positiveLimit + 1U : positiveLimit))
+    std::optional<UInt128> const numeratorMagnitude = inLowestTerms.numerator.to_u128();
+    std::optional<UInt128> const denominatorMagnitude = inLowestTerms.denominator.to_u128();
+    std::optional<Rational::Int> const signedNumerator =
+        numeratorMagnitude ? rational_int_from_magnitude(*numeratorMagnitude, inLowestTerms.negative) : std::nullopt;
+    std::optional<Rational::Int> const positiveDenominator =
+        denominatorMagnitude ? rational_int_from_magnitude(*denominatorMagnitude, false) : std::nullopt;
+    if (!signedNumerator || !positiveDenominator)
         return std::unexpected { ArithmeticError::Overflow };
-    auto const signedNumerator = inLowestTerms.negative ? static_cast<Rational::Int>(0U - *numeratorMagnitude)
-                                                        : static_cast<Rational::Int>(*numeratorMagnitude);
-    return Rational::make(signedNumerator, static_cast<Rational::Int>(*denominatorMagnitude));
+    return Rational::make(*signedNumerator, *positiveDenominator);
 }
 
 /// @p coherentValue, a value in the coherent unit of @p roundedIn's

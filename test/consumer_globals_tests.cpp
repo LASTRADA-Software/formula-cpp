@@ -80,7 +80,8 @@
 // `checked_number_text`, `decimal_text`, `fraction_text` and
 // `exact_decimal_text`; a `Rational` and a measured value written by
 // `std::format`, aligned and rounded, and an `Outcome`, a `Unit`, a
-// `Dimension` and an enumeration written the same way; `symbol_of` with no
+// `Dimension` and an enumeration written the same way; an `Int128` through
+// every operator, and written by `std::format`; `symbol_of` with no
 // vocabulary, and `render` and `document` given `RenderOptions` and none;
 // `yields` of the formula touching every node kind, and `evaluate`,
 // `checked_evaluate`, `explain`, `checked_explain`, `trace_of`, `render`, `document` and
@@ -187,6 +188,7 @@ int index;
 #include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/int128.hpp>
 #include <formula-cpp/least_squares.hpp>
 #include <formula-cpp/lineage.hpp>
 #include <formula-cpp/lookup.hpp>
@@ -1280,6 +1282,27 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && std::format("{}", formula::unit::Millimetre) == "mm"
         && std::format("{}", formula::dim::Density) == "L^-3 M^1"
         && std::format("{}", formula::ArithmeticError::Overflow) == "overflow in exact arithmetic");
+    // A 128-bit integer through its constructor template, every operator and
+    // std::format: ((-7 * 3 + 1 - 4) / 2 % 5 << 3 >> 1), stepped up and down,
+    // is -8.
+    formula::Int128 wideInteger { std::int16_t { -7 } };
+    wideInteger = +(wideInteger * formula::Int128 { 3U } + 1 - 4);
+    wideInteger += 2;
+    wideInteger -= 2;
+    wideInteger *= 1;
+    wideInteger = wideInteger / 2 % 5;
+    wideInteger /= 1;
+    wideInteger %= 100;
+    wideInteger = (wideInteger << 3) >> 1;
+    wideInteger <<= 1;
+    wideInteger >>= 1;
+    ++wideInteger;
+    --wideInteger;
+    (void) wideInteger++;
+    (void) wideInteger--;
+    probe.checks.push_back(wideInteger == -wideInteger * -1 && wideInteger < formula::Int128 {}
+                           && wideInteger.to_int64() == std::optional<std::int64_t> { -8 }
+                           && std::format("{}", wideInteger) == "-8");
     probe.checks.push_back(
         formula::symbol_of<EdgeX>() == formula::Describe<EdgeX>::symbol
         && formula::render(formula::var<EdgeX> * formula::Rational { 3, 5 },

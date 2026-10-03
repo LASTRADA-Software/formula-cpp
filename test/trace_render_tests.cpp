@@ -1001,9 +1001,12 @@ inline constexpr BandTable<0> NoBands {};
 inline constexpr BreakpointTable<0> NoPoints {};
 inline constexpr BreakpointTable<1> OnePoint { breakpoint(1474, 200) }; // 737/100 cm
 
-constexpr std::int64_t Huge = std::int64_t { 1 } << 62;
+constexpr formula::Rational::Int Huge = formula::Rational::Int { 1 } << 126;
+/// `Huge` as a `Rational`, and one less.
+inline constexpr formula::Rational HugeValue { Huge };
+inline constexpr formula::Rational HugeLessOne { Huge - 1 };
 
-/// Keys 0 and 4 mm against values 0 and 2^62 - 1: at 3 mm the exact answer
+/// Keys 0 and 4 mm against values 0 and 2^126 - 1: at 3 mm the exact answer
 /// does not exist inside `Rational`, so the interpolation itself overflows.
 inline constexpr BreakpointTable<2> UnrepresentableAnswer { breakpoint(0), breakpoint(4) };
 
@@ -1252,16 +1255,16 @@ TEST_CASE("a derivation renders an interpolation's own overflow differently from
     // covering the miss and the relay but not this one would render case two
     // as a euphemism.
     constexpr auto own = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
-        var<Diameter>, { rat(0), rat(Huge - 1) });
+        var<Diameter>, { rat(0), HugeLessOne });
     CHECK(derivationOf(own, diameterOf(3))
           == "1. d = 3 mm\n"
              "2. interpolate(#1) = overflow in exact arithmetic"
              " [the interpolation itself overflowed, not anything below it]\n");
 
     // The same error enumerator, produced below the lookup instead.
-    constexpr auto overflowingLength = formula::constant<unit::Millimetre>(rat(Huge)) * formula::number(rat(Huge));
+    constexpr auto overflowingLength = formula::constant<unit::Millimetre>(HugeValue) * formula::number(HugeValue);
     constexpr auto relayed = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
-        overflowingLength, { rat(0), rat(Huge - 1) });
+        overflowingLength, { rat(0), HugeLessOne });
 
     std::vector<std::string> const relayedLines = lines(derivationOf(relayed, formula::environment()));
     REQUIRE(relayedLines.size() == 4);
@@ -1560,7 +1563,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // The band IS found, and the correction it selects then does not survive
     // being converted out of the table's own result unit. Nothing missed and
     // nothing below failed.
-    constexpr auto wide = banded_lookup<unit::Millimetre, WideBand, unit::Kilometre>(var<Diameter>, { rat(Huge) });
+    constexpr auto wide = banded_lookup<unit::Millimetre, WideBand, unit::Kilometre>(var<Diameter>, { HugeValue });
     CHECK(derivationOf(wide, diameterOf(30))
           == "1. d = 30 mm\n"
              "2. lookup(#1) = overflow in exact arithmetic"
@@ -1569,7 +1572,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // The same state on the exact kind, which has no operand and no
     // interpolation -- so nothing else in this file would notice the clause
     // going missing entirely.
-    constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(RenderedShape::Cylinder, { rat(1127, 1000), rat(Huge) });
+    constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(RenderedShape::Cylinder, { rat(1127, 1000), HugeValue });
     CHECK(derivationOf(far, formula::environment())
           == "1. lookup(key Cylinder) = overflow in exact arithmetic"
              " [this lookup's own unit conversion failed, not anything below it]\n");
@@ -1578,17 +1581,17 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // claiming "the interpolation itself overflowed" about an interpolation
     // that did no arithmetic at all: 0 cm sits exactly on the first row.
     constexpr auto afterCurve =
-        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1127, 1000) });
+        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { HugeValue, rat(1127, 1000) });
     CHECK(derivationOf(afterCurve, diameterOf(0))
           == "1. d = 0 mm\n"
              "2. interpolate(#1) = overflow in exact arithmetic"
              " [this lookup's own unit conversion failed, not anything below it]\n");
 
     // And on the other side of the curve, where it is one enumerator away
-    // from claiming a three-row curve declares no rows: converting 2^62 metres
+    // from claiming a three-row curve declares no rows: converting 2^126 metres
     // into centimetres overflows before any row is looked at.
     constexpr auto beforeCurve = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
-        formula::constant<unit::Metre>(rat(Huge)), { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
+        formula::constant<unit::Metre>(HugeValue), { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
     std::vector<std::string> const keySide = lines(derivationOf(beforeCurve, formula::environment()));
     REQUIRE(keySide.size() == 2);
     CHECK(bracketed(keySide[1]) == "this lookup's own unit conversion failed, not anything below it");
@@ -2175,7 +2178,7 @@ TEST_CASE("a series that failed at an element names that element, counted from o
 {
     // Positions are zero-based in the API and one-based in every text the
     // library writes. The failure is at zero-based 2, so the line says 3.
-    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
+    constexpr formula::Rational::Int tooLarge = std::numeric_limits<formula::Rational::Int>::max() / 100;
     constexpr auto overflowing = formula::environment(formula::measured_series<series_trace::Stockpile>(
         formula::Measured<series_trace::Stockpile> { formula::Rational { 1 } },
         formula::Measured<series_trace::Stockpile> { formula::Rational { 2 } },
@@ -2524,7 +2527,7 @@ TEST_CASE("a running total that overflowed names its element, counted from one",
     // that from the last the position (1) is not the number of additions
     // made (3). From the first the total overflows at zero-based 2, element 3
     // in the text; from the last at zero-based 1, element 2.
-    constexpr std::int64_t halfOfLimitInKg = std::numeric_limits<std::int64_t>::max() / 2000 + 1;
+    constexpr formula::Rational::Int halfOfLimitInKg = std::numeric_limits<formula::Rational::Int>::max() / 2000 + 1;
     constexpr auto heavy = formula::environment(formula::measured_series<series_trace::Stockpile>(
         formula::Measured<series_trace::Stockpile> { formula::Rational { 1 } },
         formula::Measured<series_trace::Stockpile> { formula::Rational { halfOfLimitInKg } },
@@ -2671,19 +2674,23 @@ struct Determinations: formula::Quantity<Determinations, "n", "number of determi
 /// nobody mistakes it for one or "corrects" it toward one.** No row for 7.
 inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
 
-/// A unit no conversion out of can fit: one of it is 2^63 - 1 coherent units.
+/// A unit as large as a `Unit` can state: one of it is 2^63 - 1 coherent
+/// units. A row of 50 of it converts; a row near 2^127 / 1000 does not.
 inline constexpr formula::Unit Enormous { .dimension = formula::dim::Scalar,
                                           .magnitudeNumerator = 9'223'372'036'854'775'807,
                                           .magnitudeDenominator = 1,
                                           .symbolText = formula::symbol("E"),
                                           .decimals = 0 };
 
-/// The critical value at @p countExpression, traced.
+/// The critical value at @p countExpression, traced. @p atSix is the row
+/// for 6.
 template <formula::Unit ResultUnit = unit::One,
           formula::SampleSizeTable Sizes = DeviationSizes,
           typename Count,
           typename Env>
-[[nodiscard]] formula::Trace<> criticalTraceOf(Count countExpression, Env const& countInputs)
+[[nodiscard]] formula::Trace<> criticalTraceOf(Count countExpression,
+                                               Env const& countInputs,
+                                               formula::Rational atSix = formula::Rational { 50 })
 {
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -2693,7 +2700,7 @@ template <formula::Unit ResultUnit = unit::One,
                                                        { formula::Rational { 10 },
                                                          formula::Rational { 30 },
                                                          formula::Rational { 20 },
-                                                         formula::Rational { 50 },
+                                                         atSix,
                                                          formula::Rational { 40 } }),
             countInputs,
             sink);
@@ -2738,6 +2745,17 @@ TEST_CASE("a derivation of a critical-value miss names the count and every size 
     // 3 wherever the table's size type is 32 bits wide.
     CHECK(criticalTraceAt(formula::Rational { (std::int64_t { 1 } << 32) + 3 })
               .ends_with(" [no row for n = 4294967299 (declared: 3, 4, 5, 6, 8)]\n"));
+    // A count past 64 bits is still a count, and is spelled in full: 2^64
+    // reads as itself, never as the 0 its low 64 bits are, and 2^64 + 3 never
+    // as 3.
+    std::string const pastSixtyFour = criticalTraceAt(formula::Rational { formula::Rational::Int { 1 } << 64 });
+    CHECK(pastSixtyFour.ends_with(" [no row for n = 18446744073709551616 (declared: 3, 4, 5, 6, 8)]\n"));
+    CHECK(pastSixtyFour.find("n = 0") == std::string::npos);
+    CHECK(criticalTraceAt(formula::Rational { (formula::Rational::Int { 1 } << 64) + 3 })
+              .ends_with(" [no row for n = 18446744073709551619 (declared: 3, 4, 5, 6, 8)]\n"));
+    std::string const largestCount =
+        criticalTraceAt(formula::Rational { std::numeric_limits<formula::Rational::Int>::max() });
+    CHECK(largestCount.ends_with(" [no row for n = 170141183460469231731687303715884105727 (declared: 3, 4, 5, 6, 8)]\n"));
 
     // A count that is no number of determinations names no row either, and
     // the line says why, pointing at the step that holds the value.
@@ -2765,9 +2783,14 @@ TEST_CASE("a derivation of a critical value says whose failure it carries", "[tr
 
     // The row is found, and converting its value out of the table's unit
     // overflows: the lookup's own conversion, not a miss.
-    std::string const overflowed =
-        formula::render_trace(criticalTraceOf<Enormous>(var<Determinations>, sixSpecimens), { .maxSteps = 10 });
+    formula::Rational const tooWide { std::numeric_limits<formula::Rational::Int>::max() / 1000 };
+    std::string const overflowed = formula::render_trace(
+        criticalTraceOf<Enormous>(var<Determinations>, sixSpecimens, tooWide), { .maxSteps = 10 });
     CHECK(overflowed.ends_with(" [this lookup's own unit conversion failed, not anything below it]\n"));
+    // 50 of them, which overflowed 64 bits, are 50 * (2^63 - 1).
+    formula::Trace<> const fitted = criticalTraceOf<Enormous>(var<Determinations>, sixSpecimens);
+    REQUIRE(!fitted.steps.empty());
+    CHECK(fitted.steps.back().value == formula::Rational { formula::Rational::Int { 9'223'372'036'854'775'807 } * 50 });
 
     // A table of no sizes misses every count, and says it declares none.
     std::string const empty = formula::render_trace(

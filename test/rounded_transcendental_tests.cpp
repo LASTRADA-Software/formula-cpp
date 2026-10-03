@@ -127,12 +127,13 @@ TEST_CASE("rounded_transcendental: an exponential too large to hold is Overflow"
 {
     // exp 50 = 5.18 * 10^21: past the early bound.
     STATIC_REQUIRE(expAt<DecimalPlaces { 6 }, RoundingMode::HalfAwayFromZero>(Rational { 50 }) == overflow);
-    // exp 43.7 = 9.52 * 10^18: through the kernel. Floor to whole 10^18s keeps 9 * 10^18, which fits;
-    // the nearest modes give 10^19, which does not.
+    // exp 43.7 = 9.52 * 10^18: through the kernel. Floor to whole 10^18s keeps 9 * 10^18; the nearest
+    // modes give 10^19, which overflowed 64 bits and fits 128.
     CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 437, 10 }) == Rational { 9'000'000'000'000'000'000 });
-    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::HalfAwayFromZero>(Rational { 437, 10 }) == overflow);
-    // exp 44 = 1.29 * 10^19 fits at no places.
-    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 44 }) == overflow);
+    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::HalfAwayFromZero>(Rational { 437, 10 })
+          == Rational { 10'000'000'000'000'000'000ULL });
+    // exp 44 = 1.29 * 10^19, which fitted at no places in 64 bits, floors to 12 * 10^18.
+    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 44 }) == Rational { 12'000'000'000'000'000'000ULL });
     // exp 43 = 4727839468229346561.47...: whole, it fits.
     CHECK(expAt<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 43 })
           == Rational { 4'727'839'468'229'346'561 });
@@ -182,6 +183,19 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
     STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::Ceiling>(Rational { -50 }) == overflow);
     STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { -50 }) == overflow);
     STATIC_REQUIRE(expAt<DecimalPlaces { -19 }, RoundingMode::Floor>(Rational { -50 }) == overflow);
+    // An argument whose numerator or denominator does not fit 64 bits is beyond the kernel, which works on
+    // two values below 2^63: ln 2^70 and exp 2^-64 are Overflow, though a Rational holds both arguments.
+    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
+                   == overflow);
+    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 64 })
+                   == overflow);
+    // The rule below -43 comes first, whatever the argument's width: exp -2^70 is 0.
+    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { -(Rational::Int { 1 } << 70) })
+                   == Rational {});
+    // 2^62 and 1/2^62, inside it, answer: ln 2^62 = 42.97512..., exp 2^-62 rounds to 1.
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 62 })
+          == Rational { 429751, 10000 });
+    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 62 }) == Rational { 1 });
 }
 
 TEST_CASE("rounded_transcendental: a percentage is read in the coherent unit", "[rounded_transcendental]")
@@ -206,8 +220,9 @@ TEST_CASE("rounded_transcendental: a value a double cannot tell from a boundary 
     CHECK(log10At<DecimalPlaces { 17 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 })
           == Rational::from_decimal(1'799'999'999'999'999'999, -17));
     CHECK(log10At<DecimalPlaces { 17 }, RoundingMode::HalfEven>(Rational { 999'999'999'999'999'999 }) == Rational { 18 });
-    // At 18 places the result, 1.8 * 10^19 in units of 10^-18, does not fit a Rational.
-    CHECK(log10At<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 }) == overflow);
+    // At 18 places the result, 1.8 * 10^19 in units of 10^-18, overflowed 64 bits; it fits 128.
+    CHECK(log10At<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 })
+          == Rational { 17'999'999'999'999'999'999ULL, 1'000'000'000'000'000'000 });
 }
 
 TEST_CASE("rounded_transcendental: a rounding the kernel cannot decide is Overflow", "[rounded_transcendental]")

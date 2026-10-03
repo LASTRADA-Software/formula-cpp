@@ -16,6 +16,8 @@
 
 #include <cstdint>
 #include <expected>
+#include <limits>
+#include <optional>
 #include <string_view>
 
 namespace formula
@@ -209,31 +211,31 @@ namespace detail
 {
     /// Whether `|numerator| / denominator >= 10^exponent`, exactly and without
     /// ever constructing 10^exponent as a Rational -- which is impossible at the
-    /// extremes of the representable range.
-    [[nodiscard]] constexpr bool at_least_pow10(std::uint64_t magnitudeNumerator,
-                                                std::uint64_t magnitudeDenominator,
+    /// extremes of the representable range. A scaled side beyond the largest
+    /// `Rational::Int` already decides the comparison, and is never formed.
+    [[nodiscard]] constexpr bool at_least_pow10(UInt128 magnitudeNumerator,
+                                                UInt128 magnitudeDenominator,
                                                 int exponent) noexcept
     {
-        constexpr std::uint64_t Limit = static_cast<std::uint64_t>(IntMax);
+        constexpr UInt128 Largest = wide_magnitude(std::numeric_limits<Rational::Int>::max());
         if (exponent >= 0)
         {
-            if (exponent > 18)
+            std::optional<UInt128> const powerOfTen = u128_pow10(exponent);
+            std::optional<UInt128> const scaledDenominator =
+                powerOfTen ? u128_mul_checked(magnitudeDenominator, *powerOfTen) : std::nullopt;
+            // Beyond the largest numerator, the quotient is below 10^exponent.
+            if (!scaledDenominator || Largest < *scaledDenominator)
                 return false;
-            std::uint64_t const powerOfTen = static_cast<std::uint64_t>(*pow10(exponent));
-            // denominator * factor > Limit implies the scaled denominator already
-            // exceeds any possible numerator, so the quotient is below 10^exponent.
-            if (magnitudeDenominator > Limit / powerOfTen)
-                return false;
-            FORMULA_CENSUS_NOTE(Intermediate, magnitudeDenominator * powerOfTen);
-            return magnitudeNumerator >= magnitudeDenominator * powerOfTen;
+            FORMULA_CENSUS_NOTE(Intermediate, *scaledDenominator);
+            return !(magnitudeNumerator < *scaledDenominator);
         }
-        if (-exponent > 18)
+        std::optional<UInt128> const powerOfTen = u128_pow10(-exponent);
+        std::optional<UInt128> const scaledNumerator =
+            powerOfTen ? u128_mul_checked(magnitudeNumerator, *powerOfTen) : std::nullopt;
+        if (!scaledNumerator || Largest < *scaledNumerator)
             return true;
-        std::uint64_t const powerOfTen = static_cast<std::uint64_t>(*pow10(-exponent));
-        if (magnitudeNumerator > Limit / powerOfTen)
-            return true;
-        FORMULA_CENSUS_NOTE(Intermediate, magnitudeNumerator * powerOfTen);
-        return magnitudeNumerator * powerOfTen >= magnitudeDenominator;
+        FORMULA_CENSUS_NOTE(Intermediate, *scaledNumerator);
+        return !(*scaledNumerator < magnitudeDenominator);
     }
 } // namespace detail
 
@@ -245,8 +247,8 @@ namespace detail
     if (examinedValue.is_zero())
         return std::unexpected { ArithmeticError::DomainError };
 
-    std::uint64_t const magnitudeNumerator = detail::magnitude(examinedValue.numerator());
-    auto const magnitudeDenominator = static_cast<std::uint64_t>(examinedValue.denominator());
+    detail::UInt128 const magnitudeNumerator = detail::wide_magnitude(examinedValue.numerator());
+    detail::UInt128 const magnitudeDenominator = detail::wide_magnitude(examinedValue.denominator());
 
     // The digit counts bracket the answer to within one: with dn digits in the
     // numerator and dd in the denominator, floor(log10(n/d)) is either
@@ -317,25 +319,26 @@ namespace detail
 /// wrong number:
 ///
 /// - `from_double_exact` needs the double's exact binary value to be
-///   representable, which fails outright for a full-mantissa value below
-///   `2^-10`, about 0.00098. Measured: `0.0009765625` converts, `0.0001` does not.
+///   representable: its denominator, a power of two, must stay below 2^127.
+///   That limit is set by the value's magnitude. Measured: `0.0001`, a 53-bit
+///   numerator over 2^66, converts; `1e-30`, over 2^147, does not.
 /// - Rounding to a POSITIVE number of places `N` scales by `10^N`, cancelling
 ///   common factors of two against the denominator first, so what must fit in
-///   `Int` is `|numerator| * (10^N / gcd(10^N, denominator))` -- for a binary
-///   denominator, `|numerator| * 5^N`. There the limit is set by the
-///   **numerator's** magnitude, not the denominator's and not the value's size:
-///   `1 / 2^60` rounds at all 18 places, while `8106479329266893 / 2^54`
-///   manages 4. A `double`'s mantissa is always about 53 bits whatever its
-///   exponent, so every value from this function caps out at 4 decimal places.
-///   A value built with `from_decimal` has a tiny numerator and is unaffected
-///   at positive places.
+///   `Rational::Int` is `|numerator| * (10^N / gcd(10^N, denominator))` -- for
+///   a binary denominator, `|numerator| * 5^N`. There the limit is set by the
+///   **numerator's** magnitude, not the denominator's and not the value's
+///   size: `1 / 2^121` rounds at all 18 places, while a 100-bit numerator over
+///   the same denominator does not. A `double` below 2^53 in magnitude has a
+///   numerator of at most 53 bits, and rounding it forms at most
+///   2^53 * 5^18 * 2^18, below 2^113, so it rounds at every place from 0 to
+///   18. A whole `double` past that has a numerator of its own magnitude and
+///   nothing to cancel: 1e21 is refused at 18 places, and 1e38 at 1.
 /// - Rounding to a NEGATIVE number of places -- to whole tens or hundreds --
 ///   uses an integer step, which multiplies the **denominator** instead. There
-///   the denominator is the constraint, and the two cases invert: `1/10^18` is
-///   refused at every negative place while `1/3` handles all of them.
+///   the denominator is the constraint: `2^-100` is refused at -18 places.
 ///
 /// Prefer `from_decimal` for an exact decimal; use this function only for a
-/// genuinely measured `double`, and only at modest decimal precision.
+/// genuinely measured `double`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rational_from_double(double floating,
                                                                                       DecimalPlaces places,
                                                                                       RoundingMode roundingMode) noexcept

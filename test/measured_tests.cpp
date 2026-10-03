@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
 #include <type_traits>
 
 namespace unit = formula::unit;
@@ -310,11 +311,17 @@ TEST_CASE("a conversion overflow is reported as an error, not re-read as absence
 {
     // Half of Rational's maximum numerator, in metres. Converting to
     // millimetres multiplies by 1000, which does not fit.
-    Measured<LengthInMetres> const huge { *Rational::make(4611686018427387903LL, 1) };
+    Measured<LengthInMetres> const huge { Rational { std::numeric_limits<Rational::Int>::max() / 2 } };
 
     auto const overflowed = formula::checked_convert_to<LengthInMillimetres>(huge);
     REQUIRE_FALSE(overflowed.has_value());
     CHECK(overflowed.error() == ArithmeticError::Overflow);
+
+    // Half of the largest 64-bit integer, which overflowed 64 bits, converts.
+    Measured<LengthInMetres> const huge64 { Rational { 4611686018427387903LL } };
+    auto const converted = formula::checked_convert_to<LengthInMillimetres>(huge64);
+    REQUIRE(converted.has_value());
+    CHECK(converted->value() == Rational { Rational::Int { 4611686018427387903LL } * 1000 });
 
     // The present-but-error result must not be confused with an absent one:
     // checking has_value() on the OUTER expected is the only correct read
@@ -506,7 +513,7 @@ TEST_CASE("round_to_declared and within_bounds: throwing twins", "[measured]")
 
 TEST_CASE("the throwing twins throw the error their checked form returns", "[measured]")
 {
-    Measured<LengthInMetres> const huge { *Rational::make(4611686018427387903LL, 1) };
+    Measured<LengthInMetres> const huge { Rational { std::numeric_limits<Rational::Int>::max() / 2 } };
     CHECK_THROWS_AS(formula::convert_to<LengthInMillimetres>(huge), formula::ArithmeticException);
     Measured<UnroundableReading> const unroundable { *Rational::make(1, 3) };
     CHECK_THROWS_AS(formula::round_to_declared(unroundable, formula::RoundingMode::HalfEven),

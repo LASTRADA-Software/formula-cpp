@@ -15,7 +15,7 @@
 /// whose decimal expansion never ends is never passed off as one that does.
 ///
 /// A core header: it includes no `<string>`, and the arithmetic is plain
-/// `std::uint64_t` on the value's magnitude and denominator, never
+/// 128-bit unsigned arithmetic on the value's magnitude and denominator, never
 /// `Rational::make`, so spelling a number reports nothing to the overflow
 /// census (`detail/checked_int.hpp`). The one exception is rounding to a
 /// negative number of places, which is `checked_round`'s own arithmetic --
@@ -37,10 +37,12 @@ namespace formula
 {
 
 /// Bytes of text a `NumberText` can hold. The longest text this header
-/// spells is 59 bytes -- the marker, a sign, 19 whole digits, a point and 18
-/// places, then a space and a unit symbol of `SymbolCapacity` bytes -- and a
-/// `static_assert` below keeps that true.
-inline constexpr std::size_t NumberTextCapacity = 64;
+/// spells is a fraction -- a sign, a 39-digit numerator, a slash, a 39-digit
+/// denominator, a space and a unit symbol of `SymbolCapacity` bytes -- of 97
+/// bytes, and a `static_assert` below keeps it within this. A fraction is
+/// never marked approximate, and the longest marked decimal, at 18 places, is
+/// shorter.
+inline constexpr std::size_t NumberTextCapacity = 128;
 
 /// The one spelling of "approximately": U+2248, `≈`, in UTF-8. Not `~`: a
 /// pair of those is GFM strikethrough, as `render.hpp`'s Markdown escaping
@@ -218,22 +220,12 @@ namespace detail
                 put(spelled, each);
         }
 
-        /// Appends @p wholeNumber in decimal: at most 20 digits.
-        static constexpr void put_whole(NumberText& spelled, std::uint64_t wholeNumber) noexcept
+        /// Appends @p wholeNumber in decimal: at most 39 digits.
+        static constexpr void put_whole(NumberText& spelled, UInt128 wholeNumber) noexcept
         {
-            char reversed[20] {};
-            std::size_t produced = 0;
-            do
-            {
-                reversed[produced] = static_cast<char>('0' + wholeNumber % 10U);
-                ++produced;
-                wholeNumber /= 10U;
-            } while (wholeNumber != 0U);
-            while (produced > 0)
-            {
-                --produced;
-                put(spelled, reversed[produced]);
-            }
+            DecimalSpelling const written = u128_decimal(wholeNumber);
+            for (int at = 0; at < written.length; ++at)
+                put(spelled, written.characters[at]);
         }
 
         /// Appends a point and the first @p shownPlaces of @p fractionDigits,
@@ -251,16 +243,21 @@ namespace detail
         static constexpr void mark_rounded(NumberText& spelled) noexcept { spelled._exact = false; }
     };
 
-    /// The longest text this header spells: the marker, a sign, the 19 digits
-    /// of 2^63, a point and 18 places, a space, and a unit symbol of
-    /// `SymbolCapacity` bytes -- `view(Symbol const&)` returns that many from a
-    /// symbol with no terminator.
-    inline constexpr std::size_t LongestNumberText = ApproximationMarker.size() + 1 + 19 + 1 + 18 + 1 + SymbolCapacity;
+    /// The longest text this header spells: a fraction of a sign, the 39
+    /// digits of 2^127, a slash, a 39-digit denominator, a space, and a unit
+    /// symbol of `SymbolCapacity` bytes -- `view(Symbol const&)` returns that
+    /// many from a symbol with no terminator. A fraction is never marked
+    /// approximate; the longest marked decimal -- the marker, a sign, 38
+    /// whole digits (a marked decimal's denominator is at least 3, and
+    /// 2^127 / 3 has 38), a point and 18 places, a space and the symbol -- is
+    /// shorter.
+    inline constexpr std::size_t LongestNumberText = 1 + 39 + 1 + 39 + 1 + SymbolCapacity;
     static_assert(LongestNumberText <= NumberTextCapacity,
                   "formula: NumberTextCapacity is too small for the longest number this library spells");
 
-    /// 10^18, the largest power of ten `Rational::Int` holds: the finest
-    /// scale this header writes a decimal on.
+    /// 10^18, the finest scale this header writes a decimal on: rounding's
+    /// places stop at 18, as `DecimalPlaces` does, though `Rational::Int`
+    /// holds powers of ten up to 10^38.
     inline constexpr std::uint64_t ExactDecimalScale = 1'000'000'000'000'000'000ULL;
 
     /// The places `ExactDecimalScale` spans -- also the largest
@@ -277,12 +274,16 @@ namespace detail
     /// @pre `0 <= minimumPlaces <= 18`.
     [[nodiscard]] constexpr std::optional<NumberText> exact_decimal_digits(Rational shownValue, int minimumPlaces) noexcept
     {
-        auto const divisor = static_cast<std::uint64_t>(shownValue.denominator());
-        if (ExactDecimalScale % divisor != 0U)
+        UInt128 const divisor = wide_magnitude(shownValue.denominator());
+        UInt128Division const scaleSplit = u128_divmod(UInt128::from_u64(ExactDecimalScale), divisor);
+        if (!scaleSplit.remainder.is_zero())
             return std::nullopt;
 
-        std::uint64_t const magnitudeShown = magnitude(shownValue.numerator());
-        std::uint64_t fractional = (magnitudeShown % divisor) * (ExactDecimalScale / divisor);
+        UInt128Division const shownSplit = u128_divmod(wide_magnitude(shownValue.numerator()), divisor);
+        // The remainder is below the divisor, which divides 10^18, so both it
+        // and the cofactor 10^18 / divisor fit 64 bits, and so does their
+        // product, which stays below 10^18.
+        std::uint64_t fractional = shownSplit.remainder.lowWord * scaleSplit.quotient.lowWord;
         char fractionDigits[ExactDecimalPlaces] {};
         for (int place = ExactDecimalPlaces - 1; place >= 0; --place)
         {
@@ -296,7 +297,7 @@ namespace detail
         NumberText spelled = NumberTextAccess::blank();
         if (shownValue.sign() < 0)
             NumberTextAccess::put(spelled, '-');
-        NumberTextAccess::put_whole(spelled, magnitudeShown / divisor);
+        NumberTextAccess::put_whole(spelled, shownSplit.quotient);
         NumberTextAccess::put_fraction(spelled, fractionDigits, shownPlaces);
         return spelled;
     }
@@ -310,13 +311,13 @@ namespace detail
     /// a tie is found by comparing @p remainderLeft with
     /// `divisor - remainderLeft`, with no doubling. A tie under a mode that is
     /// none of the seven is refused with `DomainError`, as there.
-    [[nodiscard]] constexpr std::expected<bool, ArithmeticError> moves_away_from_zero(std::uint64_t remainderLeft,
-                                                                                     std::uint64_t divisor,
+    [[nodiscard]] constexpr std::expected<bool, ArithmeticError> moves_away_from_zero(UInt128 remainderLeft,
+                                                                                     UInt128 divisor,
                                                                                      bool negative,
                                                                                      bool lastKeptOdd,
                                                                                      RoundingMode roundingMode) noexcept
     {
-        if (remainderLeft == 0U)
+        if (remainderLeft.is_zero())
             return false;
 
         switch (roundingMode)
@@ -333,7 +334,7 @@ namespace detail
                 break;
         }
 
-        std::uint64_t const distanceUp = divisor - remainderLeft;
+        UInt128 const distanceUp = u128_sub(divisor, remainderLeft);
         if (remainderLeft < distanceUp)
             return false;
         if (remainderLeft > distanceUp)
@@ -359,7 +360,9 @@ namespace detail
 /// and `1/3` do not.
 [[nodiscard]] constexpr bool has_exact_decimal(Rational shownValue) noexcept
 {
-    return detail::ExactDecimalScale % static_cast<std::uint64_t>(shownValue.denominator()) == 0U;
+    return detail::u128_divmod(detail::UInt128::from_u64(detail::ExactDecimalScale),
+                               detail::wide_magnitude(shownValue.denominator()))
+        .remainder.is_zero();
 }
 
 /// @p shownValue as its exact decimal, with no trailing zeros: `0.6`,
@@ -377,11 +380,11 @@ namespace detail
     NumberText spelled = detail::NumberTextAccess::blank();
     if (shownValue.sign() < 0)
         detail::NumberTextAccess::put(spelled, '-');
-    detail::NumberTextAccess::put_whole(spelled, detail::magnitude(shownValue.numerator()));
+    detail::NumberTextAccess::put_whole(spelled, detail::wide_magnitude(shownValue.numerator()));
     if (shownValue.denominator() != 1)
     {
         detail::NumberTextAccess::put(spelled, '/');
-        detail::NumberTextAccess::put_whole(spelled, static_cast<std::uint64_t>(shownValue.denominator()));
+        detail::NumberTextAccess::put_whole(spelled, detail::wide_magnitude(shownValue.denominator()));
     }
     return spelled;
 }
@@ -393,11 +396,12 @@ namespace detail
 ///
 /// The text is exactly what `checked_round` would round to, but not by way
 /// of it: for 0 to 18 places the digits come from long division on the
-/// magnitude and denominator, in `std::uint64_t`, so the text exists even
-/// where `checked_round`'s own arithmetic overflows -- `IntMax/3` to 18
-/// places is `3074457345618258602.333333333333333333`, while `checked_round`
-/// reports `Overflow` for it. Each digit is found without forming
-/// `remainder * 10`: the remainder is added ten times, taking the
+/// magnitude and denominator, in 128-bit unsigned integers, so the text
+/// exists even where `checked_round`'s own arithmetic overflows -- the
+/// largest `Rational::Int` over 3, to 18 places, is
+/// `56713727820156410577229101238628035242.333333333333333333`, while
+/// `checked_round` reports `Overflow` for it. Each digit is found without
+/// forming `remainder * 10`: the remainder is added ten times, taking the
 /// denominator off whenever the sum reaches it, so the sum stays below twice
 /// the denominator. A value that rounds to zero is written without a `-`.
 ///
@@ -433,10 +437,10 @@ namespace detail
         return *spelledRounded;
     }
 
-    auto const divisor = static_cast<std::uint64_t>(unrounded.denominator());
-    std::uint64_t const magnitudeShown = detail::magnitude(unrounded.numerator());
-    std::uint64_t wholePart = magnitudeShown / divisor;
-    std::uint64_t remainderLeft = magnitudeShown % divisor;
+    detail::UInt128 const divisor = detail::wide_magnitude(unrounded.denominator());
+    detail::UInt128Division const shownSplit = detail::u128_divmod(detail::wide_magnitude(unrounded.numerator()), divisor);
+    detail::UInt128 wholePart = shownSplit.quotient;
+    detail::UInt128 remainderLeft = shownSplit.remainder;
 
     char fractionDigits[detail::ExactDecimalPlaces] {};
     for (int place = 0; place < places.value; ++place)
@@ -444,15 +448,15 @@ namespace detail
         // The next digit is floor(remainderLeft * 10 / divisor), and the
         // next remainder remainderLeft * 10 mod divisor. Both are found by
         // adding remainderLeft ten times: before each addition the sum is
-        // below divisor, so after it the sum is below 2 * divisor < 2^64.
-        std::uint64_t tenfold = 0;
+        // below divisor, so after it the sum is below 2 * divisor < 2^128.
+        detail::UInt128 tenfold {};
         int nextDigit = 0;
         for (int added = 0; added < 10; ++added)
         {
-            tenfold += remainderLeft;
-            if (tenfold >= divisor)
+            tenfold = detail::u128_add(tenfold, remainderLeft);
+            if (!(tenfold < divisor))
             {
-                tenfold -= divisor;
+                tenfold = detail::u128_sub(tenfold, divisor);
                 ++nextDigit;
             }
         }
@@ -462,7 +466,7 @@ namespace detail
 
     bool const negative = unrounded.sign() < 0;
     bool const lastKeptOdd =
-        places.value > 0 ? (fractionDigits[places.value - 1] - '0') % 2 != 0 : wholePart % 2U != 0U;
+        places.value > 0 ? (fractionDigits[places.value - 1] - '0') % 2 != 0 : (wholePart.lowWord & 1U) != 0U;
     std::expected<bool, ArithmeticError> const awayFromZero =
         detail::moves_away_from_zero(remainderLeft, divisor, negative, lastKeptOdd, roundingMode);
     if (!awayFromZero)
@@ -477,12 +481,18 @@ namespace detail
             --place;
         }
         if (place >= 0)
+        {
             fractionDigits[place] = static_cast<char>(fractionDigits[place] + 1);
+        }
         else
-            ++wholePart; // at most 2^62 + 1: a value with a remainder has a denominator of at least 2
+        {
+            // Below 2^127: a value with a remainder has a denominator of at
+            // least 2.
+            wholePart = detail::u128_add(wholePart, detail::UInt128::from_u64(1));
+        }
     }
 
-    bool roundedToZero = wholePart == 0U;
+    bool roundedToZero = wholePart.is_zero();
     for (int place = 0; place < places.value; ++place)
         roundedToZero = roundedToZero && fractionDigits[place] == '0';
 
@@ -495,7 +505,7 @@ namespace detail
         detail::NumberTextAccess::put(spelled, '-');
     detail::NumberTextAccess::put_whole(spelled, wholePart);
     detail::NumberTextAccess::put_fraction(spelled, fractionDigits, shownPlaces);
-    if (remainderLeft != 0U)
+    if (!remainderLeft.is_zero())
         detail::NumberTextAccess::mark_rounded(spelled);
     return spelled;
 }

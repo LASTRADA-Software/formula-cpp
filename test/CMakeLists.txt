@@ -25,6 +25,7 @@ add_executable(formula-cpp-tests
     cross_tu_a.cpp
     expression_cross_tu_b.cpp
     checked_int_tests.cpp
+    int128_tests.cpp
     citation_tests.cpp
     document_tests.cpp
     error_tests.cpp
@@ -277,8 +278,6 @@ endfunction()
 # failed: '<message>'`), so one literal substring matches on every leg.
 formula_add_negative_test(rational_from_floating_point
     "formula: a floating-point value is not an exact rational")
-formula_add_negative_test(rational_from_wide_unsigned
-    "formula: this unsigned type can hold values above Rational's maximum")
 
 # These two expect a NAME rather than a message. An invalid exponent is rejected
 # by calling a deliberately non-`constexpr` sentinel whose name states the
@@ -452,8 +451,8 @@ formula_add_negative_test(measured_series_short
     "this series was given a different number of elements than its length")
 
 # A wrong element in measured_series: another quantity's measurement draws the
-# series' own message (once, and no overload list); a double or a wide
-# unsigned draws Rational's, and the series' message stays silent.
+# series' own message (once, and no overload list); a double draws
+# Rational's, and the series' message stays silent.
 formula_add_negative_test(measured_series_element_other_quantity
     "formula: an element of measured_series<Q> is a Measured<Q> of that one quantity" EXPECT_COUNT 1
     REJECT "no matching" "cannot convert" "could not convert")
@@ -462,9 +461,6 @@ formula_add_negative_test(measured_series_element_bool
     REJECT "no matching" "cannot convert" "could not convert")
 formula_add_negative_test(measured_series_element_double
     "formula: a floating-point value is not an exact rational" EXPECT_COUNT 1
-    REJECT "an element of measured_series<Q>")
-formula_add_negative_test(measured_series_element_wide_unsigned
-    "formula: this unsigned type can hold values above Rational's maximum" EXPECT_COUNT 1
     REJECT "an element of measured_series<Q>")
 
 # A series where one value is asked for: checked_evaluate, evaluate and
@@ -1143,6 +1139,10 @@ formula_add_negative_test(format_places_out_of_range
 formula_add_negative_test(format_spec_not_understood
     "formula_number_format_spec_not_understood"
     REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_places_out_of_range")
+formula_add_negative_test(int128_format_spec_not_understood
+    "formula_int128_format_spec_not_understood"
+    REJECT "formula_number_format_spec_not_understood" "formula_number_format_needs_a_rounding_mode"
+           "formula_number_format_places_out_of_range")
 
 formula_add_negative_test(band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"
@@ -1187,6 +1187,11 @@ formula_add_negative_test(band_from_floating_point_several
 formula_add_negative_test(breakpoint_pair_denominator_from_floating_point
     "formula: a breakpoint's key is an exact number" EXPECT_COUNT 1
     REJECT "no matching" "ambiguous")
+
+# A Band's bounds and a Breakpoint's key are 64-bit pairs, so that they stay
+# template arguments; a Rational beyond 64 bits is refused by name, never cut.
+formula_add_negative_test(band_bound_out_of_range "formula_band_bound_out_of_range")
+formula_add_negative_test(breakpoint_key_out_of_range "formula_breakpoint_key_out_of_range")
 
 formula_add_negative_test(lookup_band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"

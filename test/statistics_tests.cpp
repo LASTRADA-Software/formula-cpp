@@ -186,7 +186,7 @@ TEST_CASE("a total that overflows fails the mean, and the trace names the determ
     // The largest Rational, then 1 kg: the total overflows at the second
     // determination. Never a wrapped, negative mean.
     constexpr auto heavy = formula::environment(
-        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<Rational::Int>::max() } },
                                         formula::Measured<Heavy> { rat(1) },
                                         formula::Measured<Heavy> { rat(2) }));
     constexpr auto mean = formula::sample_mean(formula::series<Heavy, 3>);
@@ -195,8 +195,17 @@ TEST_CASE("a total that overflows fails the mean, and the trace names the determ
     formula::Trace<> trace {};
     (void) formula::checked_evaluate<Heavy>(mean, heavy, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
-          == "1. m_h = 9223372036854775807 kg; 1 kg; 2 kg\n"
+          == "1. m_h = 170141183460469231731687303715884105727 kg; 1 kg; 2 kg\n"
              "2. sample_mean(#1) = overflow in exact arithmetic at element 2\n");
+
+    // The largest 64-bit integer, which overflowed 64 bits, then 1 kg and
+    // 2 kg: a mean of (2^63 + 2)/3 kg.
+    constexpr auto heavy64 = formula::environment(
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+                                        formula::Measured<Heavy> { rat(1) },
+                                        formula::Measured<Heavy> { rat(2) }));
+    STATIC_REQUIRE(formula::checked_evaluate<Heavy>(mean, heavy64)->measurement().value()
+                   == Rational { (Rational::Int { 1 } << 63) + 2, 3 });
 }
 
 TEST_CASE("sample statistics evaluate at runtime, and in double", "[statistics]")
@@ -296,7 +305,7 @@ TEST_CASE("a failure position is amended only onto a failed statistic, and only 
           "[statistics][trace-render]")
 {
     constexpr auto heavy = formula::environment(
-        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<Rational::Int>::max() } },
                                         formula::Measured<Heavy> { rat(1) },
                                         formula::Measured<Heavy> { rat(2) }));
     formula::Trace<> trace {};
@@ -306,7 +315,7 @@ TEST_CASE("a failure position is amended only onto a failed statistic, and only 
     // takes it, being a failed mean, and the renderer declines to print it.
     sink.sample_failed_at(4);
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
-          == "1. m_h = 9223372036854775807 kg; 1 kg; 2 kg\n"
+          == "1. m_h = 170141183460469231731687303715884105727 kg; 1 kg; 2 kg\n"
              "2. sample_mean(#1) = overflow in exact arithmetic at (no such element)\n");
 
     // A present mean is never given a failure position.
@@ -398,6 +407,20 @@ TEST_CASE("equal determinations have no dispersion, exactly", "[statistics]")
                    == rat(0));
 }
 
+TEST_CASE("the variance of six masses read to the microgram answers exactly", "[statistics]")
+{
+    // The sample that overflowed 64 bits in kg^2: in g^2 its variance is
+    // 2026588050217/6000000000000, exactly.
+    auto const sixAtMicrograms = formula::environment(formula::measured_series<Mass>(
+        grams(rat(40053270, 1000000)), grams(rat(39475922, 1000000)), grams(rat(39025798, 1000000)),
+        grams(rat(40615904, 1000000)), grams(rat(39418416, 1000000)), grams(rat(40131659, 1000000))));
+    auto const microgramVariance = formula::checked_evaluate<MassVariance>(
+        formula::sample_variance(formula::series<Mass, 6>), sixAtMicrograms);
+    REQUIRE(microgramVariance.has_value());
+    REQUIRE(microgramVariance->is_value());
+    CHECK(microgramVariance->measurement().value() == formula::Rational { 2026588050217, 6000000000000 });
+}
+
 TEST_CASE("one determination has a range of 0 and no variance", "[statistics]")
 {
     // A variance needs two determinations: n - 1 = 0 is refused as a domain
@@ -417,65 +440,148 @@ TEST_CASE("one absent determination makes the variance and the range absent", "[
     STATIC_REQUIRE(formula::checked_evaluate<Spread>(range, fixtureAMissingThird)->is_empty());
 }
 
+namespace
+{
+/// The textbook one-pass sample variance, (sum x^2 - (sum x)^2 / n) / (n - 1),
+/// of @p kilograms, in exact arithmetic: the form `sample_variance` does not
+/// use, kept here to show where it runs out.
+[[nodiscard]] constexpr std::expected<Rational, formula::ArithmeticError> one_pass_variance(
+    std::span<Rational const> kilograms) noexcept
+{
+    Rational massTotal { 0 };
+    Rational squaresTotal { 0 };
+    for (Rational const& mass: kilograms)
+    {
+        std::expected<Rational, formula::ArithmeticError> const squared = formula::checked_mul(mass, mass);
+        if (!squared)
+            return std::unexpected { squared.error() };
+        std::expected<Rational, formula::ArithmeticError> const squaresSoFar = formula::checked_add(squaresTotal, *squared);
+        if (!squaresSoFar)
+            return std::unexpected { squaresSoFar.error() };
+        std::expected<Rational, formula::ArithmeticError> const massSoFar = formula::checked_add(massTotal, mass);
+        if (!massSoFar)
+            return std::unexpected { massSoFar.error() };
+        squaresTotal = *squaresSoFar;
+        massTotal = *massSoFar;
+    }
+    auto const sizeOf = static_cast<std::int64_t>(kilograms.size());
+    std::expected<Rational, formula::ArithmeticError> const totalSquared = formula::checked_mul(massTotal, massTotal);
+    if (!totalSquared)
+        return std::unexpected { totalSquared.error() };
+    std::expected<Rational, formula::ArithmeticError> const overSize = formula::checked_div(*totalSquared, rat(sizeOf));
+    if (!overSize)
+        return std::unexpected { overSize.error() };
+    std::expected<Rational, formula::ArithmeticError> const deviations = formula::checked_sub(squaresTotal, *overSize);
+    if (!deviations)
+        return std::unexpected { deviations.error() };
+    return formula::checked_div(*deviations, rat(sizeOf - 1));
+}
+
+/// Fixture A scaled by @p scaleBy, in kilograms.
+[[nodiscard]] constexpr std::array<Rational, 6> fixture_a_kilograms(Rational::Int scaleBy) noexcept
+{
+    return { Rational { 402 * scaleBy, 10'000 }, Rational { 398 * scaleBy, 10'000 }, Rational { 405 * scaleBy, 10'000 },
+             Rational { 440 * scaleBy, 10'000 }, Rational { 400 * scaleBy, 10'000 }, Rational { 433 * scaleBy, 10'000 } };
+}
+
+/// Fixture A scaled by @p scaleBy, as the evaluator reads it: in grams.
+[[nodiscard]] constexpr auto fixture_a_scaled(Rational::Int scaleBy) noexcept
+{
+    return formula::environment(formula::measured_series<Mass>(grams(Rational { 402 * scaleBy, 10 }),
+                                                               grams(Rational { 398 * scaleBy, 10 }),
+                                                               grams(Rational { 405 * scaleBy, 10 }),
+                                                               grams(Rational { 440 * scaleBy, 10 }),
+                                                               grams(Rational { 400 * scaleBy, 10 }),
+                                                               grams(Rational { 433 * scaleBy, 10 })));
+}
+} // namespace
+
 TEST_CASE("at large magnitudes the two-pass variance holds past where the one-pass formula overflows", "[statistics]")
 {
-    // Fixture A scaled by 2^25: 40.2 g becomes 1348888166.4 g. The textbook
-    // one-pass form, (sum x^2 - (sum x)^2 / n) / (n - 1), overflows Rational
-    // in coherent SI at a scale of 2^25; the two-pass form (the mean, then
-    // the squared deviations from it) holds until 2^31 -- and gives exactly
-    // 427/125 g^2 times 2^50, in kg^2. Measured with fixtures A and B
-    // alike; at 10^4, the brief's first guess, neither overflows (the forms
-    // part only between 10^11 and 10^12 when scaled by powers of ten). At
-    // fine resolution it is the other way round -- see the header.
-    constexpr std::int64_t scale = std::int64_t { 1 } << 25;
-    constexpr auto scaledA = formula::environment(formula::measured_series<Mass>(grams(rat(402 * scale, 10)),
-                                                                                 grams(rat(398 * scale, 10)),
-                                                                                 grams(rat(405 * scale, 10)),
-                                                                                 grams(rat(440 * scale, 10)),
-                                                                                 grams(rat(400 * scale, 10)),
-                                                                                 grams(rat(433 * scale, 10))));
-    STATIC_REQUIRE(formula::checked_evaluate_si(variance, scaledA)->value()
-                   == rat(427 * (std::int64_t { 1 } << 44), 1'953'125));
+    // Fixture A scaled by 2^57: 40.2 g becomes about 5.8e18 g. The textbook
+    // one-pass form, (sum x^2 - (sum x)^2 / n) / (n - 1), computed exactly in
+    // kg, first overflows at a scale of 2^57, where the square of the
+    // masses' sum, 247.8 g times 2^57, outgrows 127 bits. At 2^56 it still
+    // answers, and agrees with the two-pass form. The two-pass form (the mean, then the
+    // squared deviations from it) squares only the deviations, and holds up
+    // to 2^62 (see the overflow test below) -- at 2^57 it gives exactly
+    // 427/125 g^2 times 2^114, in kg^2. At fine resolution it is the other
+    // way round -- see the header.
+    constexpr Rational::Int below = Rational::Int { 1 } << 56;
+    constexpr Rational::Int scale = Rational::Int { 1 } << 57;
+    STATIC_REQUIRE(one_pass_variance(fixture_a_kilograms(below)).value()
+                   == Rational { Rational::Int { 427 } << 106, 1'953'125 });
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(below))->value()
+                   == Rational { Rational::Int { 427 } << 106, 1'953'125 });
+    STATIC_REQUIRE(one_pass_variance(fixture_a_kilograms(scale)).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_mul(Rational { 2478 * scale, 10'000 }, Rational { 2478 * scale, 10'000 }).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(scale))->value()
+                   == Rational { Rational::Int { 427 } << 108, 1'953'125 });
 }
 
 TEST_CASE("a variance that overflows fails with Overflow, naming the determination, in either pass",
           "[statistics][trace-render]")
 {
-    // The squares pass: 9e18 g and -9e18 g have a mean of 0, and the first
-    // squared deviation, (9e15 kg)^2, leaves int64.
-    constexpr auto opposite = formula::environment(
-        formula::measured_series<Mass>(grams(rat(9'000'000'000'000'000'000)), grams(rat(-9'000'000'000'000'000'000))));
+    // The squares pass: 9e27 g and -9e27 g have a mean of 0, and the first
+    // squared deviation, (9e24 kg)^2, leaves 128 bits.
+    constexpr Rational::Int ninePer = Rational::Int { 9'000'000'000'000'000'000 } * 1'000'000'000;
+    constexpr auto opposite =
+        formula::environment(formula::measured_series<Mass>(grams(Rational { ninePer }), grams(Rational { -ninePer })));
     constexpr auto pair = formula::sample_variance(formula::series<Mass, 2>);
     STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(pair, opposite).error() == formula::ArithmeticError::Overflow);
     formula::Trace<> squares {};
     (void) formula::checked_evaluate<MassVariance>(pair, opposite, formula::RecordingSink<> { squares });
     CHECK(formula::render_trace(squares, { .maxSteps = 10 })
-          == "1. m = 9000000000000000000 g; -9000000000000000000 g\n"
+          == "1. m = 9000000000000000000000000000 g; -9000000000000000000000000000 g\n"
              "2. sample_variance(#1) = overflow in exact arithmetic at element 1\n");
+    // 9e18 g and -9e18 g, which overflowed 64 bits: 2 * (9e18)^2 g^2.
+    constexpr auto opposite64 = formula::environment(
+        formula::measured_series<Mass>(grams(rat(9'000'000'000'000'000'000)), grams(rat(-9'000'000'000'000'000'000))));
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(pair, opposite64)->measurement().value()
+                   == Rational { Rational::Int { 9'000'000'000'000'000'000 } * 9'000'000'000'000'000'000 * 2 });
 
-    // Fixture A scaled by 2^31, where the two-pass form first fails: its mean
+    // Fixture A scaled by 2^63, where the two-pass form first fails: its mean
     // still fits, and a squared deviation does not, at the fourth
     // determination.
-    constexpr std::int64_t scale = std::int64_t { 1 } << 31;
-    constexpr auto scaledA = formula::environment(formula::measured_series<Mass>(grams(rat(402 * scale, 10)),
-                                                                                 grams(rat(398 * scale, 10)),
-                                                                                 grams(rat(405 * scale, 10)),
-                                                                                 grams(rat(440 * scale, 10)),
-                                                                                 grams(rat(400 * scale, 10)),
-                                                                                 grams(rat(433 * scale, 10))));
+    constexpr auto scaledA = fixture_a_scaled(Rational::Int { 1 } << 63);
     STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, scaledA).error() == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(formula::checked_evaluate_si(formula::sample_mean(determinations), scaledA).has_value());
     formula::Trace<> squaresLate {};
     (void) formula::checked_evaluate<MassVariance>(variance, scaledA, formula::RecordingSink<> { squaresLate });
     CHECK(formula::render_trace(squaresLate, { .maxSteps = 10 })
-          == "1. m = 431644213248/5 g; 427349245952/5 g; 86973087744 g; 94489280512 g; 85899345920 g; 464930209792/5 g\n"
+          == "1. m = 1853897779407809937408/5 g; 1835451035334100385792/5 g; 373546567492618420224 g; "
+             "405828369621610135552 g; 368934881474191032320 g; 1996860045979058962432/5 g\n"
              "2. sample_variance(#1) = overflow in exact arithmetic at element 4\n");
+    // Scaled by 2^62, the last power of two the two-pass form holds, the
+    // variance in kg^2 is 427/125 g^2 times 2^124: 427 * 2^118 / 1953125,
+    // a 127-bit numerator. Converted to the declared g^2 it gains 10^6 and
+    // overflows from 2^60; 2^59 is the last scale it answers at.
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(Rational::Int { 1 } << 62))->value()
+                   == Rational { Rational::Int { 427 } << 118, 1'953'125 });
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixture_a_scaled(Rational::Int { 1 } << 60)).has_value());
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, fixture_a_scaled(Rational::Int { 1 } << 60)).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(
+        formula::checked_evaluate<MassVariance>(variance, fixture_a_scaled(Rational::Int { 1 } << 59))->measurement().value()
+        == Rational { Rational::Int { 427 } << 118, 125 });
+    // Scaled by 2^31, which overflowed 64 bits, the variance is fixture A's
+    // 427/125 g^2 times 2^62.
+    constexpr std::int64_t scale64 = std::int64_t { 1 } << 31;
+    constexpr auto scaledA64 = formula::environment(formula::measured_series<Mass>(grams(rat(402 * scale64, 10)),
+                                                                                   grams(rat(398 * scale64, 10)),
+                                                                                   grams(rat(405 * scale64, 10)),
+                                                                                   grams(rat(440 * scale64, 10)),
+                                                                                   grams(rat(400 * scale64, 10)),
+                                                                                   grams(rat(433 * scale64, 10))));
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, scaledA64)->measurement().value()
+                   == Rational { Rational::Int { 427 } << 62, 125 });
 
     // The mean pass: the largest Rational and 1 kg, whose total overflows at
     // the second determination before any deviation is taken -- the mean
     // alone fails there too.
     constexpr auto heavy = formula::environment(
-        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<Rational::Int>::max() } },
                                         formula::Measured<Heavy> { rat(1) }));
     constexpr auto heavyVariance = formula::sample_variance(formula::series<Heavy, 2>);
     STATIC_REQUIRE(formula::checked_evaluate_si(heavyVariance, heavy).error() == formula::ArithmeticError::Overflow);
@@ -484,8 +590,15 @@ TEST_CASE("a variance that overflows fails with Overflow, naming the determinati
     formula::Trace<> meanPass {};
     (void) formula::checked_evaluate_si(heavyVariance, heavy, formula::RecordingSink<> { meanPass });
     CHECK(formula::render_trace(meanPass, { .maxSteps = 10 })
-          == "1. m_h = 9223372036854775807 kg; 1 kg\n"
+          == "1. m_h = 170141183460469231731687303715884105727 kg; 1 kg\n"
              "2. sample_variance(#1) = overflow in exact arithmetic at element 2\n");
+    // The largest 64-bit integer and 1 kg, which overflowed 64 bits: a
+    // variance of (2^63 - 2)^2 / 2 kg^2.
+    constexpr auto heavy64 = formula::environment(
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+                                        formula::Measured<Heavy> { rat(1) }));
+    constexpr Rational::Int lessTwo = (Rational::Int { 1 } << 63) - 2;
+    STATIC_REQUIRE(formula::checked_evaluate_si(heavyVariance, heavy64)->value() == Rational { lessTwo * lessTwo, 2 });
 }
 
 TEST_CASE("dispersion of negative determinations", "[statistics]")
@@ -761,18 +874,25 @@ TEST_CASE("a statistic of observations is one step over the observations' own st
 TEST_CASE("a statistic of observations that fails names the observation, as a series' failure would",
           "[statistics][trace-render]")
 {
-    // 1 kg and 2^62 - 1 kg total 2^62 kg; the third, 2^62 + 9 kg, takes the
-    // total past 2^63 - 1. The position counts observations, as
+    // 1 kg and 2^126 - 1 kg total 2^126 kg; the third, 2^126 + 9 kg, takes
+    // the total past 2^127 - 1. The position counts observations, as
     // FailureSite::InputObservation does -- not elements.
-    constexpr auto heavyObserved = formula::environment(formula::MeasuredObservations<Heavy, 3>(
-        rat(1), Rational { 4611686018427387903 }, Rational { 4611686018427387913 }));
+    constexpr Rational::Int half = Rational::Int { 1 } << 126;
+    constexpr auto heavyObserved = formula::environment(
+        formula::MeasuredObservations<Heavy, 3>(rat(1), Rational { half - 1 }, Rational { half + 9 }));
     constexpr auto mean = formula::sample_mean(formula::observations<Heavy, 3>);
     STATIC_REQUIRE(formula::checked_evaluate<Heavy>(mean, heavyObserved).error() == formula::ArithmeticError::Overflow);
     formula::Trace<> trace {};
     (void) formula::checked_evaluate<Heavy>(mean, heavyObserved, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
-          == "1. m_h = 1 kg; 4611686018427387903 kg; 4611686018427387913 kg\n"
+          == "1. m_h = 1 kg; 85070591730234615865843651857942052863 kg; 85070591730234615865843651857942052873 kg\n"
              "2. sample_mean(#1) = overflow in exact arithmetic at observation 3\n");
+    // With 2^62 - 1 kg and 2^62 + 9 kg, which overflowed 64 bits, the mean
+    // is (2^63 + 9)/3 kg.
+    constexpr auto heavyObserved64 = formula::environment(formula::MeasuredObservations<Heavy, 3>(
+        rat(1), Rational { 4611686018427387903 }, Rational { 4611686018427387913 }));
+    STATIC_REQUIRE(formula::checked_evaluate<Heavy>(mean, heavyObserved64)->measurement().value()
+                   == Rational { (Rational::Int { 1 } << 63) + 9, 3 });
 }
 
 TEST_CASE("a statistic of observations renders on them, and the page gives their capacity as a bound",

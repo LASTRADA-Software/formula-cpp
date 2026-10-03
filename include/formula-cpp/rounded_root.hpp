@@ -88,48 +88,20 @@ namespace detail
     };
 
     /// @p leftFactor times @p rightFactor, or nothing when the product leaves
-    /// `std::uint64_t`.
-    [[nodiscard]] constexpr std::optional<std::uint64_t> mul_unsigned_or_none(std::uint64_t leftFactor,
-                                                                              std::uint64_t rightFactor) noexcept
+    /// 128 bits.
+    [[nodiscard]] constexpr std::optional<UInt128> mul_unsigned_or_none(UInt128 leftFactor, UInt128 rightFactor) noexcept
     {
-        if (leftFactor != 0 && rightFactor > std::numeric_limits<std::uint64_t>::max() / leftFactor)
-            return std::nullopt;
-        FORMULA_CENSUS_NOTE(Unsigned, leftFactor * rightFactor);
-        return leftFactor * rightFactor;
+        std::optional<UInt128> const product = u128_mul_checked(leftFactor, rightFactor);
+        if (product)
+            FORMULA_CENSUS_NOTE(Unsigned, *product);
+        return product;
     }
 
     /// 10 to the @p exponent, for a non-negative @p exponent, or nothing when
-    /// it leaves `std::uint64_t`.
-    [[nodiscard]] constexpr std::optional<std::uint64_t> unsigned_pow10(std::int64_t exponent) noexcept
+    /// it leaves 128 bits.
+    [[nodiscard]] constexpr std::optional<UInt128> unsigned_pow10(std::int64_t exponent) noexcept
     {
-        std::uint64_t raisedSoFar = 1;
-        for (std::int64_t multiplied = 0; multiplied < exponent; ++multiplied)
-        {
-            std::optional<std::uint64_t> const raised = mul_unsigned_or_none(raisedSoFar, 10);
-            if (!raised)
-                return std::nullopt;
-            raisedSoFar = *raised;
-        }
-        return raisedSoFar;
-    }
-
-    /// The largest `f` with `f * f <= radicand`, by binary search. Every such
-    /// `f` is below 2^32, so `f * f` never leaves `std::uint64_t`.
-    [[nodiscard]] constexpr std::uint64_t integer_square_root(std::uint64_t radicand) noexcept
-    {
-        if (radicand < 2)
-            return radicand;
-        std::uint64_t below = 1;
-        std::uint64_t above = std::uint64_t { 1 } << 32;
-        while (below + 1 < above)
-        {
-            std::uint64_t const middle = below + (above - below) / 2;
-            if (middle <= radicand / middle)
-                below = middle;
-            else
-                above = middle;
-        }
-        return below;
+        return exponent < 0 || exponent > 38 ? std::nullopt : u128_pow10(static_cast<int>(exponent));
     }
 
     /// The square root of @p radicandInUnitSquared, rounded to @p places
@@ -163,12 +135,12 @@ namespace detail
     /// does for `checked_round`: then S is 1/10^(2|p|), and it is B that grows
     /// instead of q.
     ///
-    /// Every intermediate is a `std::uint64_t`; there is no 128-bit integer,
-    /// because cl has none. So the headroom is `floor(v) * 10^(2p) < 2^64`
-    /// (and `b * 10^(2p) < 2^64` for the remainder): an integer radicand of
-    /// about 10^6 fits at 6 places and overflows at 7. **The bound is on the
+    /// Every intermediate is a 128-bit unsigned integer (`detail::UInt128`).
+    /// So the headroom is `floor(v) * 10^(2p) < 2^128` (and
+    /// `b * 10^(2p) < 2^128` for the remainder): an integer radicand of about
+    /// 10^6 fits at 16 places and overflows at 17. **The bound is on the
     /// denominator b too**, whatever the value: at p places a denominator above
-    /// about 1.8 * 10^(19 - 2|p|) overflows, at a negative p because B is
+    /// about 3.4 * 10^(38 - 2|p|) overflows, at a negative p because B is
     /// b * 10^(2|p|), even where the rounded answer itself would fit. Beyond
     /// the headroom the answer is `ArithmeticError::Overflow`, never a wrapped
     /// or clamped value.
@@ -188,50 +160,53 @@ namespace detail
         if (exactRoot.error() != ArithmeticError::Inexact)
             return std::unexpected { exactRoot.error() };
 
-        auto const wholeNumerator = static_cast<std::uint64_t>(radicandInUnitSquared.numerator());
-        auto const wholeDenominator = static_cast<std::uint64_t>(radicandInUnitSquared.denominator());
+        UInt128 const wholeNumerator = wide_magnitude(radicandInUnitSquared.numerator());
+        UInt128 const wholeDenominator = wide_magnitude(radicandInUnitSquared.denominator());
         auto const doubledPlaces = std::int64_t { 2 } * places.value;
 
         // v * S = wholePart + leftover / divisor.
-        std::uint64_t wholePart = 0;
-        std::uint64_t leftover = 0;
-        std::uint64_t divisor = wholeDenominator;
+        UInt128 wholePart {};
+        UInt128 leftover {};
+        UInt128 divisor = wholeDenominator;
         if (doubledPlaces >= 0)
         {
-            std::optional<std::uint64_t> const powerOfTen = unsigned_pow10(doubledPlaces);
+            std::optional<UInt128> const powerOfTen = unsigned_pow10(doubledPlaces);
             if (!powerOfTen)
                 return std::unexpected { ArithmeticError::Overflow };
-            std::optional<std::uint64_t> const scaledWhole =
-                mul_unsigned_or_none(wholeNumerator / wholeDenominator, *powerOfTen);
+            UInt128Division const split = u128_divmod(wholeNumerator, wholeDenominator);
+            std::optional<UInt128> const scaledWhole = mul_unsigned_or_none(split.quotient, *powerOfTen);
             // Below wholeDenominator * scale, so it fits whenever that does.
-            std::optional<std::uint64_t> const scaledPart =
-                mul_unsigned_or_none(wholeNumerator % wholeDenominator, *powerOfTen);
+            std::optional<UInt128> const scaledPart = mul_unsigned_or_none(split.remainder, *powerOfTen);
             if (!scaledWhole || !scaledPart)
                 return std::unexpected { ArithmeticError::Overflow };
-            wholePart = *scaledWhole + *scaledPart / wholeDenominator;
+            UInt128Division const partSplit = u128_divmod(*scaledPart, wholeDenominator);
+            wholePart = u128_add(*scaledWhole, partSplit.quotient);
             if (wholePart < *scaledWhole)
                 return std::unexpected { ArithmeticError::Overflow };
             FORMULA_CENSUS_NOTE(Unsigned, wholePart);
-            leftover = *scaledPart % wholeDenominator;
+            leftover = partSplit.remainder;
         }
         else
         {
-            std::optional<std::uint64_t> const shrink = unsigned_pow10(-doubledPlaces);
-            std::optional<std::uint64_t> const widened =
-                shrink ? mul_unsigned_or_none(wholeDenominator, *shrink) : std::nullopt;
+            std::optional<UInt128> const shrink = unsigned_pow10(-doubledPlaces);
+            std::optional<UInt128> const widened = shrink ? mul_unsigned_or_none(wholeDenominator, *shrink) : std::nullopt;
             if (!widened)
                 return std::unexpected { ArithmeticError::Overflow };
             divisor = *widened;
-            wholePart = wholeNumerator / divisor;
-            leftover = wholeNumerator % divisor;
+            UInt128Division const split = u128_divmod(wholeNumerator, divisor);
+            wholePart = split.quotient;
+            leftover = split.remainder;
         }
 
-        std::uint64_t const floorDigits = integer_square_root(wholePart);
-        // Below (floorDigits + 1)^2 <= 2^64, so it fits.
-        std::uint64_t const halfwayWhole = floorDigits * floorDigits + floorDigits;
-        bool const aboveHalfway = wholePart > halfwayWhole || (wholePart == halfwayWhole && leftover > divisor / 4);
+        std::uint64_t const floorDigits = u128_isqrt(wholePart);
+        // f^2 + f is below (f + 1)^2 <= 2^128, so it fits.
+        UInt128 const halfwayWhole = u128_add(u128_mul_words(floorDigits, floorDigits), UInt128::from_u64(floorDigits));
+        bool const aboveHalfway =
+            halfwayWhole < wholePart
+            || (wholePart == halfwayWhole && u128_divmod(divisor, UInt128::from_u64(4)).quotient < leftover);
 
-        std::uint64_t keptDigits = floorDigits;
+        UInt128 keptDigits = UInt128::from_u64(floorDigits);
+        UInt128 const raisedDigits = u128_add(keptDigits, UInt128::from_u64(1));
         switch (roundingMode)
         {
             case RoundingMode::Floor:
@@ -239,17 +214,17 @@ namespace detail
                 break;
             case RoundingMode::Ceiling:
             case RoundingMode::AwayFromZero:
-                keptDigits = floorDigits + 1;
+                keptDigits = raisedDigits;
                 break;
             case RoundingMode::HalfAwayFromZero:
             case RoundingMode::HalfTowardZero:
             case RoundingMode::HalfEven:
-                keptDigits = aboveHalfway ? floorDigits + 1 : floorDigits;
+                keptDigits = aboveHalfway ? raisedDigits : keptDigits;
                 break;
         }
 
-        // At most 2^32, so the conversion is exact.
-        return Rational::from_decimal(static_cast<Rational::Int>(keptDigits), -places.value);
+        // At most 2^64, which `Rational::Int` holds.
+        return Rational::from_decimal(signed_from_magnitude(keptDigits, false), -places.value);
     }
 
     /// The square root of @p radicandInSi, a value in the coherent unit of
@@ -271,12 +246,21 @@ namespace detail
         if (!factorSquared)
             return factorSquared;
 
+        // A `Unit` holds its magnitude in 64 bits: a factor or a square wider
+        // than that is beyond any scale this can build.
+        std::optional<std::int64_t> const factorTop = narrow_to_int64(unitFactor->numerator());
+        std::optional<std::int64_t> const factorBottom = narrow_to_int64(unitFactor->denominator());
+        std::optional<std::int64_t> const squaredTop = narrow_to_int64(factorSquared->numerator());
+        std::optional<std::int64_t> const squaredBottom = narrow_to_int64(factorSquared->denominator());
+        if (!factorTop || !factorBottom || !squaredTop || !squaredBottom)
+            return std::unexpected { ArithmeticError::Overflow };
+
         Unit const unitScale { .dimension = unit.dimension,
-                               .magnitudeNumerator = unitFactor->numerator(),
-                               .magnitudeDenominator = unitFactor->denominator() };
+                               .magnitudeNumerator = *factorTop,
+                               .magnitudeDenominator = *factorBottom };
         Unit const scaleSquared { .dimension = unit.dimension * unit.dimension,
-                                  .magnitudeNumerator = factorSquared->numerator(),
-                                  .magnitudeDenominator = factorSquared->denominator() };
+                                  .magnitudeNumerator = *squaredTop,
+                                  .magnitudeDenominator = *squaredBottom };
 
         std::expected<Rational, ArithmeticError> const inUnitSquared =
             checked_convert(radicandInSi, coherent(scaleSquared.dimension), scaleSquared);

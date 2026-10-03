@@ -196,12 +196,12 @@ TEST_CASE("an element that cannot be read into SI fails the whole series and nam
     // Tonnes become kilograms by multiplying by 1000, and the middle element
     // is too large for that. Its neighbours are fine, so a failure reported at
     // 0 or at the last element, or a partial series, is the wrong answer.
-    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
-    constexpr auto overflowing =
-        formula::environment(formula::measured_series<Stockpile>(formula::Measured<Stockpile> { rat(1) },
-                                                                 formula::Measured<Stockpile> { rat(2) },
-                                                                 formula::Measured<Stockpile> { rat(tooLarge) },
-                                                                 formula::Measured<Stockpile> { rat(3) }));
+    constexpr formula::Rational::Int tooLarge = std::numeric_limits<formula::Rational::Int>::max() / 100;
+    constexpr auto overflowing = formula::environment(
+        formula::measured_series<Stockpile>(formula::Measured<Stockpile> { rat(1) },
+                                            formula::Measured<Stockpile> { rat(2) },
+                                            formula::Measured<Stockpile> { formula::Rational { tooLarge } },
+                                            formula::Measured<Stockpile> { rat(3) }));
 
     constexpr auto si = formula::detail::dispatch_series<formula::Rational>(
         formula::series<Stockpile, 4>, overflowing, formula::NullSink {});
@@ -213,6 +213,19 @@ TEST_CASE("an element that cannot be read into SI fails the whole series and nam
     constexpr auto outcome = formula::checked_evaluate_series<Stockpile>(formula::series<Stockpile, 4>, overflowing);
     STATIC_REQUIRE(!outcome.has_value());
     STATIC_REQUIRE(outcome.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 2 });
+
+    // A hundredth of the largest 64-bit integer, which overflowed 64 bits,
+    // reads into kilograms.
+    constexpr std::int64_t largeIn64 = std::numeric_limits<std::int64_t>::max() / 100;
+    constexpr auto fitting =
+        formula::environment(formula::measured_series<Stockpile>(formula::Measured<Stockpile> { rat(1) },
+                                                                 formula::Measured<Stockpile> { rat(2) },
+                                                                 formula::Measured<Stockpile> { rat(largeIn64) },
+                                                                 formula::Measured<Stockpile> { rat(3) }));
+    constexpr auto fittingSi = formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Stockpile, 4>, fitting, formula::NullSink {});
+    STATIC_REQUIRE(fittingSi.has_value());
+    STATIC_REQUIRE(fittingSi->elements[2] == formula::Rational { formula::Rational::Int { largeIn64 } * 1000 });
 }
 
 TEST_CASE("an element that cannot be written back in the declared unit names that element", "[series]")
@@ -220,11 +233,11 @@ TEST_CASE("an element that cannot be written back in the declared unit names tha
     // Read as Stockpile (tonnes) and reported as Retained (grams): reading
     // into kilograms multiplies by 1000 and still fits, and the way back into
     // grams multiplies by 1000 again, which only element 1 is too large for.
-    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 10'000;
-    constexpr auto large =
-        formula::environment(formula::measured_series<Stockpile>(formula::Measured<Stockpile> { rat(1) },
-                                                                 formula::Measured<Stockpile> { rat(tooLarge) },
-                                                                 formula::Measured<Stockpile> { rat(2) }));
+    constexpr formula::Rational::Int tooLarge = std::numeric_limits<formula::Rational::Int>::max() / 10'000;
+    constexpr auto large = formula::environment(
+        formula::measured_series<Stockpile>(formula::Measured<Stockpile> { rat(1) },
+                                            formula::Measured<Stockpile> { formula::Rational { tooLarge } },
+                                            formula::Measured<Stockpile> { rat(2) }));
 
     constexpr auto si =
         formula::detail::dispatch_series<formula::Rational>(formula::series<Stockpile, 3>, large, formula::NullSink {});
@@ -578,7 +591,8 @@ namespace running
     {
     };
 
-    constexpr std::int64_t halfLimit = std::numeric_limits<std::int64_t>::max() / 2 + 1;
+    constexpr formula::Rational::Int halfLimit = std::numeric_limits<formula::Rational::Int>::max() / 2 + 1;
+    constexpr formula::Rational halfLimitValue { halfLimit };
 
     // Two elements just over half of Rational's limit, at zero-based 1 and 2
     // of five -- off the centre, so that neither end is where it fails and a
@@ -587,8 +601,8 @@ namespace running
     // element 1, the third addition.
     constexpr auto nearTheLimit =
         formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
-                                                            formula::Measured<Load> { rat(halfLimit) },
-                                                            formula::Measured<Load> { rat(halfLimit) },
+                                                            formula::Measured<Load> { formula::Rational { halfLimit } },
+                                                            formula::Measured<Load> { formula::Rational { halfLimit } },
                                                             formula::Measured<Load> { rat(2) },
                                                             formula::Measured<Load> { rat(3) }));
 
@@ -745,19 +759,34 @@ TEST_CASE("a running total that overflows fails at the element where it overflow
     STATIC_REQUIRE(!total.has_value());
     STATIC_REQUIRE(total.error() == formula::ArithmeticError::Overflow);
 
+    // Two halves of the 64-bit limit, which overflowed 64 bits, add up: 1,
+    // 2^62, 2^62, 2 and 3 total 2^63 + 6.
+    constexpr std::int64_t halfLimit64 = std::numeric_limits<std::int64_t>::max() / 2 + 1;
+    constexpr auto nearTheLimit64 =
+        formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
+                                                            formula::Measured<Load> { rat(halfLimit64) },
+                                                            formula::Measured<Load> { rat(halfLimit64) },
+                                                            formula::Measured<Load> { rat(2) },
+                                                            formula::Measured<Load> { rat(3) }));
+    constexpr auto total64 = formula::checked_evaluate_si<formula::Rational>(formula::sum(s), nearTheLimit64);
+    STATIC_REQUIRE(total64.has_value());
+    STATIC_REQUIRE(total64->has_value());
+    STATIC_REQUIRE(**total64 == formula::Rational { (formula::Rational::Int { 1 } << 63) + 6 });
+
     // Absence is judged over the whole series first, so where the gap is
     // plays no part: absent with the gap after the two
     // elements whose addition overflows, and absent with it before them.
     using running::halfLimit;
-    constexpr auto gapAfter = formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
-                                                                                  formula::Measured<Load> { rat(halfLimit) },
-                                                                                  formula::Measured<Load> { rat(halfLimit) },
-                                                                                  formula::Measured<Load> { rat(2) },
-                                                                                  formula::Measured<Load>::absent()));
+    constexpr auto gapAfter =
+        formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
+                                                            formula::Measured<Load> { formula::Rational { halfLimit } },
+                                                            formula::Measured<Load> { formula::Rational { halfLimit } },
+                                                            formula::Measured<Load> { rat(2) },
+                                                            formula::Measured<Load>::absent()));
     constexpr auto gapBefore =
         formula::environment(formula::measured_series<Load>(formula::Measured<Load>::absent(),
-                                                            formula::Measured<Load> { rat(halfLimit) },
-                                                            formula::Measured<Load> { rat(halfLimit) },
+                                                            formula::Measured<Load> { formula::Rational { halfLimit } },
+                                                            formula::Measured<Load> { formula::Rational { halfLimit } },
                                                             formula::Measured<Load> { rat(2) },
                                                             formula::Measured<Load> { rat(3) }));
     constexpr auto totalGapAfter = formula::checked_evaluate_si<formula::Rational>(formula::sum(s), gapAfter);
@@ -924,7 +953,7 @@ TEST_CASE("a per-element rounding keeps absence, and names the element a failure
     using running::Load;
     constexpr auto heavy =
         formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
-                                                            formula::Measured<Load> { rat(running::halfLimit) },
+                                                            formula::Measured<Load> { running::halfLimitValue },
                                                             formula::Measured<Load> { rat(2) }));
     constexpr formula::PlacesTable<3> wholeGrams { formula::DecimalPlaces { 0 },
                                                    formula::DecimalPlaces { 0 },

@@ -245,7 +245,7 @@ TEST_CASE("abs is the absolute value, and keeps the dimension", "[precision]")
 
     // The one value Rational cannot negate, through the node: an error, never
     // itself back. One above it gives the largest value there is.
-    constexpr std::int64_t lowest = std::numeric_limits<std::int64_t>::min();
+    constexpr Rational::Int lowest = std::numeric_limits<Rational::Int>::min();
     STATIC_REQUIRE(
         formula::checked_evaluate<BareNumber>(formula::abs(var<BareNumber>),
                                               formula::environment(formula::Measured<BareNumber> { Rational { lowest } }))
@@ -256,7 +256,15 @@ TEST_CASE("abs is the absolute value, and keeps the dimension", "[precision]")
             formula::abs(var<BareNumber>), formula::environment(formula::Measured<BareNumber> { Rational { lowest + 1 } }))
             ->measurement()
             .value()
-        == Rational { std::numeric_limits<std::int64_t>::max() });
+        == Rational { std::numeric_limits<Rational::Int>::max() });
+    // The 64-bit minimum, which 64 bits could not negate, is an ordinary value.
+    constexpr std::int64_t lowest64 = std::numeric_limits<std::int64_t>::min();
+    STATIC_REQUIRE(
+        formula::checked_evaluate<BareNumber>(
+            formula::abs(var<BareNumber>), formula::environment(formula::Measured<BareNumber> { Rational { lowest64 } }))
+            ->measurement()
+            .value()
+        == Rational { std::uint64_t { 1 } << 63 });
 }
 
 TEST_CASE("a series is read inside a limit expression and inside a nested level", "[precision][series]")

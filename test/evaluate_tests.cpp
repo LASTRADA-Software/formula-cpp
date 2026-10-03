@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -296,16 +297,24 @@ TEST_CASE("evaluate: a value in a different unit converts exactly", "[evaluate]"
 TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[evaluate]")
 {
     // Anything above the square root of the representable range cannot be
-    // squared: sqrt(INT64_MAX) is about 3.04e9, so 4e9 divided by 1/4e9 -- a
-    // cross-reduction-proof 1.6e19 -- overflows outright. (3e9 does not: see
-    // the companion test below, which pins exactly where the edge is.)
-    constexpr std::int64_t huge = 4'000'000'000LL;
-    auto const big =
-        formula::environment(formula::Measured<WaterVolume> { rat(huge) }, formula::Measured<CementVolume> { rat(1, huge) });
+    // squared: sqrt(2^127) is about 1.3e19, so 2e19 divided by 1/2e19 -- a
+    // cross-reduction-proof 4e38 -- overflows outright.
+    constexpr formula::Rational::Int huge = formula::Rational::Int { 10'000'000'000'000'000'000ULL } * 2;
+    auto const big = formula::environment(formula::Measured<WaterVolume> { formula::Rational { huge } },
+                                          formula::Measured<CementVolume> { formula::Rational { 1, huge } });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, big);
 
     REQUIRE_FALSE(computed.has_value());
     CHECK(computed.error() == formula::ArithmeticError::Overflow);
+
+    // 4e9 over 1/4e9, which overflowed 64 bits, is 1.6e19.
+    constexpr std::int64_t huge64 = 4'000'000'000LL;
+    auto const big64 = formula::environment(formula::Measured<WaterVolume> { rat(huge64) },
+                                            formula::Measured<CementVolume> { rat(1, huge64) });
+    auto const computed64 = formula::checked_evaluate<Ratio>(ratio, big64);
+    REQUIRE(computed64.has_value());
+    REQUIRE(computed64->is_value());
+    CHECK(computed64->measurement().value() == formula::Rational { formula::Rational::Int { huge64 } * huge64 });
 }
 
 TEST_CASE("evaluate: the double representation still reports an overflow from the leaf conversion", "[evaluate]")
@@ -313,10 +322,11 @@ TEST_CASE("evaluate: the double representation still reports an overflow from th
     // RepTraits<double>'s own arithmetic cannot overflow (the doc comment
     // above it says so), but detail::in_si converts every leaf in exact
     // Rational before handing it to RepTraits<Rep>::from, and that conversion
-    // can overflow on its own -- IntMax kilometres times a magnitude of 1000
-    // overflows the exact multiply long before any double arithmetic runs.
-    constexpr std::int64_t huge = formula::detail::IntMax;
-    auto const farInputs = formula::environment(formula::Measured<DistanceInKilometre> { rat(huge) });
+    // can overflow on its own -- the largest Rational::Int of kilometres times
+    // a magnitude of 1000 overflows the exact multiply long before any double
+    // arithmetic runs.
+    constexpr formula::Rational::Int huge = std::numeric_limits<formula::Rational::Int>::max();
+    auto const farInputs = formula::environment(formula::Measured<DistanceInKilometre> { formula::Rational { huge } });
     auto const computed = formula::checked_evaluate_si<double>(var<DistanceInKilometre>, farInputs);
 
     REQUIRE_FALSE(computed.has_value());
@@ -325,19 +335,20 @@ TEST_CASE("evaluate: the double representation still reports an overflow from th
 
 TEST_CASE("evaluate: a result at the edge of the range is computed, not refused", "[evaluate]")
 {
-    // 3e9 litres over 1/3e9 litres is exactly 9e18, which fits in a 64-bit
-    // integer with room to spare. It fits only because `checked_mul`
-    // cross-reduces before multiplying; a naive implementation would overflow
-    // on the way to a representable answer. This is the companion to the
-    // overflow test above: together they say where the edge actually is.
-    constexpr std::int64_t large = 3'000'000'000LL;
-    auto const edgeInputs = formula::environment(formula::Measured<WaterVolume> { rat(large) },
-                                                 formula::Measured<CementVolume> { rat(1, large) });
+    // 1.3e19 litres over 1/1.3e19 litres is exactly 1.69e38, which fits below
+    // 2^127 (1.70e38). It fits only because `checked_mul` cross-reduces before
+    // multiplying; a naive implementation would overflow on the way to a
+    // representable answer. This is the companion to the overflow test above,
+    // at 2e19: together they say where the edge actually is, at the square
+    // root of 2^127, about 1.30e19.
+    constexpr formula::Rational::Int large { 13'000'000'000'000'000'000ULL };
+    auto const edgeInputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { large } },
+                                                 formula::Measured<CementVolume> { formula::Rational { 1, large } });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, edgeInputs);
 
     REQUIRE(computed.has_value());
     REQUIRE(computed->is_value());
-    CHECK(computed->measurement().value() == rat(9'000'000'000'000'000'000LL));
+    CHECK(computed->measurement().value() == formula::Rational { large * large });
 }
 
 TEST_CASE("evaluate: a measured result is not mistaken for an override", "[evaluate]")

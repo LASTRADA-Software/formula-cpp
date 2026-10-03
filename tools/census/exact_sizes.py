@@ -10,9 +10,10 @@
 #  - in the result's declared unit (g2, MPa), the unit checked_evaluate<Q>
 #    hands the caller.
 #
-# A value that needs more than 63 bits in SI but fits in the declared unit
-# can be delivered by 64-bit storage only if the conversion happens inside
-# wider arithmetic, or if the statistic is evaluated in a scaled unit.
+# A value that needs more than a signed 128-bit integer's 127 bits in SI but
+# fits in the declared unit can be delivered by 128-bit storage only if the
+# conversion happens inside wider arithmetic, or if the statistic is
+# evaluated in a scaled unit.
 #
 # Mirrors test/overflow_census_tests.cpp's Draws (splitmix64, seed 20260926)
 # and its fixtures exactly. Run: python tools/census/exact_sizes.py
@@ -44,10 +45,13 @@ class Draws:
         return Fraction(low * scale + self.next() % span, scale)
 
 
+LIMIT = (1 << 127) - 1
+
+
 def fits(value):
-    """Whether an exact value is a 64-bit Rational: |numerator| and the
-    denominator at most 2^63 - 1 (the numerator may also be -2^63)."""
-    return abs(value.numerator) <= (1 << 63) - 1 and value.denominator <= (1 << 63) - 1
+    """Whether an exact value is a Rational over formula::Int128: |numerator|
+    and the denominator at most 2^127 - 1 (the numerator may also be -2^127)."""
+    return abs(value.numerator) <= LIMIT and value.denominator <= LIMIT
 
 
 def widest(value):
@@ -80,6 +84,7 @@ def main():
         draws = Draws(20260926)
         unrepresentable_si = 0
         unrepresentable_declared = 0
+        widest_si = 0
         widest_declared = 0
         for _ in range(1000):
             grams = masses(draws, places)
@@ -89,27 +94,29 @@ def main():
                 unrepresentable_si += 1
             if not fits(in_g2):
                 unrepresentable_declared += 1
+            widest_si = max(widest_si, widest(in_kg2))
             widest_declared = max(widest_declared, widest(in_g2))
-        print(f"six masses near 40 g at {places} dp: the exact variance does not fit 64 bits in "
-              f"{unrepresentable_si} of 1000 in kg2 (SI), in {unrepresentable_declared} of 1000 in g2 "
-              f"(declared; widest {widest_declared} bits)")
+        print(f"six masses near 40 g at {places} dp: the exact variance does not fit 128 bits in "
+              f"{unrepresentable_si} of 1000 in kg2 (SI; widest {widest_si} bits), in {unrepresentable_declared} "
+              f"of 1000 in g2 (declared; widest {widest_declared} bits)")
 
     load = Fraction(89300)
     pi = Fraction(245850922, 78256779)
-    too_wide = []
-    widest_declared = 0
+    unrepresentable_si = 0
     unrepresentable_declared = 0
+    widest_si = 0
+    widest_declared = 0
     for millimetres in range(101, 164):
         in_mpa = 4 * load / (pi * Fraction(millimetres) ** 2)
         in_pa = in_mpa * 10 ** 6
         if not fits(in_pa):
-            too_wide.append(f"{millimetres} ({in_pa.numerator.bit_length()} bits)")
+            unrepresentable_si += 1
         if not fits(in_mpa):
             unrepresentable_declared += 1
+        widest_si = max(widest_si, widest(in_pa))
         widest_declared = max(widest_declared, widest(in_mpa))
-    print("4F / (pi * d^2), F = 89.3 kN, d = 101 to 163 mm: in Pa (SI) the exact strength needs 64 bits, more than "
-          "a signed 64-bit integer's 63, at d = "
-          + ", ".join(too_wide))
+    print(f"4F / (pi * d^2), F = 89.3 kN, d = 101 to 163 mm: in Pa (SI) the exact strength does not fit 128 bits at "
+          f"{unrepresentable_si} of 63 (widest {widest_si} bits)")
     print(f"4F / (pi * d^2), F = 89.3 kN, d = 101 to 163 mm: in MPa (declared) it does not fit at "
           f"{unrepresentable_declared} of 63 (widest {widest_declared} bits)")
 

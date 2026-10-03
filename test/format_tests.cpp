@@ -240,30 +240,37 @@ TEST_CASE("a spec the grammar does not allow is refused at run time, in the libr
     CHECK(refusalOf("{:~HalfEven}", Measured<ImpactWork> { third }).empty());
 
     // `~Mode` at a unit's negative decimals divides the value by 10^3 in
-    // exact arithmetic, which overflows for from_double_exact(0.1) -- its
-    // denominator is 2^55 -- although the rounded value would be 0. It is
+    // exact arithmetic, which overflows for 2^-120 -- its denominator times
+    // 10^3 is past 2^127 -- although the rounded value would be 0. It is
     // refused when written, with a literal format string and under
     // std::vformat alike, rather than spelled some other way.
-    Rational const binaryTenth = Rational::from_double_exact(0.1).value();
-    REQUIRE(binaryTenth == Rational { 3602879701896397, 36028797018963968 });
-    Measured<CoarseLength> const coarseTenth { binaryTenth };
-    CHECK(refusalOf("{:~HalfEven}", coarseTenth)
+    Measured<CoarseLength> const coarseTiny { Rational { 1, Rational::Int { 1 } << 120 } };
+    CHECK(refusalOf("{:~HalfEven}", coarseTiny)
           == "formula: this number cannot be spelled as the format asks: overflow in exact arithmetic");
-    CHECK_THROWS_AS(std::format("{:~HalfEven}", coarseTenth), std::format_error);
+    CHECK_THROWS_AS(std::format("{:~HalfEven}", coarseTiny), std::format_error);
     // Its exact forms are still written; and in the same unit a value that
     // exact arithmetic can round rounds: 7501/3 is 2500.33..., 3000 to the
     // thousand.
-    CHECK(std::format("{:/}", coarseTenth) == "3602879701896397/36028797018963968 ku");
+    CHECK(std::format("{:/}", coarseTiny) == "1/1329227995784915872903807060280344576 ku");
     // What to write instead, as the guide says: places of 0 to 18 are spelled
     // by long division, which cannot overflow.
-    CHECK(std::format("{:~.0HalfEven}", coarseTenth) == "\xe2\x89\x88" "0 ku");
+    CHECK(std::format("{:~.0HalfEven}", coarseTiny) == "\xe2\x89\x88" "0 ku");
     CHECK(std::format("{:~HalfEven}", Measured<CoarseLength> { Rational { 7501, 3 } }) == "\xe2\x89\x88" "3000 ku");
+    // from_double_exact(0.1), whose denominator of 2^55 times 10^3 overflowed
+    // 64 bits, rounds to 0 thousand.
+    Rational const binaryTenth = Rational::from_double_exact(0.1).value();
+    REQUIRE(binaryTenth == Rational { 3602879701896397, 36028797018963968 });
+    Measured<CoarseLength> const coarseTenth { binaryTenth };
+    CHECK(std::format("{:~HalfEven}", coarseTenth) == "\xe2\x89\x88" "0 ku");
+    CHECK(std::format("{:/}", coarseTenth) == "3602879701896397/36028797018963968 ku");
     // A value with an exact decimal of at most 18 places is written as it
-    // is, never rounded, so never divided: 1/10^18, whose rounding at -3
-    // places overflows, is written exactly.
+    // is, never rounded: 1/10^18, which rounds to 0 at -3 places, is written
+    // exactly.
     Rational const atto { 1, 1'000'000'000'000'000'000 };
-    REQUIRE(!formula::checked_decimal_text(
-        atto, formula::DecimalPlaces { -3 }, RoundingMode::HalfEven, formula::DecimalPadding::Trimmed));
+    auto const attoRounded = formula::checked_decimal_text(
+        atto, formula::DecimalPlaces { -3 }, RoundingMode::HalfEven, formula::DecimalPadding::Trimmed);
+    REQUIRE(attoRounded.has_value());
+    CHECK(attoRounded->view() == "0");
     CHECK(std::format("{:~HalfEven}", Measured<CoarseLength> { atto }) == "0.000000000000000001 ku");
 }
 

@@ -291,8 +291,8 @@ contradicts itself -- so a compared value is never shown rounded.
 ### Values the exact layer cannot hold
 
 A square root, a logarithm or an exponential is irrational almost everywhere,
-and the exact sums behind a line fitted through 34 readings at three decimals
-can already leave the 64-bit integers of `Rational`
+and the exact sums behind a line fitted through 28 points, each on a different
+denominator, can already leave the 128-bit integers of `Rational`
 ([numeric headroom](numeric-headroom.md#least-squares-realistic-and-one-stress-control)).
 The library does not approximate such values. A formula that needs one
 **declares the precision it is reported at** -- a unit, decimal places and a
@@ -634,8 +634,8 @@ before the call stack of the evaluation:
 
 ```
 test\negative\format_places_without_mode.cpp(17): error C7595: 'std::basic_format_string<char,formula::Rational>::basic_format_string': call to immediate function is not a constant expression
-include\formula-cpp/format.hpp(344): note: failure was caused by call of undefined function or one not declared 'constexpr'
-include\formula-cpp/format.hpp(344): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
+include\formula-cpp/format.hpp(347): note: failure was caused by call of undefined function or one not declared 'constexpr'
+include\formula-cpp/format.hpp(347): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
 ```
 
 clang and g++ name the same function, in their own words.
@@ -668,15 +668,15 @@ see it: `{:~Mode}` on a `Measured` whose unit declares negative decimals --
 rounding to tens or thousands. A value with an exact decimal of at most 18
 places is written as it is and never rounded: 1/10^18 at -3 decimals is
 `0.000000000000000001`. Any other value is rounded through exact arithmetic,
-which overflows for one with a large denominator, such as
-`Rational::from_double_exact(0.1)` at -3 decimals. `std::format` then throws
-`std::format_error` too, starting `formula: this number cannot be spelled as
-the format asks`; it never writes a text that is neither the value nor the
-rounding the spec asked for. No spec rounds such a value to tens or
-thousands. Write `{:~.0HalfEven}` instead to round it to whole units -- a
-rounding to 0 to 18 places is spelled by long division, which cannot
-overflow, so `from_double_exact(0.1)` reads `≈0` -- or `{:/}` for its exact
-fraction, or catch the `std::format_error`.
+which overflows for one with a large denominator, such as 2^-120,
+`Rational { 1, Rational::Int { 1 } << 120 }`, at -3 decimals. `std::format`
+then throws `std::format_error` too, starting `formula: this number cannot be
+spelled as the format asks`; it never writes a text that is neither the
+value nor the rounding the spec asked for. No spec rounds such a value to
+tens or thousands. Write `{:~.0HalfEven}` instead to round it to whole units
+-- a rounding to 0 to 18 places is spelled by long division, which cannot
+overflow, so 2^-120 reads `≈0` -- or `{:/}` for its exact fraction, or catch
+the `std::format_error`.
 
 ## Formatting outcomes, units, dimensions and enumerations
 
