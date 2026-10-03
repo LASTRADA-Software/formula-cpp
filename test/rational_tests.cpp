@@ -202,7 +202,7 @@ static_assert(formula::checked_reciprocal(exact(2, 3)) == exact(3, 2));
 static_assert(formula::checked_reciprocal(exact(-2, 3)) == exact(-3, 2));
 static_assert(!formula::checked_reciprocal(Rational { 0 }).has_value());
 // The reciprocal of n/d is d/n; when n is IntMin the result would need a
-// denominator of magnitude 2^63, one past IntMax. make() grants that extra
+// denominator of magnitude 2^127, one past IntMax. make() grants that extra
 // headroom to numerators only, since only a numerator carries the sign --
 // denominators are always positive. So this is refused by make()'s own
 // bound, with no negation anywhere in the path.

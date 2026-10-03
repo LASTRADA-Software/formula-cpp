@@ -2674,7 +2674,8 @@ struct Determinations: formula::Quantity<Determinations, "n", "number of determi
 /// nobody mistakes it for one or "corrects" it toward one.** No row for 7.
 inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
 
-/// A unit no conversion out of can fit: one of it is 2^63 - 1 coherent units.
+/// A unit as large as a `Unit` can state: one of it is 2^63 - 1 coherent
+/// units. A row of 50 of it converts; a row near 2^127 / 1000 does not.
 inline constexpr formula::Unit Enormous { .dimension = formula::dim::Scalar,
                                           .magnitudeNumerator = 9'223'372'036'854'775'807,
                                           .magnitudeDenominator = 1,

@@ -1337,9 +1337,33 @@ TEST_CASE("a line through fifty readings at eight decimals overflows exactly and
     CHECK(exactQuality->measurement().value()
           == formula::Rational { formula::Rational::Int { 3'025'394'695'186'864'890 } * 1'000'000'000 + 194'134'729,
                                  formula::Rational::Int { 3'025'405'075'415'899'033 } * 1'000'000'000 + 563'344'129 });
-    // Rounded where used: 3.170694... mm/s is 3.1707 (floor would give
-    // 3.1706), 2406.645493... mm is 2406.6455, and R^2 = 0.999996568...
-    // floored at 6 dp is 0.999996 (to nearest, 0.999997).
+    // Rounded where used, at eight decimals, where the exact line overflows:
+    // 3.17069437... mm/s is 3.1707 (floor would give 3.1706),
+    // 2406.645395... mm is 2406.6454, and R^2 = 0.99999656893... floored at
+    // 6 dp is 0.999996 (to nearest, 0.999997).
+    auto const slopeAtEight = formula::checked_evaluate<Speed>(
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fiftyFit),
+        fiftyAtEight);
+    REQUIRE(slopeAtEight.has_value());
+    CHECK(slopeAtEight->measurement().value() == rat(31707, 10'000));
+    auto const interceptAtEight = formula::checked_evaluate<Offset>(
+        formula::
+            rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+                fiftyFit),
+        fiftyAtEight);
+    REQUIRE(interceptAtEight.has_value());
+    CHECK(interceptAtEight->measurement().value() == rat(12033227, 5000));
+    auto const fitQualityAtEight = formula::checked_evaluate<Determination>(
+        formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+            fiftyFit),
+        fiftyAtEight);
+    REQUIRE(fitQualityAtEight.has_value());
+    CHECK(fitQualityAtEight->measurement().value() == rat(249999, 250'000));
+
+    // At four decimals the rounded route rounds the exact line above:
+    // 3.170694... mm/s is 3.1707, 2406.645493... mm is 2406.6455, and R^2 =
+    // 0.999996568... floored at 6 dp is 0.999996.
     auto const slope = formula::checked_evaluate<Speed>(
         formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
             fiftyFit),

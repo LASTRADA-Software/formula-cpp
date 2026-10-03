@@ -399,8 +399,8 @@ namespace detail
 /// exists even where `checked_round`'s own arithmetic overflows -- the
 /// largest `Rational::Int` over 3, to 18 places, is
 /// `56713727820156410577229101238628035242.333333333333333333`, while
-/// `checked_round` reports `Overflow` for it. Each digit is found without forming
-/// `remainder * 10`: the remainder is added ten times, taking the
+/// `checked_round` reports `Overflow` for it. Each digit is found without
+/// forming `remainder * 10`: the remainder is added ten times, taking the
 /// denominator off whenever the sum reaches it, so the sum stays below twice
 /// the denominator. A value that rounds to zero is written without a `-`.
 ///

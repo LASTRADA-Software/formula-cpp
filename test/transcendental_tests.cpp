@@ -243,6 +243,11 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
                 if (!decided.has_value() && referenceDecided.has_value())
                 {
                     CHECK(decided.error() == formula::ArithmeticError::Overflow);
+                    // Only the exponentials of 43 to 44, at the places whose kept integers fill 128 bits.
+                    CHECK(places >= 17);
+                    CHECK(row.function == Transcendental::Exponential);
+                    CHECK(Rational { 43 } <= Rational { row.numerator, row.denominator });
+                    CHECK(Rational { row.numerator, row.denominator } <= Rational { 44 });
                     ++undecided;
                 }
                 else

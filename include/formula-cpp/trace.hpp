@@ -306,7 +306,8 @@ enum class StepKind : std::uint8_t
     /// A `SampleSizeLookupNode`: a critical value read from an author's table
     /// by sample size (`critical_value.hpp`). A lookup like the three above:
     /// `Step::lookupFailure` says whose failure a failed step carries,
-    /// `Step::lookupKey` holds the count it selected with, and
+    /// `Step::lookupKey` holds the count it selected with (its high word,
+    /// for a count past 2^64 - 1, in `Step::lookupKeyHigh`), and
     /// `Trace::sampleSizeRecords` the sizes the table declares, keyed by the
     /// step's index, so that a miss can say which counts would have hit.
     ///

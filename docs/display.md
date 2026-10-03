@@ -627,14 +627,14 @@ rounding to tens or thousands. A value with an exact decimal of at most 18
 places is written as it is and never rounded: 1/10^18 at -3 decimals is
 `0.000000000000000001`. Any other value is rounded through exact arithmetic,
 which overflows for one with a large denominator, such as 2^-120,
-`Rational { 1, Rational::Int { 1 } << 120 }`, at -3 decimals. `std::format` then throws
-`std::format_error` too, starting `formula: this number cannot be spelled as
-the format asks`; it never writes a text that is neither the value nor the
-rounding the spec asked for. No spec rounds such a value to tens or
-thousands. Write `{:~.0HalfEven}` instead to round it to whole units -- a
-rounding to 0 to 18 places is spelled by long division, which cannot
-overflow, so 2^-120 reads `≈0` -- or `{:/}` for its exact
-fraction, or catch the `std::format_error`.
+`Rational { 1, Rational::Int { 1 } << 120 }`, at -3 decimals. `std::format`
+then throws `std::format_error` too, starting `formula: this number cannot be
+spelled as the format asks`; it never writes a text that is neither the
+value nor the rounding the spec asked for. No spec rounds such a value to
+tens or thousands. Write `{:~.0HalfEven}` instead to round it to whole units
+-- a rounding to 0 to 18 places is spelled by long division, which cannot
+overflow, so 2^-120 reads `≈0` -- or `{:/}` for its exact fraction, or catch
+the `std::format_error`.
 
 ## Formatting outcomes, units, dimensions and enumerations
 

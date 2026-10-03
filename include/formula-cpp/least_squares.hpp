@@ -21,20 +21,18 @@
 /// x)(y - mean y)`: phase 15's spike (step 3) measured them overflowing at
 /// the same first size as the uncentred sums on every data shape it tried,
 /// and at fewer sizes. `docs/numeric-headroom.md` ("Least squares") carries
-/// the census, regenerated with every build: for three-decimal readings near
-/// 2410 N, 57 of the 127 sizes from 2 to 128 points overflow, the first at
-/// 34. **Overflow depends on the data far more than on the number of
-/// points**, and is not monotone in it: the same shape of readings passes at
-/// some sizes above 34 and fails at others. An
-/// intermediate beyond `Rational`'s range returns `Overflow`, never a wrong
-/// number.
+/// the census, regenerated with every build: three-decimal readings near
+/// 2410 N fit at every size from 2 to 128 points, while a different
+/// denominator on every point overflows from 28 points. **Overflow depends on
+/// the data far more than on the number of points.** An intermediate beyond
+/// `Rational`'s range returns `Overflow`, never a wrong number.
 ///
 /// **Rounded where it is used, it answers further.**
 /// `rounded_output<"slope", U, Places, Mode>(fit)` runs `compute_exact`, the
 /// same line from uncentred 256-bit integer sums, and reports the slope at the
-/// precision the method declares: on those readings at every size from 2 to
-/// 128 points. A different denominator on every point outgrows even that from
-/// 58 points, and the answer is `Overflow`.
+/// precision the method declares: on a different denominator on every point
+/// up to 57 points. From 58 it outgrows even that, and the answer is
+/// `Overflow`.
 ///
 /// **In `double`, the fit is the consumer's own route, outside the
 /// library.** A curve is evaluated only in `Rational` (`curve.hpp`), so a fit

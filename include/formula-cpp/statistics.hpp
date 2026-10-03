@@ -472,16 +472,15 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 /// deviations from it, totalled and divided by n - 1. Fewer than two
 /// determinations is `DomainError`: n - 1 is then no count of anything.
 ///
-/// **Headroom, as measured.** The one-pass textbook
-/// form, (sum x^2 - (sum x)^2 / n) / (n - 1), squares the determinations
-/// themselves, and at large *magnitudes* overflows first: at 2^25 times
-/// fixture A's masses, where this form holds until 2^31
-/// (`statistics_tests.cpp`). At fine *resolution* it is the other way round:
+/// **Headroom, as measured.** Squaring the deviations rather than the
+/// determinations themselves keeps large *magnitudes* in range: fixture A's
+/// masses scaled by 2^62 still hold, and 2^63 is the first power of two at
+/// which this form overflows (`statistics_tests.cpp`). At fine *resolution*,
 /// dividing by n before squaring puts n^2 into every deviation's
-/// denominator, and at 6 dp in g near 40 g with n = 6 this form overflows on
-/// 423 of 1000 samples (the overflow census's draw, docs/numeric-headroom.md),
-/// where the one-pass form was found holding more often.
-/// Every such failure is `Overflow`, naming the determination it arose at --
+/// denominator; at 6 dp in g near 40 g with n = 6, none of the overflow
+/// census's 1000 samples overflows, and the least of them leaves 62 of
+/// `Rational::Int`'s 127 bits (docs/numeric-headroom.md).
+/// Every failure is `Overflow`, naming the determination it arose at --
 /// never a wrong value.
 template <typename Rep = Rational, SampleSource S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(SampleVarianceNode<S> const& node,

@@ -60,9 +60,9 @@ class Rational
 
     /// An integer is a rational, exactly and without narrowing.
     ///
-    /// Every built-in integer type fits `Int` exactly.
+    /// Every built-in integer type of up to 64 bits fits `Int` exactly.
     template <typename T>
-        requires std::is_integral_v<T> && (!std::is_same_v<std::remove_cv_t<T>, bool>)
+        requires std::is_integral_v<T> && (!std::is_same_v<std::remove_cv_t<T>, bool>) && (sizeof(T) <= 8)
     constexpr Rational(T whole) noexcept:
         _numerator { whole }
     {
@@ -702,9 +702,8 @@ namespace detail
     // numerator for the same reason; this follows that precedent rather than
     // inventing a second rule for it. Overflow is the honest answer here, not
     // Inexact: Inexact means no exact root exists, but the minimum's 127th
-    // root, -2, both
-    // exists and is representable -- it is only the magnitude of the
-    // intermediate numerator that is not. Reworking the search onto an
+    // root, -2, both exists and is representable -- it is only the magnitude
+    // of the intermediate numerator that is not. Reworking the search onto an
     // unsigned magnitude to rescue this one input would add new numeric code
     // at the end of a phase to save a single edge case, which risks a worse
     // bug than the one it fixes.
@@ -722,9 +721,9 @@ namespace detail
     // long that takes. The search is also unnecessary at this degree: 2^127
     // alone exceeds the largest `Int`, so no numerator or denominator
     // magnitude of 2 or more could have an exact root here -- reaching it
-    // would need at least 2^127, which `Int` cannot hold. That leaves only magnitude 0 and 1, both
-    // fixed points of every power, so the answer is read off directly instead
-    // of searched for.
+    // would need at least 2^127, which `Int` cannot hold. That leaves only
+    // magnitude 0 and 1, both fixed points of every power, so the answer is
+    // read off directly instead of searched for.
     if (degree >= 127)
     {
         if (magnitudeNumerator > 1 || radicand.denominator() > 1)
