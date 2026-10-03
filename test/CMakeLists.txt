@@ -1144,8 +1144,9 @@ formula_add_negative_test(format_spec_not_understood
     "formula_number_format_spec_not_understood"
     REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_places_out_of_range")
 formula_add_negative_test(int128_format_spec_not_understood
-    "formula_number_format_spec_not_understood"
-    REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_places_out_of_range")
+    "formula_int128_format_spec_not_understood"
+    REJECT "formula_number_format_spec_not_understood" "formula_number_format_needs_a_rounding_mode"
+           "formula_number_format_places_out_of_range")
 
 formula_add_negative_test(band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"

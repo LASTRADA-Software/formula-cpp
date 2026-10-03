@@ -592,8 +592,8 @@ before the call stack of the evaluation:
 
 ```
 test\negative\format_places_without_mode.cpp(17): error C7595: 'std::basic_format_string<char,formula::Rational>::basic_format_string': call to immediate function is not a constant expression
-include\formula-cpp/format.hpp(346): note: failure was caused by call of undefined function or one not declared 'constexpr'
-include\formula-cpp/format.hpp(346): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
+include\formula-cpp/format.hpp(347): note: failure was caused by call of undefined function or one not declared 'constexpr'
+include\formula-cpp/format.hpp(347): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
 ```
 
 clang and g++ name the same function, in their own words.

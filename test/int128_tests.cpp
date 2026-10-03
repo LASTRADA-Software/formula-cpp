@@ -15,6 +15,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 namespace
@@ -43,9 +44,12 @@ struct ArithmeticCase
     Int128 remaining;
 };
 
-// Sums, differences and products wrap; quotients round toward zero; a
-// remainder takes the dividend's sign.
-constexpr std::array<ArithmeticCase, 9> arithmeticCases { {
+// Quotients round toward zero; a remainder takes the dividend's sign. Some
+// sums, differences and products in the first nine rows go past the range
+// and pin the two's complement bits both routes leave there. The contract
+// makes such an operation a precondition violation, so those check that the
+// routes agree, not a promise.
+constexpr std::array<ArithmeticCase, 16> arithmeticCases { {
     { words(0x7fffffffffffffff, 0xffffffffffffffff), words(0x0000000000000000, 0x0000000000000003),
       words(0x8000000000000000, 0x0000000000000002), words(0x7fffffffffffffff, 0xfffffffffffffffc),
       words(0x7fffffffffffffff, 0xfffffffffffffffd), words(0x2aaaaaaaaaaaaaaa, 0xaaaaaaaaaaaaaaaa),
@@ -81,6 +85,36 @@ constexpr std::array<ArithmeticCase, 9> arithmeticCases { {
     { words(0xffffffffffffffff, 0x0000000000000000), words(0xffffffffffffffff, 0x8000000000000000),
       words(0xfffffffffffffffe, 0x8000000000000000), words(0xffffffffffffffff, 0x8000000000000000),
       words(0x8000000000000000, 0x0000000000000000), words(0x0000000000000000, 0x0000000000000002),
+      words(0x0000000000000000, 0x0000000000000000) },
+    // Boundary operands, each row's every result in range: 0, +-1, +-2^63,
+    // 2^64 and -(2^127 - 1).
+    { words(0x0000000000000000, 0x0000000000000000), words(0x0000000000000000, 0x0000000000000001),
+      words(0x0000000000000000, 0x0000000000000001), words(0xffffffffffffffff, 0xffffffffffffffff),
+      words(0x0000000000000000, 0x0000000000000000), words(0x0000000000000000, 0x0000000000000000),
+      words(0x0000000000000000, 0x0000000000000000) },
+    { words(0x0000000000000000, 0x0000000000000000), words(0xffffffffffffffff, 0xffffffffffffffff),
+      words(0xffffffffffffffff, 0xffffffffffffffff), words(0x0000000000000000, 0x0000000000000001),
+      words(0x0000000000000000, 0x0000000000000000), words(0x0000000000000000, 0x0000000000000000),
+      words(0x0000000000000000, 0x0000000000000000) },
+    { words(0x0000000000000000, 0x8000000000000000), words(0xffffffffffffffff, 0x8000000000000000),
+      words(0x0000000000000000, 0x0000000000000000), words(0x0000000000000001, 0x0000000000000000),
+      words(0xc000000000000000, 0x0000000000000000), words(0xffffffffffffffff, 0xffffffffffffffff),
+      words(0x0000000000000000, 0x0000000000000000) },
+    { words(0xffffffffffffffff, 0x8000000000000000), words(0x0000000000000000, 0x0000000000000001),
+      words(0xffffffffffffffff, 0x8000000000000001), words(0xffffffffffffffff, 0x7fffffffffffffff),
+      words(0xffffffffffffffff, 0x8000000000000000), words(0xffffffffffffffff, 0x8000000000000000),
+      words(0x0000000000000000, 0x0000000000000000) },
+    { words(0xffffffffffffffff, 0xffffffffffffffff), words(0x0000000000000000, 0x8000000000000000),
+      words(0x0000000000000000, 0x7fffffffffffffff), words(0xffffffffffffffff, 0x7fffffffffffffff),
+      words(0xffffffffffffffff, 0x8000000000000000), words(0x0000000000000000, 0x0000000000000000),
+      words(0xffffffffffffffff, 0xffffffffffffffff) },
+    { words(0x0000000000000001, 0x0000000000000000), words(0xffffffffffffffff, 0x8000000000000000),
+      words(0x0000000000000000, 0x8000000000000000), words(0x0000000000000001, 0x8000000000000000),
+      words(0x8000000000000000, 0x0000000000000000), words(0xffffffffffffffff, 0xfffffffffffffffe),
+      words(0x0000000000000000, 0x0000000000000000) },
+    { words(0x8000000000000000, 0x0000000000000001), words(0xffffffffffffffff, 0xffffffffffffffff),
+      words(0x8000000000000000, 0x0000000000000000), words(0x8000000000000000, 0x0000000000000002),
+      words(0x7fffffffffffffff, 0xffffffffffffffff), words(0x7fffffffffffffff, 0xffffffffffffffff),
       words(0x0000000000000000, 0x0000000000000000) },
 } };
 
@@ -118,6 +152,22 @@ constexpr std::array<GcdCase, 6> gcdCases { {
       unsigned_words(0, 6) },
     { unsigned_words(7, 0), unsigned_words(0x4d, 0), unsigned_words(7, 0) },
 } };
+
+/// Whether @p T's least and greatest values become the Int128 of the same
+/// value: sign-extended into the high word, exactly.
+template <typename T>
+constexpr bool converts_exactly() noexcept
+{
+    constexpr T smallestOf = std::numeric_limits<T>::min();
+    constexpr T largestOf = std::numeric_limits<T>::max();
+    bool const largestKept = Int128 { largestOf } == words(0, static_cast<std::uint64_t>(largestOf));
+    if constexpr (std::is_signed_v<T>)
+        return largestKept
+               && Int128 { smallestOf }
+                      == words(~std::uint64_t { 0 }, static_cast<std::uint64_t>(static_cast<std::int64_t>(smallestOf)));
+    else
+        return largestKept && Int128 { smallestOf } == Int128 {};
+}
 } // namespace
 
 TEST_CASE("Int128 adds, subtracts, multiplies and divides as a 128-bit two's complement integer", "[int128]")
@@ -142,6 +192,17 @@ TEST_CASE("Int128 converts from every built-in integer exactly, and to none with
     STATIC_REQUIRE(Int128 { -5 } == words(~std::uint64_t { 0 }, ~std::uint64_t { 0 } - 4));
     STATIC_REQUIRE(Int128 { std::numeric_limits<std::uint64_t>::max() } == words(0, ~std::uint64_t { 0 }));
     STATIC_REQUIRE(Int128 { std::numeric_limits<std::int64_t>::min() } == words(~std::uint64_t { 0 }, std::uint64_t { 1 } << 63));
+    STATIC_REQUIRE(converts_exactly<char>());
+    STATIC_REQUIRE(converts_exactly<signed char>());
+    STATIC_REQUIRE(converts_exactly<short>());
+    STATIC_REQUIRE(converts_exactly<int>());
+    STATIC_REQUIRE(converts_exactly<long>());
+    STATIC_REQUIRE(converts_exactly<long long>());
+    STATIC_REQUIRE(converts_exactly<unsigned char>());
+    STATIC_REQUIRE(converts_exactly<unsigned short>());
+    STATIC_REQUIRE(converts_exactly<unsigned>());
+    STATIC_REQUIRE(converts_exactly<unsigned long>());
+    STATIC_REQUIRE(converts_exactly<unsigned long long>());
     STATIC_REQUIRE_FALSE(std::is_constructible_v<Int128, bool>);
     // No conversion to a built-in integer, implicit or explicit: narrowing is
     // to_int64() or to_uint64(), which say when the value does not fit.
@@ -171,9 +232,47 @@ TEST_CASE("Int128 orders as a signed integer and shifts arithmetically", "[int12
     STATIC_REQUIRE((smallest >> 64) == words(~std::uint64_t { 0 }, std::uint64_t { 1 } << 63));
     STATIC_REQUIRE((Int128 { 1 } << 127) == smallest);
     STATIC_REQUIRE((Int128 { 3 } << 64) == words(3, 0));
-    STATIC_REQUIRE(-smallest == smallest);
+    STATIC_REQUIRE((Int128 { 1 } << 63) == words(0, std::uint64_t { 1 } << 63));
+    // A shift by nothing leaves a negative value as it is.
+    STATIC_REQUIRE((smallest >> 0) == smallest);
+    STATIC_REQUIRE((Int128 { -5 } >> 63) == -1);
     STATIC_REQUIRE(std::numeric_limits<Int128>::digits == 127);
     STATIC_REQUIRE(std::numeric_limits<Int128>::is_signed);
+}
+
+TEST_CASE("Int128 divides the minimum, and the checked product refuses exactly past 128 bits", "[int128]")
+{
+    using formula::detail::u128_mul_checked;
+    namespace portable = formula::detail::portable;
+    constexpr Int128 smallest = std::numeric_limits<Int128>::min();
+    constexpr std::uint64_t allOnes = ~std::uint64_t { 0 };
+    // -2^127 as a divisor, and by -1 for the remainder; -2^127 / -1 itself
+    // does not fit, and is outside the contract.
+    STATIC_REQUIRE(smallest / smallest == 1);
+    STATIC_REQUIRE((smallest + 1) / smallest == 0);
+    STATIC_REQUIRE((smallest + 1) % smallest == smallest + 1);
+    STATIC_REQUIRE(smallest % -1 == 0);
+    // 2^64 * (2^64 - 1) is the largest product of these shapes that fits;
+    // 2^64 * 2^64 is 2^128, one past.
+    STATIC_REQUIRE(u128_mul_checked(UInt128 { 1, 0 }, UInt128 { 0, allOnes }) == UInt128 { allOnes, 0 });
+    STATIC_REQUIRE(!u128_mul_checked(UInt128 { 1, 0 }, UInt128 { 1, 0 }).has_value());
+    // The portable route on its own, on every compiler: (2^64 + 1)(2^64 - 1)
+    // is 2^128 - 1 and fits; (2^64 + 2)(2^64 - 1) overflows only through the
+    // carry into the high word.
+    STATIC_REQUIRE(portable::multiply_checked(UInt128 { 1, 1 }, UInt128 { 0, allOnes }) == UInt128 { allOnes, allOnes });
+    STATIC_REQUIRE(!portable::multiply_checked(UInt128 { 1, 2 }, UInt128 { 0, allOnes }).has_value());
+    STATIC_REQUIRE(!portable::multiply_checked(UInt128 { 1, 0 }, UInt128 { 1, 0 }).has_value());
+}
+
+TEST_CASE("an Int128 is made from a magnitude and a sign, up to 2^127 for a negative one", "[int128]")
+{
+    using formula::detail::signed_from_magnitude;
+    STATIC_REQUIRE(signed_from_magnitude(UInt128 { std::uint64_t { 1 } << 63, 0 }, true) == std::numeric_limits<Int128>::min());
+    STATIC_REQUIRE(signed_from_magnitude(UInt128 { ~(std::uint64_t { 1 } << 63), ~std::uint64_t { 0 } }, false)
+                   == std::numeric_limits<Int128>::max());
+    STATIC_REQUIRE(signed_from_magnitude(UInt128 { 0, 5 }, true) == -5);
+    STATIC_REQUIRE(signed_from_magnitude(UInt128 {}, true) == 0);
+    STATIC_REQUIRE(formula::detail::magnitude(std::numeric_limits<Int128>::min()) == UInt128 { std::uint64_t { 1 } << 63, 0 });
 }
 
 TEST_CASE("Int128 converts to the nearest double, ties to even", "[int128]")
@@ -189,6 +288,12 @@ TEST_CASE("Int128 converts to the nearest double, ties to even", "[int128]")
     CHECK(words(0xffffffefffffffff, 0xffff800000000000).to_double() == -0x1p+100);
     CHECK(words(0xffffffefffffffff, 0xffff7fffffffffff).to_double() == -0x1.0000000000001p+100);
     CHECK(Int128 { -7 }.to_double() == -7.0);
+    // Magnitudes in [2^63, 2^64) drop no bits: 2^64 - 2^11 is a double, and
+    // 2^64 - 1 rounds up to 2^64.
+    CHECK(words(0, 0xfffffffffffff800).to_double() == 0x1.fffffffffffffp+63);
+    CHECK(words(~std::uint64_t { 0 }, 0x800).to_double() == -0x1.fffffffffffffp+63);
+    CHECK(words(0, ~std::uint64_t { 0 }).to_double() == 0x1p+64);
+    CHECK(words(0, std::uint64_t { 1 } << 63).to_double() == 0x1p+63);
 }
 
 TEST_CASE("the 128-bit greatest common divisor, square root and powers of ten", "[int128]")
@@ -204,6 +309,7 @@ TEST_CASE("the 128-bit greatest common divisor, square root and powers of ten", 
     // (2^64 - 1)^2 and one below it.
     CHECK(formula::detail::u128_isqrt(unsigned_words(0xfffffffffffffffe, 1)) == ~std::uint64_t { 0 });
     CHECK(formula::detail::u128_isqrt(unsigned_words(0xfffffffffffffffe, 0)) == 0xfffffffffffffffe);
+    CHECK(formula::detail::u128_pow10(0) == UInt128::from_u64(1));
     CHECK(formula::detail::u128_pow10(38) == unsigned_words(0x4b3b4ca85a86c47a, 0x098a224000000000));
     CHECK(formula::detail::u128_pow10(39) == std::nullopt);
     CHECK(formula::detail::u128_pow10(-1) == std::nullopt);
@@ -217,6 +323,18 @@ TEST_CASE("Int128 formats as its decimal digits", "[int128][format]")
     CHECK(std::format("{}", std::numeric_limits<Int128>::min()) == "-170141183460469231731687303715884105728");
     CHECK(std::format("{}", words(1, 0)) == "18446744073709551616");
     CHECK(std::format("{}", words(0x4b3b4ca85a86c47a, 0x098a224000000000)) == "100000000000000000000000000000000000000");
+    // A spec built at run time is refused when used, in Int128's own words.
+    Int128 const shownInteger { 255 };
+    std::string_view const hexadecimal = "{:x}";
+    try
+    {
+        (void) std::vformat(hexadecimal, std::make_format_args(shownInteger));
+        CHECK(false);
+    }
+    catch (std::format_error const& refusal)
+    {
+        CHECK(std::string_view { refusal.what() }.starts_with("formula: an Int128 is formatted only with {}"));
+    }
 }
 
 TEST_CASE("the 128-bit division, product and greatest common divisor keep their defining identities", "[int128]")
@@ -240,6 +358,10 @@ TEST_CASE("the 128-bit division, product and greatest common divisor keep their 
         std::optional<UInt128> const recombined = formula::detail::u128_mul_checked(split.quotient, divisor);
         REQUIRE(recombined.has_value());
         CHECK(formula::detail::u128_add(*recombined, split.remainder) == dividend);
+        // Coprimality is checked with u128_gcd itself, and every divisor here
+        // is odd, so these draws never reach the shared factors of two: the
+        // fixed gcd table above (its first, second and last rows) is what pins
+        // the early exit and the shared twos. Do not trim it.
         UInt128 const common = formula::detail::u128_gcd(dividend, divisor);
         CHECK(formula::detail::u128_divmod(dividend, common).remainder.is_zero());
         CHECK(formula::detail::u128_divmod(divisor, common).remainder.is_zero());

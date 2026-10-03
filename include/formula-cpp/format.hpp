@@ -2,10 +2,11 @@
 #pragma once
 
 /// @file
-/// `std::format` for a `Rational`, a `Measured<Q>`, an `Outcome<Q>`, a `Unit`,
-/// a `Dimension` and every enumeration that has a `describe()`:
-/// `std::format("{}", Rational { 3, 5 })` is `0.6`, a measured 5.2 in a unit
-/// whose symbol is `kJ` formats as `5.2 kJ`, `dim::Density` as `L^-3 M^1`, and
+/// `std::format` for a `Rational`, an `Int128`, a `Measured<Q>`, an
+/// `Outcome<Q>`, a `Unit`, a `Dimension` and every enumeration that has a
+/// `describe()`: `std::format("{}", Rational { 3, 5 })` is `0.6`, an `Int128`
+/// writes its decimal digits, a measured 5.2 in a unit whose symbol is `kJ`
+/// formats as `5.2 kJ`, `dim::Density` as `L^-3 M^1`, and
 /// `ArithmeticError::Overflow` as `overflow in exact arithmetic`.
 ///
 /// **Opt-in.** This header is not included by `formula.hpp`: it includes
@@ -511,6 +512,18 @@ inline void append_exponent_text(std::string& spelled, std::string_view baseName
         spelled = "(dimensionless)";
     return spelled;
 }
+
+/// Refuses any format spec for a `formula::Int128` but the empty one: an
+/// `Int128` is formatted only with `{}`, which writes its decimal digits. Not
+/// `constexpr`, for the reason `formula_number_format_needs_a_rounding_mode`
+/// gives.
+/// @throws std::format_error always.
+[[noreturn]] inline void formula_int128_format_spec_not_understood()
+{
+    throw std::format_error(
+        "formula: an Int128 is formatted only with {}, which writes its decimal digits -- it takes no fill, "
+        "alignment, width, precision or type");
+}
 } // namespace formula::detail
 
 // The specialisations are declared inside `namespace std` rather than as
@@ -606,8 +619,9 @@ struct formatter<formula::Rational, char>
 
 /// `std::format` of a `formula::Int128`: its decimal digits, with a `-` when
 /// it is negative, as `{}` writes a built-in integer. The empty spec is the
-/// only one; any other calls `formula_number_format_spec_not_understood`, a
-/// compile error in a literal format string.
+/// only one; any other calls `formula_int128_format_spec_not_understood`, a
+/// compile error in a literal format string and `std::format_error` under
+/// `std::vformat`.
 ///
 /// Owned by this library: a consumer's own specialisation of it would define
 /// it twice, which breaks the one-definition rule.
@@ -619,7 +633,7 @@ struct formatter<formula::Int128, char>
     {
         auto const specAt = parseContext.begin();
         if (specAt != parseContext.end() && *specAt != '}')
-            formula::detail::formula_number_format_spec_not_understood();
+            formula::detail::formula_int128_format_spec_not_understood();
         return specAt;
     }
 

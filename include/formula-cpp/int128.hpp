@@ -24,11 +24,15 @@
 /// 128-bit value down to 64 bits without saying what happens when it does
 /// not fit.
 ///
-/// The operators behave as a built-in signed integer's do, except that none
-/// is undefined: a sum, difference or product that does not fit wraps
-/// around, and a division by zero is a precondition violation. The library's
-/// own arithmetic never relies on wrapping; it uses the checked forms in
-/// `detail/checked_int.hpp`.
+/// **Overflow is a precondition violation**, as for a built-in signed
+/// integer. A plain operator whose exact result does not fit -- a sum,
+/// difference or product past the range, -2^127 / -1, and -(-2^127) -- has
+/// broken its precondition, and so has division or remainder by zero. A
+/// caller that needs to know whether a result fits uses the checked forms in
+/// `detail/checked_int.hpp`, as `Rational` does. `%` by -1 is 0 for every
+/// dividend, the minimum included, since that result fits.
+///
+/// Its `std::formatter` lives in `format.hpp`, with the library's others.
 
 #include <bit>
 #include <compare>
@@ -474,25 +478,26 @@ class Int128
         return _lowWord <=> compared._lowWord;
     }
 
-    /// The sum, wrapping past the range.
+    /// The sum. @pre it fits.
     [[nodiscard]] friend constexpr Int128 operator+(Int128 leftOperand, Int128 rightOperand) noexcept
     {
         return from_pattern(detail::portable::add(leftOperand.as_pattern(), rightOperand.as_pattern()));
     }
 
-    /// The difference, wrapping past the range.
+    /// The difference. @pre it fits.
     [[nodiscard]] friend constexpr Int128 operator-(Int128 leftOperand, Int128 rightOperand) noexcept
     {
         return from_pattern(detail::portable::subtract(leftOperand.as_pattern(), rightOperand.as_pattern()));
     }
 
-    /// The product, wrapping past the range.
+    /// The product. @pre it fits.
     [[nodiscard]] friend constexpr Int128 operator*(Int128 leftOperand, Int128 rightOperand) noexcept
     {
         return from_pattern(detail::u128_mul(leftOperand.as_pattern(), rightOperand.as_pattern()));
     }
 
-    /// The quotient, rounded toward zero. @pre @p divisor is not zero.
+    /// The quotient, rounded toward zero. @pre @p divisor is not zero, and
+    /// the quotient fits: -2^127 / -1 does not.
     [[nodiscard]] friend constexpr Int128 operator/(Int128 dividend, Int128 divisor) noexcept
     {
         Int128 const quotientMagnitude =
@@ -500,7 +505,8 @@ class Int128
         return dividend.is_negative() != divisor.is_negative() ? -quotientMagnitude : quotientMagnitude;
     }
 
-    /// The remainder, of the dividend's sign. @pre @p divisor is not zero.
+    /// The remainder, of the dividend's sign; by -1 it is 0 for every
+    /// dividend, -2^127 included. @pre @p divisor is not zero.
     [[nodiscard]] friend constexpr Int128 operator%(Int128 dividend, Int128 divisor) noexcept
     {
         Int128 const remainderMagnitude =
@@ -526,7 +532,8 @@ class Int128
         return from_pattern(detail::UInt128 { shifted.highWord | signFill.highWord, shifted.lowWord | signFill.lowWord });
     }
 
-    /// The negation, wrapping: the minimum's is itself.
+    /// The negation. @pre @p operandValue is not -2^127, whose negation does
+    /// not fit.
     [[nodiscard]] friend constexpr Int128 operator-(Int128 operandValue) noexcept
     {
         return from_pattern(detail::portable::subtract(detail::UInt128 {}, operandValue.as_pattern()));
