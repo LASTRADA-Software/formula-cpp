@@ -247,8 +247,9 @@ namespace detail
     /// digits of 2^127, a slash, a 39-digit denominator, a space, and a unit
     /// symbol of `SymbolCapacity` bytes -- `view(Symbol const&)` returns that
     /// many from a symbol with no terminator. A fraction is never marked
-    /// approximate; the longest marked decimal -- the marker, a sign, 39
-    /// whole digits, a point and 18 places, a space and the symbol -- is
+    /// approximate; the longest marked decimal -- the marker, a sign, 38
+    /// whole digits (a marked decimal's denominator is at least 3, and
+    /// 2^127 / 3 has 38), a point and 18 places, a space and the symbol -- is
     /// shorter.
     inline constexpr std::size_t LongestNumberText = 1 + 39 + 1 + 39 + 1 + SymbolCapacity;
     static_assert(LongestNumberText <= NumberTextCapacity,
@@ -394,10 +395,11 @@ namespace detail
 ///
 /// The text is exactly what `checked_round` would round to, but not by way
 /// of it: for 0 to 18 places the digits come from long division on the
-/// magnitude and denominator, in 128-bit unsigned integers, so the text exists even
-/// where `checked_round`'s own arithmetic overflows -- `IntMax/3` to 18
-/// places is `3074457345618258602.333333333333333333`, while `checked_round`
-/// reports `Overflow` for it. Each digit is found without forming
+/// magnitude and denominator, in 128-bit unsigned integers, so the text
+/// exists even where `checked_round`'s own arithmetic overflows -- the
+/// largest `Rational::Int` over 3, to 18 places, is
+/// `56713727820156410577229101238628035242.333333333333333333`, while
+/// `checked_round` reports `Overflow` for it. Each digit is found without forming
 /// `remainder * 10`: the remainder is added ten times, taking the
 /// denominator off whenever the sum reaches it, so the sum stays below twice
 /// the denominator. A value that rounds to zero is written without a `-`.

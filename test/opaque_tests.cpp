@@ -367,12 +367,13 @@ TEST_CASE("an input's failure is not hidden behind another input's absence", "[o
     // once every input has been asked.
     constexpr auto hugeCall = formula::opaque<HugeShifted>(
         { .reference = "Example Standard 12" }, formula::series<Reading, 4>, formula::var<Huge>);
-    // 2^62 t is 2^65 kg: its conversion to the coherent unit overflows.
+    // 2^126 t is 1000 * 2^126 kg: its conversion to the coherent unit overflows.
+    constexpr formula::Rational huge { formula::Rational::Int { 1 } << 126 };
     auto const overflowing = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(127) },
                                                                                     formula::Measured<Reading>::absent(),
                                                                                     formula::Measured<Reading> { rat(191) },
                                                                                     formula::Measured<Reading> { rat(139) }),
-                                                  formula::Measured<Huge> { rat(std::int64_t { 1 } << 62) });
+                                                  formula::Measured<Huge> { huge });
     auto const called = formula::detail::evaluate_call<formula::Rational>(hugeCall, overflowing, formula::NullSink {});
     REQUIRE(!called.has_value());
     CHECK(called.error().error == formula::ArithmeticError::Overflow);
@@ -715,13 +716,15 @@ consteval std::size_t field_count()
 TEST_CASE("opaque trace data lives in side tables, and a Step has no more fields for it", "[opaque][trace]")
 {
     // Counted, not measured: Step had 45 fields at the branch point, 9d3cdd4,
-    // and has 47 since a binary step says which side each operand stood on
-    // (`leftOperand`, `rightOperand`), which no opaque step uses. A byte-sized
+    // 47 since a binary step says which side each operand stood on
+    // (`leftOperand`, `rightOperand`), and has 48 since a sample-size lookup
+    // keeps the high word of a count past 64 bits (`lookupKeyHigh`), none of
+    // which an opaque step uses. A byte-sized
     // field -- an enum or a flag, the likeliest slip for an opaque step's
     // failure or a retry's -- can land in padding and leave sizeof unchanged
     // (it did, on g++-14 and on libc++); it cannot leave the count unchanged.
     // Any field added to Step, on any library, fails this.
-    STATIC_REQUIRE(field_probe::field_count<formula::Step<formula::Rational>>() == 47);
+    STATIC_REQUIRE(field_probe::field_count<formula::Step<formula::Rational>>() == 48);
 }
 namespace
 {
@@ -1541,19 +1544,30 @@ TEST_CASE("an overlay and a level walk reach inside a call over observations", "
 
 TEST_CASE("an observation that fails to convert fails the call at that observation", "[opaque][observations][trace]")
 {
-    // 1.03 x 10^17 km is 1.03 x 10^20 m, past Rational's range: the third
+    // 1.03 x 10^36 km is 1.03 x 10^39 m, past Rational's range: the third
     // observation. Relayed, not the operation's own, and counted as an
     // observation -- never "at element 3".
     constexpr auto lowestFar =
         formula::opaque<LowestObserved>({ .reference = "Example Standard 12" }, formula::observations<FarReading, 4>);
-    constexpr auto overflowing =
-        formula::environment(formula::MeasuredObservations<FarReading, 4>(rat(103), rat(127), rat(103'000'000'000'000'000)));
+    constexpr formula::Rational::Int farthest =
+        formula::Rational::Int { 1'030'000'000'000'000'000 } * 1'000'000'000'000'000'000;
+    constexpr auto overflowing = formula::environment(
+        formula::MeasuredObservations<FarReading, 4>(rat(103), rat(127), formula::Rational { farthest }));
     constexpr auto called = formula::detail::evaluate_call<formula::Rational>(lowestFar, overflowing, formula::NullSink {});
     STATIC_REQUIRE(!called.has_value());
     STATIC_REQUIRE(called.error().error == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(called.error().origin == formula::OpaqueFailure::Propagated);
     STATIC_REQUIRE(called.error().element == std::optional<std::size_t> { 2 });
     STATIC_REQUIRE(called.error().site == formula::FailureSite::InputObservation);
+
+    // 1.03 x 10^17 km, which overflowed 64 bits, is 1.03 x 10^20 m, and the
+    // lowest is 103 km.
+    constexpr auto fitting =
+        formula::environment(formula::MeasuredObservations<FarReading, 4>(rat(103), rat(127), rat(103'000'000'000'000'000)));
+    constexpr auto answered = formula::detail::evaluate_call<formula::Rational>(lowestFar, fitting, formula::NullSink {});
+    STATIC_REQUIRE(answered.has_value());
+    STATIC_REQUIRE(answered->has_value());
+    STATIC_REQUIRE((**answered)[0] == rat(103'000));
 
     formula::Trace<> recorded {};
     (void) formula::detail::dispatch<formula::Rational>(

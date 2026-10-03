@@ -1155,14 +1155,21 @@ struct Step
     /// the same case `key_text` spells its two casts separately for.
     ///
     /// For `SampleSizeLookup`: the count this lookup selected with, when it
-    /// was a whole, non-negative number, read unsigned. A count that was not
-    /// one (`LookupFailure::NotACount`) leaves this zero, and its value stays
-    /// in the operand's own step, where the renderer points.
+    /// was a whole, non-negative number, read unsigned -- its low 64 bits,
+    /// with the rest in `lookupKeyHigh` below. A count that was not one
+    /// (`LookupFailure::NotACount`) leaves both zero, and its value stays in
+    /// the operand's own step, where the renderer points.
     std::uint64_t lookupKey {};
 
     /// Whether `lookupKey` above is to be read as a signed value. Meaningful
     /// only when `kind` is `ExactLookup`, exactly as `lookupKey` itself is.
     bool lookupKeyIsSigned {};
+
+    /// For `SampleSizeLookup`: bits 64 to 127 of the count, whose low 64 bits
+    /// are `lookupKey`'s. Zero for every count a table can declare; a count
+    /// past 2^64 - 1 misses every table, and the line spells it in full from
+    /// the two. Zero for every other kind.
+    std::uint64_t lookupKeyHigh {};
 
     /// For `ExactLookup`: the name of the key this lookup selected with --
     /// `Cylinder`, or the author's own spelling of it through
@@ -2859,10 +2866,10 @@ namespace detail
                 step.lookupFailure = LookupFailure::NotACount;
                 return;
             }
-            // A count beyond 2^64 - 1 is one no table declares: it misses,
-            // with no key a step can hold.
-            if (sampleSize->fits_u64())
-                step.lookupKey = sampleSize->lowWord;
+            // All of the count, in two words: one beyond 2^64 - 1 is one no
+            // table declares, and its miss still names it.
+            step.lookupKey = sampleSize->lowWord;
+            step.lookupKeyHigh = sampleSize->highWord;
 
             if (!find_sample_size<Sizes>(*sampleSize).has_value())
                 step.lookupFailure = LookupFailure::Missed;

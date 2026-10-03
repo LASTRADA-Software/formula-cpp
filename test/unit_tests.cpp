@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
 #include <string_view>
 #include <type_traits>
 
@@ -687,9 +688,16 @@ TEST_CASE("conversion reports failure rather than producing a wrong number", "[u
                         .symbolText = formula::symbol("huge"),
                         .decimals = 0 };
 
-    auto const result = formula::checked_convert(*Rational::make(9223372036854775807LL, 1), absurd, unit::Metre);
+    auto const result =
+        formula::checked_convert(Rational { std::numeric_limits<Rational::Int>::max() }, absurd, unit::Metre);
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == ArithmeticError::Overflow);
+
+    // The largest 64-bit integer of them, which overflowed 64 bits, is
+    // (2^63 - 1)^2 m.
+    auto const fits = formula::checked_convert(Rational { 9223372036854775807LL }, absurd, unit::Metre);
+    REQUIRE(fits.has_value());
+    CHECK(*fits == Rational { Rational::Int { 9223372036854775807LL } * 9223372036854775807LL });
 }
 
 TEST_CASE("conversion refuses a zero magnitude rather than converting to zero", "[unit]")

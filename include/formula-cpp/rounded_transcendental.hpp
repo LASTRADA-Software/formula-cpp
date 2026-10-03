@@ -43,7 +43,7 @@ namespace detail
     /// rounded decimal of the true value, rational or not. The decision, in order: a logarithm of zero or
     /// below is `DomainError`; places outside -18...18 are `Overflow`, as for `checked_round`; a special
     /// point -- the only values that can tie -- goes to `checked_round`; the exponential of more than 44
-    /// is `Overflow` (every rounding of exp 44 exceeds `Rational::Int`), and of less than -43 is below a
+    /// is `Overflow` (past the kernel's range, which ends at exp 44 = 1.29 * 10^19), and of less than -43 is below a
     /// quarter of the last kept unit at any places accepted, so 0, or one unit under `Ceiling` and
     /// `AwayFromZero`; everything else is the kernel's enclosure, rounded by `decide_rounding`, which
     /// answers `Overflow` when the kept integer does not fit and when the two ends round differently.

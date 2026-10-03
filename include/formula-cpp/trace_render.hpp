@@ -710,11 +710,15 @@ namespace detail
         if (recorded.kind == StepKind::ExactLookup)
             return "no row has this key";
 
-        // The count and every size the table does declare, so that a reader
-        // sees the hole the count fell in: `no row for n = 7 (declared: 3, 4,
-        // 5, 6, 8)`.
+        // The count, all of its 128 bits, and every size the table does
+        // declare, so that a reader sees the hole the count fell in: `no row
+        // for n = 7 (declared: 3, 4, 5, 6, 8)`.
         if (recorded.kind == StepKind::SampleSizeLookup)
-            return "no row for n = " + std::to_string(recorded.lookupKey) + declared_sizes_text(trace, stepIndex);
+        {
+            DecimalSpelling const countDigits = u128_decimal(UInt128 { recorded.lookupKeyHigh, recorded.lookupKey });
+            return "no row for n = " + std::string { countDigits.characters, static_cast<std::size_t>(countDigits.length) }
+                   + declared_sizes_text(trace, stepIndex);
+        }
 
         if (!recorded.coveredRange.has_value())
             return recorded.kind == StepKind::BandedLookup ? "the table declares no bands" : "the curve declares no rows";

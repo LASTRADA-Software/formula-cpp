@@ -245,25 +245,38 @@ struct SizeInKm: formula::Quantity<SizeInKm, "d_k", "particle size, in kilometre
 {
 };
 // Classes in micrometres, up to 1.03 x 10^18 um: 103 km is 1.03 x 10^11 um,
-// inside; 1.03 x 10^15 km is 1.03 x 10^24 um, which no int64 holds, though
-// 1.03 x 10^18 m in SI does.
+// inside; 1.03 x 10^33 km is 1.03 x 10^42 um, which no Rational holds,
+// though 1.03 x 10^36 m in SI does.
 constexpr formula::BandTable<1> micrometreClasses { band(0, 1, 1'030'000'000'000'000'000, 1) };
 constexpr auto countedInUm = formula::binned<unit::Micrometre, micrometreClasses>(formula::observations<SizeInKm, 3>);
 } // namespace
 
 TEST_CASE("an observation whose conversion overflows fails at its position, never skipped", "[binning]")
 {
+    constexpr formula::Rational::Int Quintillion = 1'000'000'000'000'000'000;
     // Into the classes' unit: the second observation.
-    constexpr auto intoKey = sizes_env<SizeInKm, 3>(rat(103), rat(1'030'000'000'000'000));
+    constexpr auto intoKey = sizes_env<SizeInKm, 3>(
+        rat(103), formula::Rational { formula::Rational::Int { 1'030'000'000'000'000 } * Quintillion });
     STATIC_REQUIRE(
         formula::checked_evaluate_series<Count>(countedInUm, intoKey).error()
         == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1, formula::FailureSite::InputObservation });
-    // Into SI already: 1.03 x 10^17 km is 1.03 x 10^20 m, the third
+    // Into SI already: 1.03 x 10^36 km is 1.03 x 10^39 m, the third
     // observation.
-    constexpr auto intoSi = sizes_env<SizeInKm, 3>(rat(103), rat(103), rat(103'000'000'000'000'000));
+    constexpr auto intoSi = sizes_env<SizeInKm, 3>(
+        rat(103), rat(103), formula::Rational { formula::Rational::Int { 1'030'000'000'000'000'000 } * Quintillion });
     STATIC_REQUIRE(
         formula::checked_evaluate_series<Count>(countedInUm, intoSi).error()
         == formula::SeriesFailure { formula::ArithmeticError::Overflow, 2, formula::FailureSite::InputObservation });
+    // 1.03 x 10^15 km and 1.03 x 10^17 km, which overflowed 64 bits, convert:
+    // 1.03 x 10^24 um and 1.03 x 10^26 um, above every class.
+    constexpr auto aboveInKey = sizes_env<SizeInKm, 3>(rat(103), rat(1'030'000'000'000'000));
+    STATIC_REQUIRE(
+        formula::checked_evaluate_series<Count>(countedInUm, aboveInKey).error()
+        == formula::SeriesFailure { formula::ArithmeticError::DomainError, 1, formula::FailureSite::InputObservation });
+    constexpr auto aboveInSi = sizes_env<SizeInKm, 3>(rat(103), rat(103), rat(103'000'000'000'000'000));
+    STATIC_REQUIRE(
+        formula::checked_evaluate_series<Count>(countedInUm, aboveInSi).error()
+        == formula::SeriesFailure { formula::ArithmeticError::DomainError, 2, formula::FailureSite::InputObservation });
 
     formula::Trace<> keyTrace {};
     (void) formula::checked_evaluate_series<Count>(countedInUm, intoKey, formula::RecordingSink<> { keyTrace });

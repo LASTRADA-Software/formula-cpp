@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// The overflow census: how many of the 63 bits of `Rational`'s std::int64_t
+// The overflow census: how many of the 127 bits of `Rational`'s 128-bit
 // numerator and denominator real formulas use. Built as its own program, with
 // FORMULA_OVERFLOW_CENSUS defined, so that every integer the library's
 // arithmetic forms at run time is told to the tally (`census_tally.hpp`).
@@ -43,7 +43,7 @@ using formula::detail::CensusRole;
 }
 
 /// What one evaluation used: each role's largest magnitude, in bits, and the
-/// headroom left of 63 by the largest signed one.
+/// headroom left of 127 by the largest signed one.
 struct Used
 {
     int numeratorBits;
@@ -53,7 +53,7 @@ struct Used
 
     [[nodiscard]] int headroom() const noexcept
     {
-        return 63 - std::min(63, std::max({ numeratorBits, denominatorBits, intermediateBits }));
+        return 127 - std::min(127, std::max({ numeratorBits, denominatorBits, intermediateBits }));
     }
 };
 
@@ -236,7 +236,7 @@ std::array<Rational, 20> const twentyMasses {
 };
 
 // Six masses at 6 decimal places of g -- microgram
-// resolution. Their variance overflows.
+// resolution. Their variance overflowed 64 bits.
 std::array<Rational, 6> const sixAtMicrograms { rat(40053270, 1000000), rat(39475922, 1000000), rat(39025798, 1000000),
                                                 rat(40615904, 1000000), rat(39418416, 1000000), rat(40131659, 1000000) };
 
@@ -298,7 +298,7 @@ template <int Places, typename Evaluate>
 [[nodiscard]] Survey survey(int samples, Evaluate&& evaluate)
 {
     Draws draws { 20260926 };
-    Survey found { 0, 63 };
+    Survey found { 0, 127 };
     for (int drawn = 0; drawn < samples; ++drawn)
     {
         std::array<Rational, 6> sample {};
@@ -369,7 +369,7 @@ template <typename Shape>
 struct FitScan
 {
     std::vector<std::size_t> overflowing;
-    int leastHeadroom = 63;
+    int leastHeadroom = 127;
 
     [[nodiscard]] std::string row(char const* label) const
     {
@@ -405,17 +405,17 @@ struct FitLength: formula::Quantity<FitLength, "L", "length read", unit::Millime
 {
 };
 
-/// The slope of the first @p N three-decimal points through the node --
+/// The slope of the first @p N points of @p shape through the node --
 /// `linear_least_squares` over a curve, as a formula states it -- and whether
 /// it overflowed.
-template <std::size_t N>
-[[nodiscard]] bool fit_node_overflows()
+template <std::size_t N, typename Shape>
+[[nodiscard]] bool fit_node_overflows(Shape shape)
 {
     std::array<formula::Measured<FitTime>, N> times;
     std::array<formula::Measured<FitForce>, N> forces;
     for (std::size_t at = 0; at < N; ++at)
     {
-        FitPoint const point = three_decimals_point(static_cast<std::int64_t>(at));
+        FitPoint const point = shape(static_cast<std::int64_t>(at));
         times[at] = formula::Measured<FitTime> { point.x };
         forces[at] = formula::Measured<FitForce> { point.y };
     }
@@ -667,40 +667,41 @@ struct TwoRegressorRoutes
 
 // ---- The instrument's own control -------------------------------------------------
 
-TEST_CASE("the census reports 0 bits of headroom for INT64_MAX, and Overflow one step further", "[census]")
+TEST_CASE("the census reports 0 bits of headroom for the largest Int128, and Overflow one step further", "[census]")
 {
-    constexpr std::int64_t largest = std::numeric_limits<std::int64_t>::max();
-    // (2^62 - 1) + 2^62 = 2^63 - 1 from two 62- and 63-bit operands, built
-    // outside the count: the sum's 63 bits are the addition's own
+    constexpr formula::Int128 largest = std::numeric_limits<formula::Int128>::max();
+    // (2^126 - 1) + 2^126 = 2^127 - 1 from two 126- and 127-bit operands,
+    // built outside the count: the sum's 127 bits are the addition's own
     // intermediate, which only add_checked_or_none's hook reports.
-    Rational const lowHalf = rat((std::int64_t { 1 } << 62) - 1);
-    Rational const highHalf = rat(std::int64_t { 1 } << 62);
-    Used const atTheLimit = census_of([&] { REQUIRE(formula::checked_add(lowHalf, highHalf).value() == rat(largest)); });
+    Rational const lowHalf { (formula::Int128 { 1 } << 126) - 1 };
+    Rational const highHalf { formula::Int128 { 1 } << 126 };
+    Used const atTheLimit =
+        census_of([&] { REQUIRE(formula::checked_add(lowHalf, highHalf).value() == Rational { largest }); });
     CHECK(atTheLimit.headroom() == 0);
-    CHECK(atTheLimit.intermediateBits == 63);
-    // 2^31 * 2^30 = 2^61, one bit short of using all 63: the product is
-    // mul_checked_or_none's intermediate, from operands of 32 and 31 bits.
-    Rational const factorA = rat(std::int64_t { 1 } << 31);
-    Rational const factorB = rat(std::int64_t { 1 } << 30);
-    Used const oneShort =
-        census_of([&] { REQUIRE(formula::checked_mul(factorA, factorB).value() == rat(std::int64_t { 1 } << 61)); });
+    CHECK(atTheLimit.intermediateBits == 127);
+    // 2^63 * 2^62 = 2^125, one bit short of using all 127: the product is
+    // mul_checked_or_none's intermediate, from operands of 64 and 63 bits.
+    Rational const factorA { formula::Int128 { 1 } << 63 };
+    Rational const factorB { formula::Int128 { 1 } << 62 };
+    Used const oneShort = census_of(
+        [&] { REQUIRE(formula::checked_mul(factorA, factorB).value() == Rational { formula::Int128 { 1 } << 125 }); });
     CHECK(oneShort.headroom() == 1);
-    CHECK(oneShort.intermediateBits == 62);
+    CHECK(oneShort.intermediateBits == 126);
     // One step further is the library's Overflow, never a figure: a product
-    // that overflows leaves the count with its operands' 33 bits at most.
-    CHECK(formula::checked_add(rat(largest), rat(1)).error() == formula::ArithmeticError::Overflow);
-    Rational const tooWideA = rat(std::int64_t { 1 } << 32);
-    Rational const tooWideB = rat(std::int64_t { 1 } << 31);
-    Used const overflowed =
-        census_of([&] { REQUIRE(formula::checked_mul(tooWideA, tooWideB).error() == formula::ArithmeticError::Overflow); });
-    CHECK(overflowed.intermediateBits <= 33);
-    CHECK(overflowed.numeratorBits <= 33);
+    // that overflows leaves the count with its operands' 65 bits at most.
+    CHECK(formula::checked_add(Rational { largest }, rat(1)).error() == formula::ArithmeticError::Overflow);
+    Rational const tooWideA { formula::Int128 { 1 } << 64 };
+    Rational const tooWideB { formula::Int128 { 1 } << 63 };
+    Used const overflowed = census_of(
+        [&] { REQUIRE(formula::checked_mul(tooWideA, tooWideB).error() == formula::ArithmeticError::Overflow); });
+    CHECK(overflowed.intermediateBits <= 65);
+    CHECK(overflowed.numeratorBits <= 65);
     // A constant evaluation tells the census nothing.
     Used const constant = census_of([] {
-        constexpr auto sum = formula::checked_add(Rational { 1 << 20 }, Rational { 1 << 20 });
-        static_assert(sum.has_value());
+        constexpr auto added = formula::checked_add(Rational { 1 << 20 }, Rational { 1 << 20 });
+        static_assert(added.has_value());
     });
-    CHECK(constant.headroom() == 63);
+    CHECK(constant.headroom() == 127);
 }
 
 // ---- The census set -----------------------------------------------------------------
@@ -774,13 +775,16 @@ TEST_CASE("census: the norm-shaped cases", "[census]")
     Used const spreadAtThree = census_of([] { REQUIRE(spread_of<3>(twentyMasses)); });
     print_row("20 masses at 3 dp: spread at 3 dp", spreadAtThree);
 
-    // The named realistic case: the six masses at micrograms overflow.
+    // The named realistic case: six masses at micrograms, which overflowed 64
+    // bits in kg^2, now answer exactly.
     auto const named = formula::checked_evaluate<MassVariance>(formula::sample_variance(formula::series<Mass, 6>),
                                                                series_environment<Mass>(sixAtMicrograms));
-    CHECK(named.error() == formula::ArithmeticError::Overflow);
+    REQUIRE(named.has_value());
+    REQUIRE(named->is_value());
+    CHECK(named->measurement().value() == Rational { 2026588050217, 6000000000000 });
     auto const namedRejection =
         formula::checked_evaluate_rejection<Mass>(rejection_of<6>(sevenQuarters), series_environment<Mass>(sixAtMicrograms));
-    CHECK(namedRejection.error().error == formula::ArithmeticError::Overflow);
+    CHECK(namedRejection.has_value());
 
     emit("resolution", "| formula | resolution | overflowed | least headroom |");
     emit("resolution", "|---|---|---|---|");
@@ -822,21 +826,22 @@ TEST_CASE("census: the norm-shaped cases", "[census]")
 
 TEST_CASE("the norm-shaped cases keep the headroom they were measured with, less 4 bits", "[census]")
 {
-    // Measured on cl 19.51 at the commit that added these pins: 18, 37 and 36
-    // bits of headroom, and fixture A's 3 dp spread forming 20-bit numerators
-    // and 26 of rounded_sqrt's 64 unsigned bits. A change that quietly spends
-    // more fails here, not in a user's formula. Measured at that commit:
-    // without checked_mul's cross-reduction the 64-point curve falls to 23
-    // bits, the 3 dp spread's numerators grow to 29 bits, and the control
-    // below reads 42; with checked_add scaling a sum by the product of the
-    // denominators rather than their least common multiple, the twenty
-    // masses' variance fails to evaluate.
+    // Measured on cl 19.51 at the commit that stores `Rational` in 128 bits:
+    // 82, 101 and 100 bits of headroom, and fixture A's 3 dp spread forming
+    // 20-bit numerators and 26 of rounded_sqrt's 128 unsigned bits. A change
+    // that quietly spends more fails here, not in a user's formula. Measured
+    // when these pins were added: without checked_mul's cross-reduction the
+    // 64-point curve uses 40 bits rather than 26, the 3 dp spread's
+    // numerators grow to 29 bits, and the control below reads 42; with
+    // checked_add scaling a sum by the product of the denominators rather
+    // than their least common multiple, the twenty masses' variance failed
+    // to evaluate.
     Used const twenty = census_of([] { REQUIRE(dispersion_of(twentyMasses)); });
-    CHECK(twenty.headroom() >= 18 - 4);
+    CHECK(twenty.headroom() >= 82 - 4);
     Used const curve = census_of([] { REQUIRE(grading_curve_read()); });
-    CHECK(curve.headroom() >= 37 - 4);
+    CHECK(curve.headroom() >= 101 - 4);
     Used const spreadAtThree = census_of([] { REQUIRE(spread_of<3>(fixtureA)); });
-    CHECK(spreadAtThree.headroom() >= 36 - 4);
+    CHECK(spreadAtThree.headroom() >= 100 - 4);
     CHECK(spreadAtThree.numeratorBits <= 20 + 4);
     CHECK(spreadAtThree.unsignedBits <= 26 + 4);
 }
@@ -864,7 +869,7 @@ TEST_CASE("census: a cylinder's cross-section and its strength, for d from 101 t
     {
         std::vector<std::int64_t> overflowing;
         std::vector<std::string> refusedAt;
-        int leastHeadroom = 63;
+        int leastHeadroom = 127;
 
         void add(std::int64_t millimetres, std::string const& step)
         {
@@ -923,15 +928,21 @@ TEST_CASE("census: a cylinder's cross-section and its strength, for d from 101 t
     emit("cylinder", "|---|---|---|---|");
     emit("cylinder", area.row("area, pi * d^2 / 4 (the expressions example)"));
     emit("cylinder", strength.row("strength, 4F / (pi * d^2), F = 89.3 kN, in MPa (the methods example's cylinder)"));
-    // What the page says, pinned: the area never overflows and keeps its
-    // measured 15 bits less the census's usual 4; the strength overflows at
-    // exactly these diameters, 139 mm among them and 135 mm not, and always
-    // at the division.
+    // What the page says, pinned: neither overflows at any diameter, and each
+    // keeps its measured headroom, 79 and 63 bits, less the census's usual 4.
+    // At 139 mm, which overflowed 64 bits at the division, the strength is
+    // exact.
     CHECK(area.overflowing.empty());
-    CHECK(area.leastHeadroom >= 15 - 4);
-    CHECK(strength.overflowing
-          == std::vector<std::int64_t> { 101, 103, 107, 109, 113, 119, 121, 127, 131, 137, 139, 143, 149, 151, 157, 161, 163 });
-    CHECK(strength.refusedAt == std::vector<std::string> { "4F / (pi * d^2)" });
+    CHECK(area.leastHeadroom >= 79 - 4);
+    CHECK(strength.overflowing.empty());
+    CHECK(strength.refusedAt.empty());
+    CHECK(strength.leastHeadroom >= 63 - 4);
+    auto const at139 = formula::checked_evaluate<Strength>(
+        cylinderStrength,
+        formula::environment(formula::Measured<Diameter> { rat(139) }, formula::Measured<FailureLoad> { rat(89'300) }));
+    REQUIRE(at139.has_value());
+    REQUIRE(at139->is_value());
+    CHECK(at139->measurement().value() == Rational { 13976660729400, 2375042831981 });
 }
 
 TEST_CASE("census: least squares over 2 to 128 points", "[census]")
@@ -941,8 +952,8 @@ TEST_CASE("census: least squares over 2 to 128 points", "[census]")
     // Overflow, never a line.
     // The least-squares tests' fixtures, through the node as a method states the fit: t = 1,
     // 2, 4, 7 s against L = 10.2, 10.9, 12.1, 14.3 mm, whose lengths are
-    // converted to metres first; and five distinct denominators, the size
-    // below the fifteen that overflow.
+    // converted to metres first; and five distinct denominators, well below
+    // the twenty-eight that overflow.
     print_row(
         "least squares, the 4-point fixture: slope and intercept", census_of([] {
             auto const inputs =
@@ -982,18 +993,18 @@ TEST_CASE("census: least squares over 2 to 128 points", "[census]")
          roundedDistinct.row("the slope rounded to 4 dp by rounded_output: "
                              "a different denominator on every point (stress control)"));
 
-    // What the page says, pinned: the spike's first failing sizes, 34 and 15
-    // points, hold through the library's fit, and one decimal place never
-    // overflows. The node agrees with the fit it calls on both sides of 34.
+    // What the page says, pinned: readings at one and three decimal places
+    // never overflow, up to 128 points; a different denominator on every
+    // point does from 28 points, at every size after. The node agrees with
+    // the fit it calls on both sides of 28.
     CHECK(oneDecimal.overflowing.empty());
-    REQUIRE(!threeDecimals.overflowing.empty());
-    CHECK(threeDecimals.overflowing.front() == 34);
-    CHECK(threeDecimals.overflowing.size() == 57);
+    CHECK(threeDecimals.overflowing.empty());
     REQUIRE(!distinct.overflowing.empty());
-    CHECK(distinct.overflowing.front() == 15);
-    CHECK(distinct.overflowing.size() == 114);
-    CHECK(!fit_node_overflows<33>());
-    CHECK(fit_node_overflows<34>());
+    CHECK(distinct.overflowing.front() == 28);
+    CHECK(distinct.overflowing.size() == 101);
+    CHECK(!fit_node_overflows<128>(three_decimals_point));
+    CHECK(!fit_node_overflows<27>(distinct_denominators_point));
+    CHECK(fit_node_overflows<28>(distinct_denominators_point));
 
     // The rounded route, measured with this algorithm: the realistic readings
     // never outgrow 256 bits; a different denominator on every point does,
@@ -1044,19 +1055,19 @@ TEST_CASE("census: a line through observations, exact and rounded, over 2 to 128
     emit("regression",
          twoRegressors.row("two regressors: readings at 3 dp and a temperature at 1 dp in degrees Celsius (realistic)"));
 
-    // What the page says, pinned: the realistic rows never stop on the
-    // rounded route; the exact route stops early.
+    // What the page says, pinned: the realistic rows stop on neither route;
+    // a different denominator on every point stops the exact route at 22
+    // points and the rounded one at 62.
     CHECK(threeDecimals.roundedOverflowing.empty());
     CHECK(fourDecimals.roundedOverflowing.empty());
-    REQUIRE(!threeDecimals.exactOverflowing.empty());
-    CHECK(threeDecimals.exactOverflowing.front() == 29);
-    REQUIRE(!fourDecimals.exactOverflowing.empty());
-    CHECK(fourDecimals.exactOverflowing.front() == 7);
+    CHECK(threeDecimals.exactOverflowing.empty());
+    CHECK(fourDecimals.exactOverflowing.empty());
+    REQUIRE(!distinct.exactOverflowing.empty());
+    CHECK(distinct.exactOverflowing.front() == 22);
     REQUIRE(!distinct.roundedOverflowing.empty());
     CHECK(distinct.roundedOverflowing.front() == 62);
     CHECK(twoRegressors.roundedOverflowing.empty());
-    REQUIRE(!twoRegressors.exactOverflowing.empty());
-    CHECK(twoRegressors.exactOverflowing.front() == 29);
+    CHECK(twoRegressors.exactOverflowing.empty());
 }
 
 TEST_CASE("the census draws the samples tools/census/exact_sizes.py draws", "[census]")

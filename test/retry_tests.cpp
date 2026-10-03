@@ -238,16 +238,28 @@ TEST_CASE("a retry of exactly the cap runs every attempt, and one of one or two 
 
 TEST_CASE("a retry whose exact values outgrow Rational says Overflow at that attempt", "[retry]")
 {
-    // The fixture's own fixpoint doubles its denominator every attempt: never
-    // settling by a strict margin, it passes 2^63 at attempt 53 (zero-based
-    // 52), before the cap. Reported, never wrapped.
+    // A step that squares its value: from 3/2 g, w(k) = w(k-1)^2 / 1 g, never
+    // settling by a strict margin, outgrows 128 bits at attempt 7 (zero-based
+    // 6), before the cap. Reported, never wrapped.
     constexpr auto flat =
         formula::previous_attempt<Estimate> - formula::this_attempt<Estimate> >= formula::constant<unit::Gram>(rat(0));
+    constexpr auto fromThreeHalves = formula::starting_from(formula::constant<unit::Gram>(rat(3, 2)));
+    constexpr auto squaring =
+        formula::previous_attempt<Estimate> * formula::previous_attempt<Estimate> / formula::constant<unit::Gram>(rat(1));
     auto const sixtyFour =
-        formula::retry<Estimate, 64, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, flat, repeat, cite);
+        formula::retry<Estimate, 64, formula::FirstJudged::AtFirstAttempt>(fromThreeHalves, squaring, flat, repeat, cite);
     auto const ran = formula::checked_evaluate_retry(sixtyFour, nothing);
     REQUIRE(!ran.has_value());
-    CHECK(ran.error() == formula::RetryFailure { formula::ArithmeticError::Overflow, 52 });
+    CHECK(ran.error() == formula::RetryFailure { formula::ArithmeticError::Overflow, 6 });
+
+    // The fixture's own fixpoint, which doubles its denominator every
+    // attempt and passed 2^63 at attempt 53, runs all 64 attempts: 2^64 is a
+    // denominator 128 bits hold.
+    auto const halvingRun = formula::checked_evaluate_retry(
+        formula::retry<Estimate, 64, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, flat, repeat, cite), nothing);
+    REQUIRE(halvingRun.has_value());
+    CHECK(halvingRun->end() == formula::RetryEnd::Exhausted);
+    CHECK(halvingRun->attempts_made() == 64);
 }
 
 TEST_CASE("a result that is only measured is recomputed, not taken as entered", "[retry]")

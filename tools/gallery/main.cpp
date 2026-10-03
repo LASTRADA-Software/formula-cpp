@@ -470,15 +470,12 @@ constexpr auto settledEstimate = formula::retry<IteratedEstimate, 4, formula::Fi
     formula::Verdict { "repeat the determination" },
     { .title = "Settled estimate", .reference = "Example Standard 12", .section = "6" });
 
-/// An exact rational as text: `4`, or `3/5` when it is not whole.
-///
-/// `formula::fraction_text` (`number_text.hpp`) spells the same text; this
-/// helper predates it.
+/// An exact rational as text: `4`, or `3/5` when it is not whole, as
+/// `formula::fraction_text` (`number_text.hpp`) spells it.
 [[nodiscard]] std::string exact_text(formula::Rational value)
 {
-    if (value.denominator() == 1)
-        return std::to_string(value.numerator());
-    return std::to_string(value.numerator()) + "/" + std::to_string(value.denominator());
+    formula::NumberText const spelled = formula::fraction_text(value);
+    return std::string { spelled.view() };
 }
 
 /// A unit's symbol for a table cell, or a word for the one unit that has none.

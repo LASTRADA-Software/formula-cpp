@@ -148,25 +148,25 @@ Each program's largest integers over everything it evaluates at run time.
 
 | program | numerator bits | denominator bits | intermediate bits | headroom |
 |---|---|---|---|---|
-| example `simple` | 4 | 10 | 6 | 53 |
-| example `exact_numbers` | 9 | 10 | 9 | 53 |
-| example `dimensions_and_units` | 22 | 10 | 22 | 41 |
-| example `quantities` | 0 | 0 | 0 | 63 |
-| example `expressions` | 0 | 0 | 0 | 63 |
-| example `citations` | 4 | 10 | 6 | 53 |
-| example `composition` | 10 | 10 | 9 | 53 |
-| example `electricity_bill` | 31 | 26 | 31 | 32 |
-| example `tracing` | 10 | 10 | 9 | 53 |
-| example `rounding_and_conditionals` | 27 | 20 | 27 | 36 |
-| example `constraints` | 26 | 20 | 26 | 37 |
-| example `lookup_tables` | 26 | 20 | 26 | 37 |
-| example `methods_and_overlays` | 58 | 39 | 58 | 5 |
-| example `statistics` | 20 | 35 | 35 | 28 |
-| example `series` | 15 | 15 | 15 | 48 |
-| example `records` | 25 | 25 | 25 | 38 |
-| example `opaque_and_retry` | 48 | 60 | 60 | 3 |
-| example `display` | 15 | 17 | 17 | 46 |
-| the gallery generator | 29 | 27 | 29 | 34 |
+| example `simple` | 4 | 10 | 6 | 117 |
+| example `exact_numbers` | 9 | 10 | 9 | 117 |
+| example `dimensions_and_units` | 22 | 10 | 22 | 105 |
+| example `quantities` | 0 | 0 | 0 | 127 |
+| example `expressions` | 0 | 0 | 0 | 127 |
+| example `citations` | 4 | 10 | 6 | 117 |
+| example `composition` | 10 | 10 | 9 | 117 |
+| example `electricity_bill` | 31 | 26 | 31 | 96 |
+| example `tracing` | 10 | 10 | 9 | 117 |
+| example `rounding_and_conditionals` | 27 | 20 | 27 | 100 |
+| example `constraints` | 26 | 20 | 26 | 101 |
+| example `lookup_tables` | 26 | 20 | 26 | 101 |
+| example `methods_and_overlays` | 58 | 39 | 58 | 69 |
+| example `statistics` | 20 | 35 | 35 | 92 |
+| example `series` | 15 | 15 | 15 | 112 |
+| example `records` | 25 | 25 | 25 | 102 |
+| example `opaque_and_retry` | 93 | 96 | 121 | 6 |
+| example `display` | 15 | 17 | 17 | 110 |
+| the gallery generator | 29 | 27 | 29 | 98 |
 
 <!-- /census:examples -->
 
@@ -194,27 +194,27 @@ fixtures; the fit over every size is below.
 
 | formula | numerator bits | denominator bits | intermediate bits | unsigned bits | headroom |
 |---|---|---|---|---|---|
-| fixture A: mean, variance, range | 20 | 27 | 27 | 0 | 36 |
-| fixture B: mean, variance, range | 20 | 32 | 32 | 0 | 31 |
-| fixture C: mean, variance, range | 20 | 20 | 17 | 0 | 43 |
-| fixture D: mean, variance, range | 20 | 22 | 22 | 0 | 41 |
-| fixture E: mean, variance, range | 20 | 20 | 6 | 0 | 43 |
-| fixture F: mean, variance, range | 20 | 22 | 22 | 0 | 41 |
-| fixture A: rejection, 6 % of the mean | 12 | 21 | 21 | 0 | 42 |
-| fixture B: rejection, 7/4 standard deviations | 18 | 35 | 35 | 0 | 28 |
-| fixture B: rejection, gap to range 9/20 | 14 | 16 | 16 | 0 | 47 |
-| fixture A: spread at 2 dp | 20 | 27 | 27 | 19 | 36 |
-| fixture A: spread at 3 dp | 20 | 27 | 27 | 26 | 36 |
-| fixture A: spread at 4 dp | 20 | 27 | 27 | 33 | 36 |
-| fixture A: spread at 6 dp | 21 | 29 | 29 | 46 | 34 |
-| fixture F: exact root at 0 dp | 20 | 22 | 22 | 0 | 41 |
-| passing from the cumulative retained, 5 screens | 17 | 10 | 17 | 0 | 46 |
-| interpolation along a 5-point grading curve | 13 | 12 | 13 | 0 | 50 |
-| 20 masses at 3 dp: mean, variance, range | 25 | 45 | 45 | 0 | 18 |
-| 64-point grading curve: cumulative percentages, one reading | 26 | 24 | 26 | 0 | 37 |
-| 20 masses at 3 dp: spread at 3 dp | 25 | 45 | 48 | 40 | 15 |
-| least squares, the 4-point fixture: slope and intercept | 11 | 17 | 17 | 0 | 46 |
-| least squares, 5 points on distinct denominators (stress control) | 21 | 20 | 21 | 0 | 42 |
+| fixture A: mean, variance, range | 20 | 27 | 27 | 0 | 100 |
+| fixture B: mean, variance, range | 20 | 32 | 32 | 0 | 95 |
+| fixture C: mean, variance, range | 20 | 20 | 17 | 0 | 107 |
+| fixture D: mean, variance, range | 20 | 22 | 22 | 0 | 105 |
+| fixture E: mean, variance, range | 20 | 20 | 6 | 0 | 107 |
+| fixture F: mean, variance, range | 20 | 22 | 22 | 0 | 105 |
+| fixture A: rejection, 6 % of the mean | 12 | 21 | 21 | 0 | 106 |
+| fixture B: rejection, 7/4 standard deviations | 18 | 35 | 35 | 0 | 92 |
+| fixture B: rejection, gap to range 9/20 | 14 | 16 | 16 | 0 | 111 |
+| fixture A: spread at 2 dp | 20 | 27 | 27 | 19 | 100 |
+| fixture A: spread at 3 dp | 20 | 27 | 27 | 26 | 100 |
+| fixture A: spread at 4 dp | 20 | 27 | 27 | 33 | 100 |
+| fixture A: spread at 6 dp | 21 | 29 | 29 | 46 | 98 |
+| fixture F: exact root at 0 dp | 20 | 22 | 22 | 0 | 105 |
+| passing from the cumulative retained, 5 screens | 17 | 10 | 17 | 0 | 110 |
+| interpolation along a 5-point grading curve | 13 | 12 | 13 | 0 | 114 |
+| 20 masses at 3 dp: mean, variance, range | 25 | 45 | 45 | 0 | 82 |
+| 64-point grading curve: cumulative percentages, one reading | 26 | 24 | 26 | 0 | 101 |
+| 20 masses at 3 dp: spread at 3 dp | 25 | 45 | 48 | 40 | 79 |
+| least squares, the 4-point fixture: slope and intercept | 11 | 17 | 17 | 0 | 110 |
+| least squares, 5 points on distinct denominators (stress control) | 21 | 20 | 21 | 0 | 106 |
 
 <!-- /census:statistics -->
 
@@ -229,15 +229,15 @@ overflow left.
 
 | formula | resolution | overflowed | least headroom |
 |---|---|---|---|
-| variance | 4 dp | 0 of 1000 | 11 |
-| variance | 5 dp | 0 of 1000 | 4 |
-| variance | 6 dp | 423 of 1000 | 0 |
-| rejection by 7/4 standard deviations | 4 dp | 0 of 1000 | 7 |
-| rejection by 7/4 standard deviations | 5 dp | 0 of 1000 | 0 |
-| rejection by 7/4 standard deviations | 6 dp | 897 of 1000 | 0 |
-| rejection by 6 % of the mean | 4 dp | 0 of 1000 | 33 |
-| rejection by 6 % of the mean | 5 dp | 0 of 1000 | 29 |
-| rejection by 6 % of the mean | 6 dp | 0 of 1000 | 26 |
+| variance | 4 dp | 0 of 1000 | 75 |
+| variance | 5 dp | 0 of 1000 | 68 |
+| variance | 6 dp | 0 of 1000 | 62 |
+| rejection by 7/4 standard deviations | 4 dp | 0 of 1000 | 71 |
+| rejection by 7/4 standard deviations | 5 dp | 0 of 1000 | 64 |
+| rejection by 7/4 standard deviations | 6 dp | 0 of 1000 | 58 |
+| rejection by 6 % of the mean | 4 dp | 0 of 1000 | 97 |
+| rejection by 6 % of the mean | 5 dp | 0 of 1000 | 93 |
+| rejection by 6 % of the mean | 6 dp | 0 of 1000 | 90 |
 
 <!-- /census:resolution -->
 
@@ -261,10 +261,10 @@ literals, and `census.exact-sizes` holds these figures:
 <!-- census:exact -->
 
 ```text
-six masses near 40 g at 4 dp: the exact variance does not fit 64 bits in 0 of 1000 in kg2 (SI), in 0 of 1000 in g2 (declared; widest 32 bits)
-six masses near 40 g at 5 dp: the exact variance does not fit 64 bits in 0 of 1000 in kg2 (SI), in 0 of 1000 in g2 (declared; widest 39 bits)
-six masses near 40 g at 6 dp: the exact variance does not fit 64 bits in 374 of 1000 in kg2 (SI), in 0 of 1000 in g2 (declared; widest 45 bits)
-4F / (pi * d^2), F = 89.3 kN, d = 101 to 163 mm: in Pa (SI) the exact strength needs 64 bits, more than a signed 64-bit integer's 63, at d = 101 (64 bits), 103 (64 bits), 107 (64 bits), 109 (64 bits), 113 (64 bits), 119 (64 bits), 121 (64 bits), 127 (64 bits), 131 (64 bits), 137 (64 bits), 139 (64 bits), 143 (64 bits), 149 (64 bits), 151 (64 bits), 157 (64 bits), 161 (64 bits), 163 (64 bits)
+six masses near 40 g at 4 dp: the exact variance does not fit 128 bits in 0 of 1000 in kg2 (SI; widest 52 bits), in 0 of 1000 in g2 (declared; widest 32 bits)
+six masses near 40 g at 5 dp: the exact variance does not fit 128 bits in 0 of 1000 in kg2 (SI; widest 59 bits), in 0 of 1000 in g2 (declared; widest 39 bits)
+six masses near 40 g at 6 dp: the exact variance does not fit 128 bits in 0 of 1000 in kg2 (SI; widest 65 bits), in 0 of 1000 in g2 (declared; widest 45 bits)
+4F / (pi * d^2), F = 89.3 kN, d = 101 to 163 mm: in Pa (SI) the exact strength does not fit 128 bits at 0 of 63 (widest 64 bits)
 4F / (pi * d^2), F = 89.3 kN, d = 101 to 163 mm: in MPa (declared) it does not fit at 0 of 63 (widest 44 bits)
 ```
 
@@ -280,8 +280,8 @@ load of 89.3 kN:
 
 | formula | overflows at d = | refused at | least headroom otherwise |
 |---|---|---|---|
-| area, pi * d^2 / 4 (the expressions example) | none | -- | 15 |
-| strength, 4F / (pi * d^2), F = 89.3 kN, in MPa (the methods example's cylinder) | 101, 103, 107, 109, 113, 119, 121, 127, 131, 137, 139, 143, 149, 151, 157, 161, 163 mm | 4F / (pi * d^2) | 0 |
+| area, pi * d^2 / 4 (the expressions example) | none | -- | 79 |
+| strength, 4F / (pi * d^2), F = 89.3 kN, in MPa (the methods example's cylinder) | none | -- | 63 |
 
 <!-- /census:cylinder -->
 
@@ -334,11 +334,11 @@ figure there says nothing of how close the fit came to its 256 bits.
 
 | data (invented) | sizes that overflow | first to overflow | least headroom otherwise |
 |---|---|---|---|
-| readings at 1 dp (realistic) | 0 of 127 | none | 29 |
-| readings at 3 dp near 2410 N, a load cell's (realistic) | 57 of 127 | 34 points | 0 |
-| a different denominator on every point (stress control) | 114 of 127 | 15 points | 2 |
-| the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic) | 0 of 127 | none | 41 |
-| the slope rounded to 4 dp by rounded_output: a different denominator on every point (stress control) | 71 of 127 | 58 points | 48 |
+| readings at 1 dp (realistic) | 0 of 127 | none | 93 |
+| readings at 3 dp near 2410 N, a load cell's (realistic) | 0 of 127 | none | 54 |
+| a different denominator on every point (stress control) | 101 of 127 | 28 points | 6 |
+| the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic) | 0 of 127 | none | 105 |
+| the slope rounded to 4 dp by rounded_output: a different denominator on every point (stress control) | 71 of 127 | 58 points | 112 |
 
 <!-- /census:least-squares -->
 
@@ -375,10 +375,10 @@ headroom figure to print, and none is implied.
 
 | data (invented) | exact route: sizes that overflow | first | rounded route: sizes that overflow | first |
 |---|---|---|---|---|
-| a line through readings at 3 dp near 2410 N (realistic) | 99 of 127 | 29 points | 0 of 127 | none |
-| a line through readings at 4 dp near 2410 mm (realistic) | 122 of 127 | 7 points | 0 of 127 | none |
-| a line through a different denominator on every point (stress control) | 118 of 127 | 11 points | 66 of 127 | 62 points |
-| two regressors: readings at 3 dp and a temperature at 1 dp in degrees Celsius (realistic) | 100 of 126 | 29 points | 0 of 126 | none |
+| a line through readings at 3 dp near 2410 N (realistic) | 0 of 127 | none | 0 of 127 | none |
+| a line through readings at 4 dp near 2410 mm (realistic) | 0 of 127 | none | 0 of 127 | none |
+| a line through a different denominator on every point (stress control) | 107 of 127 | 22 points | 66 of 127 | 62 points |
+| two regressors: readings at 3 dp and a temperature at 1 dp in degrees Celsius (realistic) | 0 of 126 | none | 0 of 126 | none |
 
 <!-- /census:regression -->
 

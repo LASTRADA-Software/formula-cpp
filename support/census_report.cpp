@@ -23,12 +23,12 @@ struct ReportAtExit
     {
         using formula::detail::CensusRole;
         std::println("overflow census: numerator {} bits, denominator {} bits, intermediate {} bits, unsigned {} "
-                     "bits; headroom {} of 63",
+                     "bits; headroom {} of 127",
                      formula_census::bits_used(CensusRole::Numerator),
                      formula_census::bits_used(CensusRole::Denominator),
                      formula_census::bits_used(CensusRole::Intermediate),
                      formula_census::bits_used(CensusRole::Unsigned),
-                     63 - formula_census::signed_bits_used());
+                     127 - formula_census::signed_bits_used());
         std::fflush(stdout);
     }
 };

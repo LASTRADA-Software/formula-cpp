@@ -342,7 +342,7 @@ TEST_CASE("the trace keeps the rows as judged, even if the check is changed afte
 TEST_CASE("a limit whose conversion fails makes its element invalid, on either side", "[conformity]")
 {
     // A kilometre limit near Rational's limit overflows reading into metres.
-    constexpr auto huge = limit(rat(std::numeric_limits<std::int64_t>::max()));
+    constexpr auto huge = limit(formula::Rational { std::numeric_limits<formula::Rational::Int>::max() });
     constexpr auto one = formula::environment(formula::measured_series<Opening>(formula::Measured<Opening> { rat(127) }));
     constexpr auto lowerSide = formula::check_conformity(
         formula::conformity<unit::Kilometre>(
@@ -354,6 +354,20 @@ TEST_CASE("a limit whose conversion fails makes its element invalid, on either s
         one);
     STATIC_REQUIRE(lowerSide[0] == ConstraintOutcome::invalid(formula::ArithmeticError::Overflow));
     STATIC_REQUIRE(upperSide[0] == ConstraintOutcome::invalid(formula::ArithmeticError::Overflow));
+
+    // The largest 64-bit number of kilometres reads into metres, and 127 mm
+    // is below it: under it as a lower bound, inside it as an upper one.
+    constexpr auto huge64 = limit(rat(std::numeric_limits<std::int64_t>::max()));
+    constexpr auto lowerSide64 = formula::check_conformity(
+        formula::conformity<unit::Kilometre>(
+            formula::series<Opening, 1>, formula::Envelope<1> { LimitRow { huge64, unbounded } }, reject),
+        one);
+    constexpr auto upperSide64 = formula::check_conformity(
+        formula::conformity<unit::Kilometre>(
+            formula::series<Opening, 1>, formula::Envelope<1> { LimitRow { unbounded, huge64 } }, reject),
+        one);
+    STATIC_REQUIRE(lowerSide64[0] == ConstraintOutcome::violated(reject));
+    STATIC_REQUIRE(upperSide64[0] == ConstraintOutcome::satisfied());
 }
 
 TEST_CASE("a loader builds an envelope from rows read at run time, its count checked", "[conformity]")

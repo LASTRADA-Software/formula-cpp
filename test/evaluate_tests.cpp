@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -296,16 +297,24 @@ TEST_CASE("evaluate: a value in a different unit converts exactly", "[evaluate]"
 TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[evaluate]")
 {
     // Anything above the square root of the representable range cannot be
-    // squared: sqrt(INT64_MAX) is about 3.04e9, so 4e9 divided by 1/4e9 -- a
-    // cross-reduction-proof 1.6e19 -- overflows outright. (3e9 does not: see
-    // the companion test below, which pins exactly where the edge is.)
-    constexpr std::int64_t huge = 4'000'000'000LL;
-    auto const big =
-        formula::environment(formula::Measured<WaterVolume> { rat(huge) }, formula::Measured<CementVolume> { rat(1, huge) });
+    // squared: sqrt(2^127) is about 1.3e19, so 2e19 divided by 1/2e19 -- a
+    // cross-reduction-proof 4e38 -- overflows outright.
+    constexpr formula::Rational::Int huge = formula::Rational::Int { 10'000'000'000'000'000'000ULL } * 2;
+    auto const big = formula::environment(formula::Measured<WaterVolume> { formula::Rational { huge } },
+                                          formula::Measured<CementVolume> { formula::Rational { 1, huge } });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, big);
 
     REQUIRE_FALSE(computed.has_value());
     CHECK(computed.error() == formula::ArithmeticError::Overflow);
+
+    // 4e9 over 1/4e9, which overflowed 64 bits, is 1.6e19.
+    constexpr std::int64_t huge64 = 4'000'000'000LL;
+    auto const big64 = formula::environment(formula::Measured<WaterVolume> { rat(huge64) },
+                                            formula::Measured<CementVolume> { rat(1, huge64) });
+    auto const computed64 = formula::checked_evaluate<Ratio>(ratio, big64);
+    REQUIRE(computed64.has_value());
+    REQUIRE(computed64->is_value());
+    CHECK(computed64->measurement().value() == formula::Rational { formula::Rational::Int { huge64 } * huge64 });
 }
 
 TEST_CASE("evaluate: the double representation still reports an overflow from the leaf conversion", "[evaluate]")
@@ -313,10 +322,11 @@ TEST_CASE("evaluate: the double representation still reports an overflow from th
     // RepTraits<double>'s own arithmetic cannot overflow (the doc comment
     // above it says so), but detail::in_si converts every leaf in exact
     // Rational before handing it to RepTraits<Rep>::from, and that conversion
-    // can overflow on its own -- IntMax kilometres times a magnitude of 1000
-    // overflows the exact multiply long before any double arithmetic runs.
-    constexpr std::int64_t huge = formula::detail::IntMax;
-    auto const farInputs = formula::environment(formula::Measured<DistanceInKilometre> { rat(huge) });
+    // can overflow on its own -- the largest Rational::Int of kilometres times
+    // a magnitude of 1000 overflows the exact multiply long before any double
+    // arithmetic runs.
+    constexpr formula::Rational::Int huge = std::numeric_limits<formula::Rational::Int>::max();
+    auto const farInputs = formula::environment(formula::Measured<DistanceInKilometre> { formula::Rational { huge } });
     auto const computed = formula::checked_evaluate_si<double>(var<DistanceInKilometre>, farInputs);
 
     REQUIRE_FALSE(computed.has_value());

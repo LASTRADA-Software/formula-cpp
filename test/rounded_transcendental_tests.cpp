@@ -127,12 +127,13 @@ TEST_CASE("rounded_transcendental: an exponential too large to hold is Overflow"
 {
     // exp 50 = 5.18 * 10^21: past the early bound.
     STATIC_REQUIRE(expAt<DecimalPlaces { 6 }, RoundingMode::HalfAwayFromZero>(Rational { 50 }) == overflow);
-    // exp 43.7 = 9.52 * 10^18: through the kernel. Floor to whole 10^18s keeps 9 * 10^18, which fits;
-    // the nearest modes give 10^19, which does not.
+    // exp 43.7 = 9.52 * 10^18: through the kernel. Floor to whole 10^18s keeps 9 * 10^18; the nearest
+    // modes give 10^19, which overflowed 64 bits and fits 128.
     CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 437, 10 }) == Rational { 9'000'000'000'000'000'000 });
-    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::HalfAwayFromZero>(Rational { 437, 10 }) == overflow);
-    // exp 44 = 1.29 * 10^19 fits at no places.
-    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 44 }) == overflow);
+    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::HalfAwayFromZero>(Rational { 437, 10 })
+          == Rational { 10'000'000'000'000'000'000ULL });
+    // exp 44 = 1.29 * 10^19, which fitted at no places in 64 bits, floors to 12 * 10^18.
+    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 44 }) == Rational { 12'000'000'000'000'000'000ULL });
     // exp 43 = 4727839468229346561.47...: whole, it fits.
     CHECK(expAt<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 43 })
           == Rational { 4'727'839'468'229'346'561 });
@@ -206,8 +207,9 @@ TEST_CASE("rounded_transcendental: a value a double cannot tell from a boundary 
     CHECK(log10At<DecimalPlaces { 17 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 })
           == Rational::from_decimal(1'799'999'999'999'999'999, -17));
     CHECK(log10At<DecimalPlaces { 17 }, RoundingMode::HalfEven>(Rational { 999'999'999'999'999'999 }) == Rational { 18 });
-    // At 18 places the result, 1.8 * 10^19 in units of 10^-18, does not fit a Rational.
-    CHECK(log10At<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 }) == overflow);
+    // At 18 places the result, 1.8 * 10^19 in units of 10^-18, overflowed 64 bits; it fits 128.
+    CHECK(log10At<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 })
+          == Rational { 17'999'999'999'999'999'999ULL, 1'000'000'000'000'000'000 });
 }
 
 TEST_CASE("rounded_transcendental: a rounding the kernel cannot decide is Overflow", "[rounded_transcendental]")

@@ -219,6 +219,7 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
 {
     constexpr std::array<int, 9> placesTried { -2, -1, 0, 1, 2, 4, 9, 17, 18 };
     std::size_t compared = 0;
+    std::size_t undecided = 0;
     for (Reference const& row: references)
     {
         INFO("row " << row.numerator << "/" << row.denominator);
@@ -233,14 +234,27 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
             for (RoundingMode const roundingMode: everyMode)
             {
                 INFO("places " << places << ", mode " << formula::describe(roundingMode));
-                CHECK(
-                    detail::decide_rounding(enclosure->lower, enclosure->upper, DecimalPlaces { places }, roundingMode)
-                    == detail::decide_rounding(referenceEnds[0], referenceEnds[1], DecimalPlaces { places }, roundingMode));
+                std::expected<Rational, formula::ArithmeticError> const decided =
+                    detail::decide_rounding(enclosure->lower, enclosure->upper, DecimalPlaces { places }, roundingMode);
+                std::expected<Rational, formula::ArithmeticError> const referenceDecided =
+                    detail::decide_rounding(referenceEnds[0], referenceEnds[1], DecimalPlaces { places }, roundingMode);
+                // Where the kernel's enclosure is too wide to place the value on one side of a boundary
+                // the tighter reference can, it says Overflow, never a guess.
+                if (!decided.has_value() && referenceDecided.has_value())
+                {
+                    CHECK(decided.error() == formula::ArithmeticError::Overflow);
+                    ++undecided;
+                }
+                else
+                    CHECK(decided == referenceDecided);
                 ++compared;
             }
     }
     // 39 rows, 9 places, 7 modes: a loop over nothing fails here.
     REQUIRE(compared == 2457);
+    // Counted: the exponentials of 43, 43.7 and 44 at 17 and 18 places, whose kept integers 128 bits
+    // hold and whose 37th significant digit the kernel's enclosure cannot settle.
+    CHECK(undecided == 38);
     // Three of them written out, so that a reader sees the digits.
     CHECK(kernel_rounding(Transcendental::NaturalLogarithm, Rational { 2 }, 18, RoundingMode::Floor)
           == Rational::from_decimal(693'147'180'559'945'309, -18));

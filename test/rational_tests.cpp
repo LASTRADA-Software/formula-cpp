@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rounding.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <compare>
+#include <cstdint>
 #include <limits>
 #include <optional>
+#include <type_traits>
 
 using formula::ArithmeticError;
 using formula::ArithmeticException;
@@ -13,8 +17,12 @@ using formula::Rational;
 
 namespace
 {
-constexpr Rational::Int IntMax = formula::detail::IntMax;
-constexpr Rational::Int IntMin = formula::detail::IntMin;
+// The bounds of `Rational::Int`, 2^127 - 1 and -2^127.
+constexpr Rational::Int IntMax = std::numeric_limits<Rational::Int>::max();
+constexpr Rational::Int IntMin = std::numeric_limits<Rational::Int>::min();
+// The bounds of a 64-bit integer, which a `Rational` once stopped at.
+constexpr std::int64_t Int64Max = std::numeric_limits<std::int64_t>::max();
+constexpr std::int64_t Int64Min = std::numeric_limits<std::int64_t>::min();
 
 /// Builds a Rational in a constant expression, asserting success.
 consteval Rational exact(Rational::Int numerator, Rational::Int denominator)
@@ -50,6 +58,8 @@ static_assert(!Rational::make(1, 0).has_value());
 static_assert(Rational::make(1, 0).error() == ArithmeticError::DivisionByZero);
 static_assert(!Rational::make(IntMin, -1).has_value());
 static_assert(Rational::make(IntMin, -1).error() == ArithmeticError::Overflow);
+// The 64-bit minimum over -1 is 2^63, which 128 bits hold.
+static_assert(Rational::make(Int64Min, -1) == Rational { std::uint64_t { 1 } << 63 });
 
 static_assert(Rational { 0 }.is_zero());
 static_assert(Rational { 3 }.is_integer());
@@ -67,6 +77,7 @@ static_assert(Rational::from_decimal(3, 2) == Rational { 300 });
 static_assert(Rational::from_decimal(0, -5) == Rational { 0 });
 static_assert(!Rational::from_decimal(1, -19).has_value());
 static_assert(!Rational::from_decimal(IntMax, 1).has_value());
+static_assert(Rational::from_decimal(Int64Max, 1) == Rational { Rational::Int { Int64Max } * 10 });
 
 // ---- exact binary conversion ----
 
@@ -76,6 +87,12 @@ static_assert(Rational::from_double_exact(0.0) == Rational { 0 });
 static_assert(Rational::from_double_exact(3.0) == Rational { 3 });
 // 0.1 is not a dyadic rational, so the exact value is NOT 1/10.
 static_assert(Rational::from_double_exact(0.1)->denominator() != 10);
+// 2^100 and 2^-100 need more than 64 bits, and fewer than 128.
+static_assert(Rational::from_double_exact(0x1p100) == Rational { Rational::Int { 1 } << 100 });
+static_assert(Rational::from_double_exact(0x1p-100) == exact(1, Rational::Int { 1 } << 100));
+// 2^127 and 2^-127 do not fit.
+static_assert(Rational::from_double_exact(0x1p127).error() == ArithmeticError::Overflow);
+static_assert(Rational::from_double_exact(0x1p-127).error() == ArithmeticError::Overflow);
 
 // ---- ordering ----
 
@@ -195,7 +212,9 @@ static_assert(!formula::checked_div(Rational { 1 }, Rational { 0 }).has_value())
 static_assert(formula::checked_div(Rational { 1 }, Rational { 0 }).error() == ArithmeticError::DivisionByZero);
 static_assert(!formula::checked_add(Rational { IntMax }, Rational { 1 }).has_value());
 static_assert(formula::checked_add(Rational { IntMax }, Rational { 1 }).error() == ArithmeticError::Overflow);
-static_assert(!formula::checked_pow(Rational { 10 }, 19).has_value());
+// 10^19 is past 64 bits and well inside 128; 10^39 is past 2^127.
+static_assert(formula::checked_pow(Rational { 10 }, 19) == Rational { Rational::Int { 1000000000000000000 } * 10 });
+static_assert(!formula::checked_pow(Rational { 10 }, 39).has_value());
 
 // Cross-reduction must make this succeed: the naive product of the numerators
 // would overflow, but the canonical result is simply 1.
@@ -323,15 +342,11 @@ TEST_CASE("addition is conservative at the extreme edge of the range", "[rationa
     // in principle perform.
     //
     // This is the safe direction to be wrong in: a reported failure, never a
-    // wrong number. Measured over 473984 operand pairs against 128-bit ground
-    // truth, it never occurs for numerators below ~10^6, which covers every
-    // realistic use. Removing the limitation needs 128-bit intermediates, and
-    // MSVC has no __int128.
-    //
-    // If a future change adds wide intermediates, this test is the one to flip.
-    Rational const large = *Rational::make(IntMax, 3037000500);
+    // wrong number.
+    auto const large = Rational::make(IntMax, 3037000500);
+    REQUIRE(large.has_value());
 
-    auto const sum = formula::checked_add(large, large);
+    auto const sum = formula::checked_add(*large, *large);
     REQUIRE_FALSE(sum.has_value());
     CHECK(sum.error() == ArithmeticError::Overflow);
 
@@ -340,6 +355,13 @@ TEST_CASE("addition is conservative at the extreme edge of the range", "[rationa
     auto const representable = Rational::make(IntMax, 1518500250);
     REQUIRE(representable.has_value());
 
+    // The same sum at the 64-bit bound, which 64 bits refused, is exact.
+    auto const large64 = Rational::make(Int64Max, 3037000500);
+    REQUIRE(large64.has_value());
+    auto const sum64 = formula::checked_add(*large64, *large64);
+    REQUIRE(sum64.has_value());
+    CHECK(*sum64 == Rational { Int64Max, 1518500250 });
+
     // Multiplication, by contrast, cross-reduces and does succeed where the
     // canonical result fits -- the two paths differ by design, not by accident.
     auto const product = formula::checked_mul(*Rational::make(IntMax, 3), *Rational::make(3, IntMax));
@@ -347,12 +369,15 @@ TEST_CASE("addition is conservative at the extreme edge of the range", "[rationa
     CHECK(*product == Rational { 1 });
 }
 
-TEST_CASE("integer types that cannot wrap still convert implicitly", "[rational]")
+TEST_CASE("every built-in integer type converts implicitly and exactly", "[rational]")
 {
-    // The companion to negative/rational_from_wide_unsigned.cpp. That case pins
-    // what must NOT compile; this pins what must continue to. Before the
-    // constructor was constrained, a wide unsigned value converted by modular
-    // wraparound and SIZE_MAX became -1 silently.
+    // A 64-bit unsigned value is exact too: `std::uint64_t { 1 } << 63` is
+    // 2^63, and the largest is 2^64 - 1, never a negative number.
+    Rational const fromWideUnsigned = std::uint64_t { 1 } << 63;
+    Rational const fromLargestUnsigned = std::numeric_limits<std::uint64_t>::max();
+    CHECK(fromWideUnsigned == Rational { Rational::Int { 1 } << 63 });
+    CHECK(fromLargestUnsigned == Rational { (Rational::Int { 1 } << 64) - 1 });
+    CHECK(fromLargestUnsigned.sign() == 1);
     Rational const fromInt = 450;
     Rational const fromUnsigned = 450U;
     Rational const fromLong = 450L;
@@ -401,15 +426,18 @@ TEST_CASE("rational: a root outside the domain is refused", "[rational]")
 
 TEST_CASE("rational: a root near the integer limit is found, not overflowed past", "[rational]")
 {
-    // 3037000000^2 = 9223369000000000000, an exact square a whisker under
-    // IntMax (within 0.00004% of it). The search starts with candidates whose
-    // square vastly exceeds what Int can hold, so it must detect that overflow
-    // and narrow down toward the true root -- never let an intermediate
-    // product silently exceed the target and send the search the wrong way,
-    // which would report this exact root as Inexact instead of finding it.
-    // Measured: dropping the early-abort guard in exact_integer_root makes
-    // this exact case come back Inexact, which is precisely the bug this
-    // test exists to catch.
+    // 13043817825332782212^2 is the largest exact square below IntMax. The
+    // search starts with candidates whose square vastly exceeds what Int can
+    // hold, so it must detect that overflow and narrow down toward the true
+    // root -- never let an intermediate product silently exceed the target and
+    // send the search the wrong way, which would report this exact root as
+    // Inexact instead of finding it. Dropping the early-abort guard in
+    // exact_integer_root makes such a case come back Inexact, which is
+    // precisely the bug this test exists to catch.
+    constexpr Rational::Int largestRoot { 13043817825332782212ULL };
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { largestRoot * largestRoot }, 2).value()
+                   == formula::Rational { largestRoot });
+    // 3037000000^2 = 9223369000000000000, a whisker under the 64-bit maximum.
     STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 9223369000000000000LL }, 2).value()
                    == formula::Rational { 3037000000LL });
 
@@ -421,14 +449,19 @@ TEST_CASE("rational: a root near the integer limit is found, not overflowed past
 
 TEST_CASE("rational: the root of the extreme negative is refused rather than overflowed to", "[rational]")
 {
-    // IntMin has no positive counterpart representable in Int: its magnitude is
-    // IntMax + 1. Negating the numerator to reach a positive intermediate is
-    // signed overflow, undefined behaviour, even though the true cube root
-    // (-2^21) is representable. This must come back Overflow, not Inexact and
-    // not a value.
+    // IntMin, -2^127, has no positive counterpart representable in Int: its
+    // magnitude is IntMax + 1. Negating the numerator to reach a positive
+    // intermediate breaks Int's contract, even though the true 127th root
+    // (-2) is representable. This must come back Overflow, not Inexact and
+    // not a value, at every degree.
     constexpr formula::Rational::Int extremeNegative = std::numeric_limits<formula::Rational::Int>::min();
     STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { extremeNegative }, 3).error()
                    == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { extremeNegative }, 127).error()
+                   == formula::ArithmeticError::Overflow);
+    // 2^64 is a numerator now, and its 64th root is exactly 2.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { Rational::Int { 1 } << 64 }, 64).value()
+                   == formula::Rational { 2 });
 }
 
 TEST_CASE("rational: a pathologically large degree is refused quickly, not searched for", "[rational]")
@@ -485,4 +518,45 @@ TEST_CASE("a Rational::Int is built from a magnitude, or refused when it does no
                    == std::optional<formula::Rational::Int> { std::numeric_limits<formula::Rational::Int>::min() });
     STATIC_REQUIRE(rational_int_from_magnitude(formula::detail::u128_add(largestMagnitude, UInt128::from_u64(1)), false)
                    == std::nullopt);
+}
+
+TEST_CASE("a Rational holds 128-bit numerators and denominators", "[rational]")
+{
+    using formula::Int128;
+    using formula::Rational;
+    constexpr Int128 largest = std::numeric_limits<Int128>::max();
+    constexpr Int128 smallest = std::numeric_limits<Int128>::min();
+    STATIC_REQUIRE(std::is_same_v<Rational::Int, Int128>);
+    // The minimum is a numerator; its negation, absolute value and
+    // reciprocal are not representable, and are refused.
+    constexpr auto lowest = Rational::make(smallest, 1);
+    STATIC_REQUIRE(lowest.has_value());
+    STATIC_REQUIRE(lowest->numerator() == smallest);
+    STATIC_REQUIRE(formula::checked_negate(*lowest).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_abs(*lowest).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_reciprocal(*lowest).error() == formula::ArithmeticError::Overflow);
+    // One past the largest is refused where the 64-bit sum used to be.
+    STATIC_REQUIRE(formula::checked_add(Rational { largest }, Rational { 1 }).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_add(Rational { std::numeric_limits<std::int64_t>::max() }, Rational { 1 }).has_value());
+}
+
+TEST_CASE("the longest numbers a Rational holds are spelled in full", "[rational][number-text]")
+{
+    using formula::Int128;
+    using formula::Rational;
+    constexpr Int128 largest = std::numeric_limits<Int128>::max();
+    auto const lowest = Rational::make(std::numeric_limits<Int128>::min(), 1);
+    auto const nearOne = Rational::make(largest, largest - 1);
+    auto const third = Rational::make(largest, 3);
+    REQUIRE(lowest.has_value());
+    REQUIRE(nearOne.has_value());
+    REQUIRE(third.has_value());
+    auto const lowestText = formula::fraction_text(*lowest);
+    CHECK(lowestText.view() == "-170141183460469231731687303715884105728");
+    auto const nearOneText = formula::fraction_text(*nearOne);
+    CHECK(nearOneText.view() == "170141183460469231731687303715884105727/170141183460469231731687303715884105726");
+    auto const thirdOfLargest = formula::checked_decimal_text(
+        *third, formula::DecimalPlaces { 18 }, formula::RoundingMode::HalfEven, formula::DecimalPadding::Trimmed);
+    REQUIRE(thirdOfLargest.has_value());
+    CHECK(thirdOfLargest->view() == "56713727820156410577229101238628035242.333333333333333333");
 }

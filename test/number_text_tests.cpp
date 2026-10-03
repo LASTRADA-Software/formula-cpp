@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <expected>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -30,8 +31,11 @@ namespace unit = formula::unit;
 
 namespace
 {
-inline constexpr Rational::Int IntMax = formula::detail::IntMax;
-inline constexpr Rational::Int IntMin = formula::detail::IntMin;
+// The bounds of `Rational::Int`, 2^127 - 1 and -2^127.
+inline constexpr Rational::Int IntMax = std::numeric_limits<Rational::Int>::max();
+inline constexpr Rational::Int IntMin = std::numeric_limits<Rational::Int>::min();
+// The largest 64-bit integer, which a `Rational` once stopped at.
+inline constexpr std::int64_t Int64Max = std::numeric_limits<std::int64_t>::max();
 
 /// A quantity in kilojoules: a unit with a symbol, `kJ`, and one declared
 /// decimal, which the padded cases below read.
@@ -115,14 +119,15 @@ TEST_CASE("an exact decimal is shown only when it is the exact value", "[number_
 
 TEST_CASE("the extremes of Rational are spelled in full", "[number_text]")
 {
-    // The magnitude of IntMin is 2^63, which Int cannot hold; the text has it.
-    STATIC_REQUIRE(formula::fraction_text(Rational { IntMin }) == "-9223372036854775808");
-    STATIC_REQUIRE(formula::fraction_text(Rational { IntMin, IntMax }) == "-9223372036854775808/9223372036854775807");
-    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { IntMin }) == "-9223372036854775808");
-    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { IntMax }) == "9223372036854775807");
+    // The magnitude of IntMin is 2^127, which Int cannot hold; the text has it.
+    STATIC_REQUIRE(formula::fraction_text(Rational { IntMin }) == "-170141183460469231731687303715884105728");
+    STATIC_REQUIRE(formula::fraction_text(Rational { IntMin, IntMax })
+                   == "-170141183460469231731687303715884105728/170141183460469231731687303715884105727");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { IntMin }) == "-170141183460469231731687303715884105728");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { IntMax }) == "170141183460469231731687303715884105727");
     STATIC_REQUIRE(
         formula::decimal_text(Rational { IntMin }, DecimalPlaces { 18 }, RoundingMode::HalfEven, DecimalPadding::Padded)
-        == "-9223372036854775808.000000000000000000");
+        == "-170141183460469231731687303715884105728.000000000000000000");
 }
 
 // ---- rounded decimals ----
@@ -190,19 +195,31 @@ TEST_CASE("a rounded decimal exists where checked_round overflows", "[number_tex
 {
     NumberText const third =
         formula::decimal_text(Rational { IntMax, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven, DecimalPadding::Padded);
-    CHECK(third.view() == "3074457345618258602.333333333333333333");
+    CHECK(third.view() == "56713727820156410577229101238628035242.333333333333333333");
     CHECK_FALSE(third.is_exact());
 
     auto const rounded = formula::checked_round(Rational { IntMax, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven);
     REQUIRE_FALSE(rounded.has_value());
     CHECK(rounded.error() == ArithmeticError::Overflow);
+
+    // The largest 64-bit integer over 3, which overflowed 64 bits, rounds:
+    // to the value its text shows.
+    auto const roundedThird64 =
+        formula::checked_round(Rational { Int64Max, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven);
+    REQUIRE(roundedThird64.has_value());
+    CHECK(*roundedThird64
+          == Rational { Rational::Int { 3074457345618258602 } * 1000000000000000000 + 333333333333333333,
+                        1000000000000000000 });
+    NumberText const third64 = formula::decimal_text(
+        Rational { Int64Max, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven, DecimalPadding::Padded);
+    CHECK(third64.view() == "3074457345618258602.333333333333333333");
 }
 
 TEST_CASE("the long division never forms ten times a remainder near IntMax", "[number_text]")
 {
     // A denominator of IntMax leaves a remainder of up to IntMax - 1, and ten
-    // times that is past 2^64: formed directly, it wraps, and
-    // (IntMax - 1)/IntMax -- 0.99999999999999999989... -- would read 0.2 to
+    // times that is past 2^128: formed directly, it wraps, and
+    // (IntMax - 1)/IntMax -- 0.999..., 38 nines and more -- would read 0.2 to
     // one place. All four values round, so none of these texts is exact;
     // Padded keeps every place, the trailing zeros included.
     Rational const nearOne { IntMax - 1, IntMax };
@@ -294,7 +311,7 @@ TEST_CASE("a rounding mode that is none of the seven is refused on a tie as chec
 
 TEST_CASE("decimal_text agrees with checked_round wherever checked_round answers", "[number_text]")
 {
-    std::array<Rational::Int, 9> const divisors { 1, 2, 3, 7, 8, 40, 125, 1000, 1024 };
+    std::array<std::int64_t, 9> const divisors { 1, 2, 3, 7, 8, 40, 125, 1000, 1024 };
     std::array<RoundingMode, 7> const roundingModes { RoundingMode::HalfAwayFromZero, RoundingMode::HalfTowardZero,
                                                       RoundingMode::HalfEven,         RoundingMode::Ceiling,
                                                       RoundingMode::Floor,            RoundingMode::TowardZero,
@@ -304,9 +321,9 @@ TEST_CASE("decimal_text agrees with checked_round wherever checked_round answers
     std::size_t compared = 0;
     std::size_t disagreements = 0;
     std::string firstDisagreement;
-    for (Rational::Int dividend = -2000; dividend <= 2000; ++dividend)
+    for (std::int64_t dividend = -2000; dividend <= 2000; ++dividend)
     {
-        for (Rational::Int const divisor: divisors)
+        for (std::int64_t const divisor: divisors)
         {
             Rational const unrounded { dividend, divisor };
             for (std::int32_t places = 0; places <= MostPlaces; ++places)
@@ -492,12 +509,20 @@ TEST_CASE("a measured value is its number then its unit's symbol", "[number_text
 
 TEST_CASE("the longest text this library spells fits its buffer", "[number_text]")
 {
-    // The marker, a sign, 19 whole digits, a point, 18 places, a space and a
-    // 16-byte symbol: 59 bytes, within the longest text the buffer is sized
-    // for.
-    NumberText const widest = formula::number_text(Measured<WidestReading> { Rational { IntMin, 3 } },
-                                                   NumberStyle::approximate_decimal(RoundingMode::HalfEven));
-    CHECK(widest.view() == "\xe2\x89\x88" "-3074457345618258602.666666666666666667 abcdefghijklmnop");
-    CHECK(widest.view().size() == 59);
-    CHECK(widest.view().size() <= formula::detail::LongestNumberText);
+    // A sign, the 39 digits of 2^127, a slash, the 39 digits of 2^127 - 1, a
+    // space and a 16-byte symbol: 97 bytes, the longest text the buffer is
+    // sized for.
+    NumberText const widest =
+        formula::number_text(Measured<WidestReading> { Rational { IntMin, IntMax } }, NumberStyle::fraction());
+    CHECK(widest.view()
+          == "-170141183460469231731687303715884105728/170141183460469231731687303715884105727 abcdefghijklmnop");
+    CHECK(widest.view().size() == formula::detail::LongestNumberText);
+
+    // The longest marked decimal -- the marker, a sign, 38 whole digits, a
+    // point, 18 places, a space and the symbol -- is 78 bytes, shorter.
+    NumberText const widestDecimal = formula::number_text(Measured<WidestReading> { Rational { IntMin, 3 } },
+                                                          NumberStyle::approximate_decimal(RoundingMode::HalfEven));
+    CHECK(widestDecimal.view()
+          == "\xe2\x89\x88" "-56713727820156410577229101238628035242.666666666666666667 abcdefghijklmnop");
+    CHECK(widestDecimal.view().size() == 78);
 }

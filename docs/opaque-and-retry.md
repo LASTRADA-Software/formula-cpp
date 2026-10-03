@@ -200,20 +200,19 @@ one point: argument outside the domain of the operation
 
 - **Overflow, never a wrong line.** The fit sums, over the points, squares
   and products of each point's coordinates about their means, and `Rational`
-  keeps each numerator and denominator in 64 bits.
+  keeps each numerator and denominator in 128 bits.
   When an exact sum does not fit, the result is `Overflow`:
 
 ```text
-fifteen distinct denominators: overflow in exact arithmetic
+twenty-seven distinct denominators: overflow in exact arithmetic
 ```
 
 **When a fit overflows depends on the data far more than on the number of
-points.** Measured on cl 19.51, clang-cl and clang++ 22.1.3, g++ 13.3 and
-g++ 14.2, with identical results on all five: integers, readings at one
-decimal place, and thirds mixed with sevenths never overflow for 2 to 128
-points; readings at three decimal places of a few thousand first overflow at
-34 points, and not at every larger size; a different denominator on every
-point overflows from 15. So there is no safe number of points to state. The
+points.** Measured on cl 19.51: integers, readings at one decimal place,
+thirds mixed with sevenths, and readings at three decimal places of a few
+thousand never overflow for 2 to 128 points; a different denominator on
+every point overflows from 28, and the example's, in millimetres, from 27.
+So there is no safe number of points to state. The
 [numeric headroom](numeric-headroom.md) page carries the fit's census over
 every size, regenerated with every build. **A fit that overflows has a
 traced answer only at a declared precision** (`rounded_output`, below), **and
@@ -263,11 +262,11 @@ round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)
   correct rounding of 19/28 mm/s, and the step's value; no number style marks
   it approximate.
 - **It answers where the exact fit overflows.** `linear_least_squares`
-  computes the fit for it in 256-bit integers, and the fifteen distinct
+  computes the fit for it in 256-bit integers, and the twenty-seven distinct
   denominators that overflow above give a slope:
 
 ```text
-fifteen distinct denominators, rounded where used: 116.232 mm/min
+twenty-seven distinct denominators, rounded where used: 122.238 mm/min
 ```
 
 - **It still refuses rather than guess.** A different denominator on every
@@ -323,10 +322,10 @@ the four.
 
 ### When the exact fractions do not fit
 
-An exact fit through fifty readings at four decimals does not fit
-`Rational`. Computed with Python's fractions, the slope is a fraction of 46
-and 54 bits, which fits, but the intercept's numerator needs 64 bits and R²
-92 bits over 92. `opaque_output` then answers `Overflow` -- for every
+An exact fit through fifty readings at eight decimals does not fit
+`Rational`. Computed with Python's fractions, the slope is a fraction of 65
+and 73 bits and the intercept of 93 and 91, which fit, but R² needs 130 bits
+over 130. `opaque_output` then answers `Overflow` -- for every
 output of the call, since its outputs answer or fail together. A formula
 that declares the precision it reports a coefficient at -- a unit, decimal
 places and a rounding mode, as `rounded<>` does -- gets the correctly
@@ -352,12 +351,12 @@ round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)
 ```
 
 ```text
-fifty readings at 4 decimals, exact: overflow in exact arithmetic
-fifty readings at 4 decimals, rounded: slope 3.1707 mm/s, intercept 2406.6455 mm, r squared 0.999996
+fifty readings at 8 decimals, exact: overflow in exact arithmetic
+fifty readings at 8 decimals, rounded: slope 3.1707 mm/s, intercept 2406.6454 mm, r squared 0.999996
 ```
 
 The slope is 3.1707 mm/s at four decimals (a floor would give 3.1706), the
-intercept 2406.6455 mm, and R² 0.999996 floored at six decimals (to nearest
+intercept 2406.6454 mm, and R² 0.999996 floored at six decimals (to nearest
 it would be 0.999997).
 
 ### R² as an acceptance

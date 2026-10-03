@@ -20,10 +20,10 @@
 /// `census_record`, which the census program defines
 /// (`support/census_tally.cpp`), so that it can say how many of the bits
 /// `Rational::Int` holds real formulas use (`docs/numeric-headroom.md`). A
-/// constant evaluation reports nothing. Without the macro -- every build but the census's --
-/// `FORMULA_CENSUS_NOTE` expands to nothing, its arguments are never
-/// evaluated, and none of the census's names exist: no call, no symbol, no
-/// cost.
+/// constant evaluation reports nothing. Without the macro -- every build but
+/// the census's -- `FORMULA_CENSUS_NOTE` expands to nothing, its arguments
+/// are never evaluated, and none of the census's names exist: no call, no
+/// symbol, no cost.
 
 #include <formula-cpp/int128.hpp>
 
@@ -57,7 +57,7 @@ inline constexpr Int IntMin = -IntMax - 1;
 #if defined(FORMULA_OVERFLOW_CENSUS)
 /// What an integer the overflow census is told of was: a numerator or a
 /// denominator handed to `Rational::make`, any other signed intermediate, or
-/// an unsigned one (`rounded_sqrt`'s, which has 64 bits to use).
+/// an unsigned one (`rounded_sqrt`'s, which has 128 bits to use).
 enum class CensusRole : std::uint8_t
 {
     Numerator,

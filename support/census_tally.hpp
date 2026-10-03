@@ -18,7 +18,7 @@ namespace formula_census
 /// bit; `rounded_sqrt`'s unsigned intermediates may use every bit.
 [[nodiscard]] int bits_used(formula::detail::CensusRole role) noexcept;
 
-/// The largest of the three signed roles' bits: what is left of 63 is the
+/// The largest of the three signed roles' bits: what is left of 127 is the
 /// headroom.
 [[nodiscard]] int signed_bits_used() noexcept;
 

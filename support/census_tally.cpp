@@ -45,10 +45,9 @@ int bits_used(formula::detail::CensusRole role) noexcept
 int signed_bits_used() noexcept
 {
     using formula::detail::CensusRole;
-    // IntMin's magnitude, 2^63, is representable as a numerator: it uses
-    // every bit there is, and no more.
+    // `Rational::Int`'s minimum, -2^127, uses every bit there is, and no more.
     return std::min(
-        63,
+        127,
         std::max(
             { bits_used(CensusRole::Numerator), bits_used(CensusRole::Denominator), bits_used(CensusRole::Intermediate) }));
 }
