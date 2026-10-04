@@ -184,7 +184,7 @@ narrow.
 - **log10:**
   - |ln(a/b)| < ln 2^127 < 89.
   - The ends lie under 254 · 0.44 + 89 + 2 < 203 units apart.
-  - The widest product, upper_ln · (M + 1), is below 2^264.
+  - The widest product, upper_ln · (M + 1), is below 2^262.
 - **exp(x):**
   - The rounded form refuses x > 887/10 with `Overflow`. 887/10 is below 128 ln 2 ≈ 88.72, which bounds the
     reduction's k by 127, and it replaces the literal 44 (`rounded_transcendental.hpp:79`).
@@ -193,9 +193,18 @@ narrow.
     - e^88 at 0 places fits;
     - e^88.5 does not fit at any allowed number of places and refuses with `Overflow`.
   - The −43 lower end stays: below it the value rounds to 0 at every allowed number of places.
-  - X = floor(|x| 2^128) comes from the widened `scaled_quotient`.
-  - The widest numerator becomes (E + 512) · 2^127 < 2^257. `decide_rounding` scales it by up to 10^18, keeping it
-    under 2^317. So `KernelLimbs` stays 12, and the comment on it states the new widths.
+  - **The exponential computes with 192 fraction bits**, not 128. Near 2^127, 128 fraction bits leave the
+    enclosure up to 2^8 last units wide, so e^45 at 18 places and e^88 at 0 places could never be decided: every
+    answer would be `Overflow`. With 192 bits the worst case is 2^-56 of a last kept unit, the margin the 64-bit
+    kernel had.
+      - ln 2 is carried to 192 bits.
+      - `TaylorTermLimit` becomes 50, since the series ends by its 43rd term.
+      - `ExponentialSlack` stays 512, since 360 is needed.
+      - The logarithms stay at 128 fraction bits.
+  - X = floor(|x| 2^192) comes from the widened `scaled_quotient`. Its error is 128 units, not 64, because k now
+    reaches 127.
+  - The widest numerator is below 2^321. `decide_rounding` scales it by up to 10^18, keeping it under 2^381. So
+    `KernelLimbs` stays 12, and the comment on it states the new widths.
 - **The file comment's derivation** is rewritten for these bounds. Every number in it is either derived there or
   pinned by a test.
 - **Cost.**
@@ -234,22 +243,24 @@ narrow.
 - the least-squares fit's widest intermediates, `docs/numeric-headroom.md:336-338`;
 - the opaque example's coefficient widths, `docs/opaque-and-retry.md:327-328`.
 
-The headroom figure already names the wrong width: it says "256-bit", but a line's fit computes in
-`regression_limbs(1)` = 12 limbs, 384 bits (`detail/least_squares_kernel.hpp:87-94`).
+The headroom page's least-squares rows come from `LinearLeastSquares::compute_exact`, which computes in
+`LinearLeastSquares::exact_limbs` = 8 limbs, 256 bits. The 12-limb kernel belongs to the fit over observations,
+which those rows do not use.
 
 **Design: the fit kernel's widest intermediate.**
 
 - The census hook (`FORMULA_CENSUS_NOTE`, `detail/checked_int.hpp`) gains a width form,
   `census_record_width(CensusRole, std::size_t bits)`.
-- The fit kernel calls it with `bit_length()` of every wide sum, centred sum and solve product it forms.
+- `LinearLeastSquares::compute_exact` calls it with `bit_length()` of every wide sum, centred sum and solve product
+  it forms.
 - The hook keeps its existing guarantee: outside the census program it expands to nothing, and its arguments are
   never evaluated.
 - The census program (`support/census_tally.cpp` and the generator of the headroom page's tables) records the
   widest value per fixture.
 - The least-squares table gains a generated column, "widest fit intermediate (of N bits)", for the rows the exact
-  kernel computes. N is generated from `regression_limbs(1) · 32`, never written by hand.
-- The hand-written "68 bits … up to 249 of the 256" sentence and the "256-bit" wording go. The prose names the
-  width through the generated table.
+  kernel computes. N is generated from `LinearLeastSquares::exact_limbs · 32`, never written by hand.
+- The hand-written "68 bits … up to 249 of the 256" sentence goes. The prose names the width through the generated
+  table.
 - `docs.numeric-headroom` already fails when the generated tables drift, so the column is pinned by that test.
 
 **Design: the opaque example's coefficients.**
