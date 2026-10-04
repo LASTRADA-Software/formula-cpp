@@ -505,8 +505,8 @@ namespace detail
     using AuthorTextSpelling = std::string (*)(std::string_view);
 
     /// @p authored as it is: `render()` writes a unit's symbol verbatim in
-    /// plain text and Markdown, and LaTeX escapes the whole unit text
-    /// afterwards (`latex_unit`).
+    /// plain text and Markdown, and LaTeX escapes each factor as it sets it
+    /// (`LatexUnitNotation`).
     [[nodiscard]] inline std::string verbatim_text(std::string_view authored)
     {
         return std::string { authored };
@@ -1324,10 +1324,10 @@ namespace detail
 /// A per-element rounding renders as `RoundNode` does, with every element's
 /// granularity in the series' order: `round(p(i), to 0/0/1 dp of %)`, and in
 /// LaTeX `\operatorname{round}_{0/-1/2\,\mathrm{mm}}(...)`. The unit clause is
-/// `RoundNode`'s: set upright and escaped in LaTeX (`detail::latex_unit`), and,
-/// for a unit with no symbol, its size in the coherent unit
-/// (`rounding_unit_text`). The mode is absent, for `RoundNode`'s reason, and
-/// appears in the trace.
+/// `RoundNode`'s (`detail::rounding_unit_in`): a symbol set upright and escaped
+/// in LaTeX, and, for a unit with no symbol, its size in the coherent unit,
+/// grouped in LaTeX, `0/2\,(1/1000\,\mathrm{kg})`. The mode is absent, for
+/// `RoundNode`'s reason, and appears in the trace.
 template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render_node(ElementwiseRoundNode<U, Places, Mode, S> const& node, V const& vocabulary)
 {

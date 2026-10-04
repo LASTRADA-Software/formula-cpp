@@ -513,6 +513,10 @@ TEST_CASE("render: a rounding in a unit with no symbol names that unit by its si
               formula::rounded_to_digits<UnlabelledGram, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfEven>(
                   var<UnlabelledWeight>))
           == "round(w, to 3 sf of 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(
+              formula::rounded_to_digits<UnlabelledGram, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledWeight>))
+          == "\\operatorname{round}_{3\\mathrm{sf},\\,(1/1000\\,\\mathrm{kg})}(w)");
     CHECK(formula::render<Dialect::Plain>(
               formula::rounded<UnlabelledCelsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
                   var<UnlabelledReading>))

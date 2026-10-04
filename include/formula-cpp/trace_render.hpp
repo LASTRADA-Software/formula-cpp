@@ -998,16 +998,16 @@ namespace detail
                + " for " + tag_words(compared.subject());
     }
 
-    /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit whose
-    /// symbol is @p unitSymbolText, in `render()`'s words (`rounding_call`), for every step that rounds to
-    /// one number of decimal places; an element-wise rounding has its own spelling. The unit is
-    /// `rounding_unit_text`'s (`render.hpp`), so that a unit with no symbol is named by its size, in the
+    /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit
+    /// @p unitText names, in `render()`'s words (`rounding_call`), for every step that rounds to
+    /// one number of decimal places; an element-wise rounding has its own spelling. @p unitText is
+    /// `rounding_unit_text`'s (`render.hpp`): a unit's symbol, or for a unit with no symbol its size, in the
     /// coherent unit the value after `=` is written in.
     [[nodiscard]] inline std::string rounding_call_text(std::string const& inner,
                                                         int granularity,
-                                                        std::string const& unitSymbolText)
+                                                        std::string const& unitText)
     {
-        return rounding_call<Dialect::Plain>(inner, DecimalPlaces { granularity }, unitSymbolText);
+        return rounding_call<Dialect::Plain>(inner, DecimalPlaces { granularity }, unitText);
     }
 
     /// `round(ln(#1), to 4 dp)`: `render()`'s spelling, one step with the function inside it, because the
