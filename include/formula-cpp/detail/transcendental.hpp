@@ -36,8 +36,8 @@
 ///   2^-128 apart, under 2^-120, absolute.
 /// - **log10** = ln log10(e). With M = floor(log10(e) 2^128): lower = floor(lower_ln M / 2^128),
 ///   upper = floor(upper_ln (M + 1) / 2^128) + 1, under 254 · 0.44 + 89 + 2 < 203 units apart, since
-///   |ln(a/b)| <= ln(2^127) < 89. upper_ln is below 89 · 2^128 + 254 < 2^135 and M + 1 below 2^127, so the
-///   widest product, upper_ln (M + 1), is below 2^262.
+///   |ln(a/b)| <= ln(2^127) < 89. upper_ln is below 89 · 2^128 + 254 < 2^135 and M + 1 below 2^127, so
+///   log10's widest product, upper_ln (M + 1), is below 2^262.
 /// - **exp(x)**, x = a/b != 0, -43 <= x <= 887/10 (the rounded forms answer outside it), in F = 192 bits.
 ///   X = floor(|x| 2^192), exact or one below. L' = floor(ln 2 2^192). For x > 0, k is the largest integer
 ///   in [0, 127] with k (L' + 1) <= X (128 ln 2 > 887/10 bounds it), and R = X - k (L' + 1) <= r 2^192 for
@@ -48,10 +48,9 @@
 ///   T_j = floor(floor(T_{j-1} R / 2^192) / j), until T_j = 0 (by j = 43 for r < 0.7; `TaylorTermLimit` = 50
 ///   refuses a longer one), so E <= exp(R 2^-192) 2^192 <= exp(r) 2^192. T_{j-1} <= 2^192 and R <= L' <
 ///   0.7 2^192, so the product T_{j-1} R is below 2^384: the kernel's widest, and the reason 192 fraction
-///   bits are the most 384 bits allow. Each T_j is short by
-///   e_j < e_{j-1} r / j + 1 < 2, and the tail after the last term is below 3, so
-///   exp(R 2^-192) 2^192 - E < 2 · 50 + 3; the 128 units of r add less than 2 · 1.0001 · 128 < 257. So
-///   exp(r) 2^192 < E + 360 <= E + `ExponentialSlack` = 512: lower = E 2^k / 2^192,
+///   bits are the most 384 bits allow. Each T_j is short by e_j < e_{j-1} r / j + 1 < 2, and the tail after
+///   the last term is below 3, so exp(R 2^-192) 2^192 - E < 2 · 50 + 3; the 128 units of r add less than
+///   2 · 1.0001 · 128 < 257. So exp(r) 2^192 < E + 360 <= E + `ExponentialSlack` = 512: lower = E 2^k / 2^192,
 ///   upper = (E + 512) 2^k / 2^192 (for x < 0, denominator 2^(192+m)). Since E >= 2^192, the ends are at
 ///   most 2^-183 of the value apart: at the largest result a `Rational` holds, 2^127 last kept units, that is
 ///   2^-56 of one unit. E < 2^193, so the widest numerator, (E + 512) 2^127, is below 2^321;
