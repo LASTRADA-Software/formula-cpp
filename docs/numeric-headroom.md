@@ -421,14 +421,6 @@ Only the integer `Rational` stores changed. These stay as they were:
 - **Rounding's decimal places**, `from_decimal`'s exponents and the `_r`
   literal's 18 places and 64-bit mantissa ([Numbers](numbers.md#limits)).
   Widening them is a separate decision.
-- **The logarithm and exponential kernel** (`detail/transcendental.hpp`)
-  takes an argument whose numerator and denominator each fit 64 bits, the
-  range it was built for; a wider argument, which a `Rational` can now hold,
-  is `Overflow`, and so is the exponential of more than 44. Two kinds of
-  wide argument never reach it: a power of ten, 10^19 up to 10^38 or one
-  over it, whose logarithm is exact, and an exponential of less than -43,
-  which is 0, or one unit under `Ceiling` and `AwayFromZero`, whatever its
-  width.
 - **The 64-bit fields** of `Unit`, `Band` and `Breakpoint`: `band` and
   `breakpoint` refuse a `Rational` bound or key that does not fit them.
 

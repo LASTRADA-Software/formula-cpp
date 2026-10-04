@@ -45,6 +45,12 @@ change is recorded here.
   count above 2^64 - 1 names the whole count. Code that reads `lookupKey` for such a step reads both.
 - `Rational`'s converting constructor takes every built-in integer type of at most 64 bits except `bool`, exactly,
   `std::uint64_t` now among them; a wider built-in integer is refused. A constructor from `Int128` is added.
+- **`rounded_ln`, `rounded_log10` and `rounded_exp` take every argument a `Rational` holds.** Their integer kernel
+  narrowed the argument's numerator and denominator to 64 bits and answered `Overflow` beyond; `ln` of 2^70 is now
+  48.5203 at 4 places. `rounded_exp` answers up to 88.7, past which no value fits a `Rational`, wherever the result
+  fits the declared places: e^45 to 18 places, e^88 to whole units. The exponential is computed with 192 fraction
+  bits, so a result as wide as a `Rational` is still decided: e^43 to 18 places, `Overflow` before though the result
+  fits, now answers.
 
 ## [0.3.0] - 2026-10-01
 
