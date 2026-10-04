@@ -310,7 +310,8 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
           == Rational::from_decimal(2'718'281'828'459'045'235, -18));
 }
 
-TEST_CASE("transcendental kernel: an enclosure is at most 2^-120 wide for a logarithm and 2^-183 of the value for an exponential",
+TEST_CASE("transcendental kernel: an enclosure is at most 2^-120 wide for a logarithm and 2^-183 of the value for an "
+          "exponential",
           "[transcendental]")
 {
     // Absolute for the logarithms, whose ends share the denominator 2^128: at most 2^8 units apart (2^-120).

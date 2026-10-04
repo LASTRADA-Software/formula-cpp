@@ -269,6 +269,11 @@ TEST_CASE("rounded_transcendental: an argument as wide as a Rational holds is an
     CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 1, largest }) == Rational { 1 });
     CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Ceiling>(Rational { 1, largest })
           == Rational::from_decimal(1'000'000'000'000'000'001, -18));
+    // exp -1/(2^127 - 1) = 1 - 5.9 * 10^-39, a negative argument with a 127-bit denominator: 1 to nearest,
+    // and one unit below 1 under Floor.
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::HalfEven>(Rational { -1, largest }) == Rational { 1 });
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { -1, largest })
+          == Rational::from_decimal(999'999'999'999'999'999, -18));
 }
 
 TEST_CASE("rounded_transcendental: a percentage is read in the coherent unit", "[rounded_transcendental]")

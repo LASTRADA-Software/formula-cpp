@@ -46,7 +46,9 @@
 ///   Either way 0 <= R < L' + 1, so r < ln 2 + 2^-184, and r 2^192 - R < 128: one unit for X, and one per
 ///   multiple of ln 2's unit, k <= 127 or m <= 63. E = sum T_j, T_0 = 2^192,
 ///   T_j = floor(floor(T_{j-1} R / 2^192) / j), until T_j = 0 (by j = 43 for r < 0.7; `TaylorTermLimit` = 50
-///   refuses a longer one), so E <= exp(R 2^-192) 2^192 <= exp(r) 2^192. Each T_j is short by
+///   refuses a longer one), so E <= exp(R 2^-192) 2^192 <= exp(r) 2^192. T_{j-1} <= 2^192 and R <= L' <
+///   0.7 2^192, so the product T_{j-1} R is below 2^384: the kernel's widest, and the reason 192 fraction
+///   bits are the most 384 bits allow. Each T_j is short by
 ///   e_j < e_{j-1} r / j + 1 < 2, and the tail after the last term is below 3, so
 ///   exp(R 2^-192) 2^192 - E < 2 · 50 + 3; the 128 units of r add less than 2 · 1.0001 · 128 < 257. So
 ///   exp(r) 2^192 < E + 360 <= E + `ExponentialSlack` = 512: lower = E 2^k / 2^192,
@@ -76,8 +78,10 @@
 
 namespace formula::detail
 {
-/// The kernel's width, 384 bits: room for its widest product (under 2^262) and numerator (under 2^321),
-/// and for `decide_rounding`'s scaling by up to 10^18 of every end it is handed (under 2^381).
+/// The kernel's width, 384 bits: room for its widest product, the exponential series' T_{j-1} R (under
+/// 2^384), for the logarithm's widest product, upper_ln (M + 1) (under 2^262), for the exponential's widest
+/// numerator (under 2^321), and for `decide_rounding`'s scaling by up to 10^18 of every end it is handed
+/// (under 2^381).
 inline constexpr std::size_t KernelLimbs = 12;
 /// A value in the kernel's fixed point.
 using KernelWord = WideUnsigned<KernelLimbs>;
