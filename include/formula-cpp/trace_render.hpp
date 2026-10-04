@@ -787,14 +787,16 @@ namespace detail
         // and "runs 15/2 to 15/2 mm" would describe it as a range it is not.
         // `at <key>` is the spelling `render()` gives a breakpoint, for the
         // same reason: a row is a point.
-        std::string const lowText = shown_bound_text(
-            recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator, keyUnit, numberStyle);
         if (same_declared_bound(recorded.coveredRange->lowNumerator,
                                 recorded.coveredRange->lowDenominator,
                                 recorded.coveredRange->highNumerator,
                                 recorded.coveredRange->highDenominator))
+        {
+            std::string const onlyRowText = shown_bound_text(
+                recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator, keyUnit, numberStyle);
             return "outside the curve, whose only row is at "
-                   + number_with_unit(lowText, shown_unit_text(keyUnit, keyUnit.dimension));
+                   + number_with_unit(onlyRowText, shown_unit_text(keyUnit, keyUnit.dimension));
+        }
         return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keyUnit, numberStyle);
     }
 
@@ -2053,6 +2055,14 @@ namespace detail
                 shown_bound_text(neighbours.low.numerator, neighbours.low.denominator, keyUnit, numberStyle), keySymbol);
             std::string const highText = number_with_unit(
                 shown_bound_text(neighbours.high.numerator, neighbours.high.denominator, keyUnit, numberStyle), keySymbol);
+            // Raw pairs, not values, and exact all the same: an exact hit
+            // records the one row it hit twice, from a single index
+            // (`locate_and_snap`, `snap.hpp`), and the permitted set is
+            // strictly ascending by value (`RequireValidBreakpointTable`), so
+            // two different rows never hold one value. A lookup's segment and
+            // a missed lookup's range compare by value
+            // (`same_declared_bound`) because a table's rows can be typed as
+            // different pairs of one number.
             if (neighbours.low == neighbours.high)
                 return " [on " + lowText + "]";
             if (recorded.tieBroken)
