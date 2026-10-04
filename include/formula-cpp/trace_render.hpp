@@ -2116,23 +2116,17 @@ namespace detail
     }
 
     /// @p limitRow, whose limits are numbers in @p recorded's unit, as the
-    /// range it permits (`limit_row_text`), in the unit @p recorded's value
-    /// is shown in (`shown_limit_row`, `render.hpp`, which `render()` writes
-    /// an envelope with too), so that a value and the row it was judged
-    /// against are never shown in two scales. A limit the shown unit cannot
-    /// hold is reported, `(not shown: ...)`, never restated.
+    /// range it permits, in the unit @p recorded's value is shown in, its
+    /// symbol escaped: `limit_row_text` (`render.hpp`), the spelling
+    /// `render()` writes an envelope's row in too, so that a value and the
+    /// row it was judged against are never shown in two scales. A limit the
+    /// shown unit cannot hold is reported, `(not shown: ...)`, never
+    /// restated.
     [[nodiscard]] inline std::string conformity_row_text(ShownStep const& recorded,
                                                          LimitRow const& limitRow,
                                                          NumberStyle numberStyle)
     {
-        std::expected<LimitRow, ArithmeticError> const shownRow =
-            shown_limit_row(limitRow, recorded.unit, recorded.dimension);
-        if (!shownRow)
-            return not_shown_text(shownRow.error());
-        return limit_row_text(*shownRow,
-                              shown_unit_text(recorded.unit, recorded.dimension),
-                              shown_unit_of(recorded.unit, recorded.dimension),
-                              numberStyle);
+        return limit_row_text<Dialect::Plain>(limitRow, recorded.unit, recorded.dimension, escaped_author_text, numberStyle);
     }
 
     /// A conformity step's line, without its number: `conform(#1)` and every
@@ -3401,14 +3395,13 @@ namespace detail
         // unit, which can overflow for a value its own unit holds well, a
         // great many kilowatt-hours counted in joules. One with no symbol
         // moves into the coherent unit and says so, as a trace line's value
-        // does (`shown_unit_of`); that move is the one that can fail: for a
+        // does (`shown_number`); that move is the one that can fail: for a
         // value whose coherent form overflows, and for a malformed unit, one
         // whose magnitude is zero (`DomainError`) or whose magnitude or offset
         // has a zero denominator (`DivisionByZero`).
         Unit const shownUnit = shown_unit_of(shown.unit, shown.unit.dimension);
         std::expected<Rational, ArithmeticError> const inShownUnit =
-            spells_coherent_unit(shown.unit, shown.unit.dimension) ? checked_convert(*shown.value, shown.unit, shownUnit)
-                                                                    : std::expected<Rational, ArithmeticError> { *shown.value };
+            shown_number(*shown.value, shown.unit, shown.unit.dimension);
         if (!inShownUnit)
             return not_shown_text(inShownUnit.error());
         std::expected<NumberText, ArithmeticError> const spelled =

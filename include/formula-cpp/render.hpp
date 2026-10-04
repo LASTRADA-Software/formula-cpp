@@ -215,12 +215,12 @@ namespace detail
     /// unit with no symbol cannot say what scale its number is on, so the
     /// number is moved into the one scale its spelling names. The one rule
     /// for every place a number is written with its unit: in a trace, a
-    /// step's value, a squared deviation, a conformity row, a derivation's
-    /// header, and a bound a table, a curve or a permitted set declared
-    /// (`shown_bound_text`); in `render()`, every number a formula declares
-    /// -- a constant, a per-element constant's values, a table's bounds and
-    /// rows, a permitted value, a limit (`shown_number`). So every number is
-    /// in the unit written after it.
+    /// step's value, a squared deviation and a derivation's header; and in a
+    /// trace and in `render()` alike, every number a formula declares -- a
+    /// constant, a per-element constant's values, a bound or a row a table, a
+    /// curve or a permitted set declared, a limit (`shown_number`,
+    /// `shown_bound_text`, `shown_limit_row`). So every number is in the unit
+    /// written after it.
     /// A dimensionless unit with no symbol is always at scale 1 here:
     /// one with a scale is refused where it is written
     /// (`RequireNamedScaledScalar`, `unit.hpp`), so its bare number is the
@@ -853,25 +853,6 @@ namespace detail
         return number_with_unit(lowText + " to under " + highText, unitSymbol);
     }
 
-    /// A half-open band as text: `103 to under 197 mm`. **The one spelling of a
-    /// half-open interval in this library** -- see this file's comment for the
-    /// ruling and for the published defect that bought it.
-    ///
-    /// @p keyUnit is the unit the bounds are declared in, and they are shown
-    /// as `shown_bound_text` shows them: in the coherent unit for a unit with
-    /// no symbol. @p keyUnitText is the unit they are shown in, as the caller
-    /// writes it (`shown_unit_spelling`).
-    [[nodiscard]] inline std::string band_text(Band const& shownBand,
-                                               std::string_view keyUnitText,
-                                               Unit const& keyUnit,
-                                               NumberStyle numberStyle)
-    {
-        return half_open_text(
-            shown_bound_text(shownBand.lowNumerator, shownBand.lowDenominator, keyUnit, numberStyle),
-            shown_bound_text(shownBand.highNumerator, shownBand.highDenominator, keyUnit, numberStyle),
-            keyUnitText);
-    }
-
     /// Author-supplied words -- a key's name -- made literal in Markdown, so
     /// that whatever characters they hold are shown rather than obeyed; Plain
     /// changes nothing.
@@ -1007,14 +988,6 @@ namespace detail
             return "key " + std::to_string(static_cast<unsigned long long>(key));
     }
 
-    /// One row of a rendered lookup table: what selects the row, then what the
-    /// row gives. `103 to under 197 mm gives 863/1000`, `key Cylinder gives
-    /// 1127/1000`, `at 241 mm gives 1043/1000`.
-    [[nodiscard]] inline std::string lookup_row_text(std::string const& selector, std::string const& correction)
-    {
-        return selector + " gives " + correction;
-    }
-
     /// A run of words a lookup contributes, as the dialect writes it: a row,
     /// the empty table's own statement, or an exact lookup's key.
     ///
@@ -1034,7 +1007,9 @@ namespace detail
     ///
     /// Everything a lookup renders goes through here **except the operand of
     /// a banded or an interpolating lookup**, which is a sub-expression and
-    /// belongs in math mode -- it has already rendered itself in the dialect.
+    /// belongs in math mode -- it has already rendered itself in the dialect
+    /// -- and, in LaTeX, a coherent unit, which `TableWords` sets outside the
+    /// words so that its powers are raised.
     ///
     /// **The words themselves are the same in all three dialects**, before
     /// LaTeX's escape and wrapper, which is what lets the cross-dialect test
@@ -1047,6 +1022,193 @@ namespace detail
             return "\\mathrm{" + latex_math_words(words) + "}";
         else
             return words;
+    }
+
+    /// A run of words a table or a list states -- a row, a set of permitted
+    /// values, an envelope's row -- with the unit after its numbers, as
+    /// dialect @p D writes it: the words as `lookup_words_in_dialect` sets
+    /// them, and each unit the one its numbers are shown in
+    /// (`shown_unit_spelling`), every symbol and name written by the spelling
+    /// it was made with: as it is in `render()`, escaped in a trace.
+    ///
+    /// In LaTeX a coherent unit (`spells_coherent_unit`) is set outside the
+    /// words' `\mathrm{...}`, after a thin space, as a constant's unit is
+    /// (`LatexUnitNotation`): `\mathrm{1/4\ to\ under\ 1/2}\,\mathrm{kg}^{-1}`,
+    /// where inside the words its power would be escaped into characters. A
+    /// symbol stays among the words, as it always has:
+    /// `\mathrm{103\ to\ under\ 197\ mm}`.
+    template <Dialect D>
+    class TableWords
+    {
+      public:
+        /// Words whose units' symbols and names @p spellAuthorText writes.
+        explicit TableWords(AuthorTextSpelling spellAuthorText = verbatim_text): _spellAuthorText { spellAuthorText } {}
+
+        /// @p addedWords, appended as they are.
+        TableWords& add_words(std::string const& addedWords)
+        {
+            _pending += addedWords;
+            return *this;
+        }
+
+        /// The unit a number of @p dimension declared in @p declared is shown
+        /// in, appended after the number just added: ` kg`, or nothing for a
+        /// dimensionless unit with no symbol.
+        TableWords& add_unit_of(Unit const& declared, Dimension dimension)
+        {
+            if constexpr (D == Dialect::LaTeX)
+            {
+                if (spells_coherent_unit(declared, dimension))
+                {
+                    set_pending();
+                    _set += std::string { LatexUnitNotation.between }
+                            + shown_unit_spelling(declared, dimension, _spellAuthorText, LatexUnitNotation);
+                    return *this;
+                }
+            }
+            _pending = number_with_unit(_pending, shown_unit_spelling(declared, dimension, _spellAuthorText));
+            return *this;
+        }
+
+        /// @p declaredNumber, declared in @p declared, and its unit, as
+        /// `shown_value_text` writes them; or `(not shown: ...)`, with no unit
+        /// after it.
+        TableWords& add_value(Rational declaredNumber, Unit const& declared, NumberStyle numberStyle)
+        {
+            std::expected<std::string, ArithmeticError> const numberText =
+                shown_number_text(declaredNumber, declared, numberStyle);
+            if (!numberText.has_value())
+                return add_words(not_shown_text(numberText.error()));
+            return add_words(*numberText).add_unit_of(declared, declared.dimension);
+        }
+
+        /// The words and units, as @p D writes them.
+        [[nodiscard]] std::string text() const
+        {
+            if (_pending.empty() && !_set.empty())
+                return _set;
+            return _set + lookup_words_in_dialect<D>(_pending);
+        }
+
+      private:
+        /// Sets the words not yet set, ahead of a unit set outside them.
+        void set_pending()
+        {
+            if (!_pending.empty())
+                _set += lookup_words_in_dialect<D>(_pending);
+            _pending.clear();
+        }
+
+        AuthorTextSpelling _spellAuthorText;
+        std::string _set;
+        std::string _pending;
+    };
+
+    /// A half-open band as words: `103 to under 197 mm`. **The one spelling of
+    /// a half-open interval in this library** -- see this file's comment for
+    /// the ruling and for the published defect that bought it.
+    ///
+    /// The bounds are declared in @p keyUnit, and shown as `shown_bound_text`
+    /// shows them, followed by the unit they are shown in: in the coherent
+    /// unit for a unit with no symbol.
+    template <Dialect D>
+    [[nodiscard]] TableWords<D> band_text(Band const& shownBand, Unit const& keyUnit, NumberStyle numberStyle)
+    {
+        TableWords<D> bandWords;
+        bandWords
+            .add_words(half_open_text(
+                shown_bound_text(shownBand.lowNumerator, shownBand.lowDenominator, keyUnit, numberStyle),
+                shown_bound_text(shownBand.highNumerator, shownBand.highDenominator, keyUnit, numberStyle),
+                {}))
+            .add_unit_of(keyUnit, keyUnit.dimension);
+        return bandWords;
+    }
+
+    /// One row of a rendered lookup table: what selects the row, then what the
+    /// row gives, @p correction declared in @p resultUnit (`TableWords::add_value`).
+    /// `103 to under 197 mm gives 863/1000`, `key Cylinder gives 1127/1000`,
+    /// `at 241 mm gives 1043/1000`.
+    template <Dialect D>
+    [[nodiscard]] std::string lookup_row_text(TableWords<D> selector,
+                                              Rational correction,
+                                              Unit const& resultUnit,
+                                              NumberStyle numberStyle)
+    {
+        return selector.add_words(" gives ").add_value(correction, resultUnit, numberStyle).text();
+    }
+
+    /// @p limitRow, whose limits are numbers of @p dimension declared in
+    /// @p declared, with each limit moved into the unit a value declared there
+    /// is shown in (`shown_number`): unchanged for a unit with a symbol, in
+    /// the coherent unit for one without. The error of the first limit the
+    /// move fails for, where it fails; the caller then writes the whole row
+    /// as `not_shown_text`, never one side of it in the wrong scale.
+    [[nodiscard]] inline std::expected<LimitRow, ArithmeticError> shown_limit_row(LimitRow const& limitRow,
+                                                                                  Unit const& declared,
+                                                                                  Dimension dimension)
+    {
+        if (!spells_coherent_unit(declared, dimension))
+            return limitRow;
+        auto const inShownUnit = [&](Limit const& side) -> std::expected<Limit, ArithmeticError> {
+            std::optional<Rational> const sideValue = side.value();
+            if (!sideValue.has_value())
+                return side;
+            std::expected<Rational, ArithmeticError> const sideShown = shown_number(*sideValue, declared, dimension);
+            if (!sideShown)
+                return std::unexpected { sideShown.error() };
+            return formula::limit(*sideShown);
+        };
+        std::expected<Limit, ArithmeticError> const lowerShown = inShownUnit(limitRow.lower);
+        if (!lowerShown)
+            return std::unexpected { lowerShown.error() };
+        std::expected<Limit, ArithmeticError> const upperShown = inShownUnit(limitRow.upper);
+        if (!upperShown)
+            return std::unexpected { upperShown.error() };
+        return LimitRow { .lower = *lowerShown, .upper = *upperShown };
+    }
+
+    /// One row of an envelope as the range it permits, the unit after the
+    /// last number: `from 30 to 40 %`, `at least 60 %`, `at most 5 mm`, or
+    /// `any value` for a row unbounded on both sides. **The one spelling of
+    /// an envelope's row**, for `render()` and a trace alike.
+    ///
+    /// The limits are numbers of @p dimension declared in @p declared, shown
+    /// in the unit a value declared there is shown in (`shown_limit_row`):
+    /// `from 1/4 to 1/2 kg` for a unit with no symbol. A row a limit of which
+    /// cannot be moved there reads `(not shown: ...)`, never one side of it in
+    /// the wrong scale. The unit's symbols and names are written by
+    /// @p spellAuthorText: as they are in `render()`, escaped in a trace.
+    /// Spelled in `numberStyle.exact_only()`: a limit is one side of the
+    /// comparison a check states, and is never shown rounded.
+    template <Dialect D>
+    [[nodiscard]] std::string limit_row_text(LimitRow const& limitRow,
+                                             Unit const& declared,
+                                             Dimension dimension,
+                                             AuthorTextSpelling spellAuthorText,
+                                             NumberStyle numberStyle)
+    {
+        TableWords<D> rowWords { spellAuthorText };
+        std::expected<LimitRow, ArithmeticError> const shownRow = shown_limit_row(limitRow, declared, dimension);
+        if (!shownRow)
+            return rowWords.add_words(not_shown_text(shownRow.error())).text();
+        Unit const shownIn = shown_unit_of(declared, dimension);
+        NumberStyle const limitStyle = numberStyle.exact_only();
+        std::optional<Rational> const lowerValue = shownRow->lower.value();
+        std::optional<Rational> const upperValue = shownRow->upper.value();
+        if (lowerValue.has_value() && upperValue.has_value())
+            rowWords
+                .add_words("from " + styled_number_text(*lowerValue, limitStyle, shownIn) + " to "
+                           + styled_number_text(*upperValue, limitStyle, shownIn))
+                .add_unit_of(declared, dimension);
+        else if (lowerValue.has_value())
+            rowWords.add_words("at least " + styled_number_text(*lowerValue, limitStyle, shownIn))
+                .add_unit_of(declared, dimension);
+        else if (upperValue.has_value())
+            rowWords.add_words("at most " + styled_number_text(*upperValue, limitStyle, shownIn))
+                .add_unit_of(declared, dimension);
+        else
+            rowWords.add_words("any value");
+        return rowWords.text();
     }
 
     /// The separator between a rendered lookup's fields.
@@ -1839,13 +2001,13 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
     constexpr Unit resultUnit = ResultUnit;
 
     NumberStyle const tableStyle = typed_number_style(vocabulary);
-    std::string const keyUnitText = detail::shown_unit_spelling(keyUnit, keyUnit.dimension, detail::verbatim_text);
     std::string rowText;
     for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
         rowText += detail::lookup_separator<D>()
-                   + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                       detail::band_text(Bands[bandIndex], keyUnitText, keyUnit, tableStyle),
-                       detail::shown_value_text(node.corrections[bandIndex], resultUnit, tableStyle)));
+                   + detail::lookup_row_text(detail::band_text<D>(Bands[bandIndex], keyUnit, tableStyle),
+                                             node.corrections[bandIndex],
+                                             resultUnit,
+                                             tableStyle);
 
     return detail::lookup_call<D>("lookup", render<D>(node.operand, vocabulary), rowText);
 }
@@ -1876,9 +2038,10 @@ template <Dialect D, KeyTable Keys, Unit ResultUnit, Vocabulary V>
     std::string rowText;
     for (std::size_t keyIndex = 0; keyIndex < Keys.size(); ++keyIndex)
         rowText += detail::lookup_separator<D>()
-                   + detail::lookup_words_in_dialect<D>(
-                       detail::lookup_row_text(detail::key_text<D, Keys>(Keys[keyIndex]),
-                                               detail::shown_value_text(node.corrections[keyIndex], resultUnit, tableStyle)));
+                   + detail::lookup_row_text(detail::TableWords<D> {}.add_words(detail::key_text<D, Keys>(Keys[keyIndex])),
+                                             node.corrections[keyIndex],
+                                             resultUnit,
+                                             tableStyle);
 
     return detail::lookup_call<D>(
         "lookup", detail::lookup_words_in_dialect<D>(detail::key_text<D, Keys>(node.key)), rowText);
@@ -1902,17 +2065,18 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
     constexpr Unit resultUnit = ResultUnit;
 
     NumberStyle const tableStyle = typed_number_style(vocabulary);
-    std::string const keyUnitText = detail::shown_unit_spelling(keyUnit, keyUnit.dimension, detail::verbatim_text);
     std::string rowText;
     for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
         rowText += detail::lookup_separator<D>()
-                   + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                       "at "
-                           + detail::number_with_unit(
-                               detail::shown_bound_text(
-                                   Points[pointIndex].numerator, Points[pointIndex].denominator, keyUnit, tableStyle),
-                               keyUnitText),
-                       detail::shown_value_text(node.corrections[pointIndex], resultUnit, tableStyle)));
+                   + detail::lookup_row_text(
+                       detail::TableWords<D> {}
+                           .add_words("at "
+                                      + detail::shown_bound_text(
+                                          Points[pointIndex].numerator, Points[pointIndex].denominator, keyUnit, tableStyle))
+                           .add_unit_of(keyUnit, keyUnit.dimension),
+                       node.corrections[pointIndex],
+                       resultUnit,
+                       tableStyle);
 
     return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rowText);
 }
@@ -1937,8 +2101,7 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
     }
     std::string const permittedField =
         detail::lookup_separator<D>()
-        + detail::lookup_words_in_dialect<D>(detail::number_with_unit(
-            "to " + listed, detail::shown_unit_spelling(keyUnit, keyUnit.dimension, detail::verbatim_text)));
+        + detail::TableWords<D> {}.add_words("to " + listed).add_unit_of(keyUnit, keyUnit.dimension).text();
     return detail::lookup_call<D>("snap", render<D>(node.operand, vocabulary), permittedField);
 }
 
@@ -1959,8 +2122,8 @@ template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
         listed += detail::shown_bound_text(
             Points[pointIndex].numerator, Points[pointIndex].denominator, declaredIn, tableStyle);
     }
-    std::string const pointsText = detail::lookup_words_in_dialect<D>(detail::number_with_unit(
-        listed, detail::shown_unit_spelling(declaredIn, declaredIn.dimension, detail::verbatim_text)));
+    std::string const pointsText =
+        detail::TableWords<D> {}.add_words(listed).add_unit_of(declaredIn, declaredIn.dimension).text();
     if constexpr (D == Dialect::LaTeX)
         return "\\operatorname{domain}(" + pointsText + ")";
     else
@@ -1992,12 +2155,9 @@ template <Dialect D, Unit KeyUnit, BandTable Classes, ObservationsNode Obs, Voca
 {
     constexpr Unit keyUnit = KeyUnit;
     NumberStyle const tableStyle = typed_number_style(vocabulary);
-    std::string const keyUnitText = detail::shown_unit_spelling(keyUnit, keyUnit.dimension, detail::verbatim_text);
     std::string classText;
     for (std::size_t classIndex = 0; classIndex < Classes.size(); ++classIndex)
-        classText += detail::lookup_separator<D>()
-                     + detail::lookup_words_in_dialect<D>(
-                         detail::band_text(Classes[classIndex], keyUnitText, keyUnit, tableStyle));
+        classText += detail::lookup_separator<D>() + detail::band_text<D>(Classes[classIndex], keyUnit, tableStyle).text();
     return detail::lookup_call<D>("bin", render_node<D>(node.source, vocabulary), classText);
 }
 
@@ -2768,88 +2928,9 @@ template <Dialect D = Dialect::Plain, Described Q, typename E, Vocabulary V = De
     return render<D>(boundFormula.expression, vocabulary);
 }
 
-namespace detail
-{
-    /// One row of an envelope as the range it permits, the unit after the
-    /// last number: `from 30 to 40 %`, `at least 60 %`, `at most 5 mm`, or
-    /// `any value` for a row unbounded on both sides.
-    ///
-    /// @p unitSymbol is @p limitsIn's symbol as the caller writes it -- the
-    /// trace escapes it, `render()` does not -- and @p limitsIn is the unit
-    /// the limits are numbers in. Spelled in `numberStyle.exact_only()`: a
-    /// limit is one side of the comparison a check states, and is never shown
-    /// rounded.
-    [[nodiscard]] inline std::string limit_row_text(LimitRow limitRow,
-                                                    std::string_view unitSymbol,
-                                                    Unit const& limitsIn,
-                                                    NumberStyle numberStyle)
-    {
-        NumberStyle const limitStyle = numberStyle.exact_only();
-        std::optional<Rational> const lowerValue = limitRow.lower.value();
-        std::optional<Rational> const upperValue = limitRow.upper.value();
-        if (lowerValue.has_value() && upperValue.has_value())
-            return "from " + styled_number_text(*lowerValue, limitStyle, limitsIn) + " to "
-                   + number_with_unit(styled_number_text(*upperValue, limitStyle, limitsIn), unitSymbol);
-        if (lowerValue.has_value())
-            return "at least " + number_with_unit(styled_number_text(*lowerValue, limitStyle, limitsIn), unitSymbol);
-        if (upperValue.has_value())
-            return "at most " + number_with_unit(styled_number_text(*upperValue, limitStyle, limitsIn), unitSymbol);
-        return "any value";
-    }
-
-    /// @p limitRow, whose limits are numbers of @p dimension declared in
-    /// @p declared, with each limit moved into the unit a value declared there
-    /// is shown in (`shown_number`): unchanged for a unit with a symbol, in
-    /// the coherent unit for one without. The error of the first limit the
-    /// move fails for, where it fails; the caller then writes the whole row
-    /// as `not_shown_text`, never one side of it in the wrong scale.
-    [[nodiscard]] inline std::expected<LimitRow, ArithmeticError> shown_limit_row(LimitRow const& limitRow,
-                                                                                  Unit const& declared,
-                                                                                  Dimension dimension)
-    {
-        if (!spells_coherent_unit(declared, dimension))
-            return limitRow;
-        auto const inShownUnit = [&](Limit const& side) -> std::expected<Limit, ArithmeticError> {
-            std::optional<Rational> const sideValue = side.value();
-            if (!sideValue.has_value())
-                return side;
-            std::expected<Rational, ArithmeticError> const sideShown = shown_number(*sideValue, declared, dimension);
-            if (!sideShown)
-                return std::unexpected { sideShown.error() };
-            return formula::limit(*sideShown);
-        };
-        std::expected<Limit, ArithmeticError> const lowerShown = inShownUnit(limitRow.lower);
-        if (!lowerShown)
-            return std::unexpected { lowerShown.error() };
-        std::expected<Limit, ArithmeticError> const upperShown = inShownUnit(limitRow.upper);
-        if (!upperShown)
-            return std::unexpected { upperShown.error() };
-        return LimitRow { .lower = *lowerShown, .upper = *upperShown };
-    }
-
-    /// One row of an envelope declared in @p limitsIn as `render()` writes
-    /// it: its limits in the unit they are shown in (`shown_limit_row`),
-    /// then that unit (`shown_unit_spelling`), as `limit_row_text` words it --
-    /// `from 1/4 to 1/2 kg` for a unit with no symbol -- or `(not shown:
-    /// ...)` for a row the move fails for, as a trace writes it.
-    [[nodiscard]] inline std::string shown_limit_row_text(LimitRow const& limitRow,
-                                                          Unit const& limitsIn,
-                                                          NumberStyle numberStyle)
-    {
-        std::expected<LimitRow, ArithmeticError> const shownRow =
-            shown_limit_row(limitRow, limitsIn, limitsIn.dimension);
-        if (!shownRow)
-            return not_shown_text(shownRow.error());
-        return limit_row_text(*shownRow,
-                              shown_unit_spelling(limitsIn, limitsIn.dimension, verbatim_text),
-                              shown_unit_of(limitsIn, limitsIn.dimension),
-                              numberStyle);
-    }
-} // namespace detail
-
 /// Renders a conformity check in dialect @p D: `conform(<subject>, <row>,
 /// ...)`, one field per element in the series' order, each the range it
-/// permits (`detail::shown_limit_row_text`), shaped as a lookup is
+/// permits (`detail::limit_row_text`), shaped as a lookup is
 /// (`detail::lookup_call`). The subject carries its series marker.
 ///
 /// **The verdict stays out**, for `Constraint`'s reason: it is what a checker
@@ -2863,8 +2944,8 @@ template <Dialect D, Unit U, SeriesNode S, Vocabulary V>
     std::string rowFields;
     for (std::size_t at = 0; at < S::length; ++at)
         rowFields += detail::lookup_separator<D>()
-                     + detail::lookup_words_in_dialect<D>(
-                         detail::shown_limit_row_text(conformityCheck.envelope[at], limitsIn, limitStyle));
+                     + detail::limit_row_text<D>(
+                         conformityCheck.envelope[at], limitsIn, limitsIn.dimension, detail::verbatim_text, limitStyle);
     return detail::lookup_call<D>("conform", render<D>(conformityCheck.subject, vocabulary), rowFields);
 }
 

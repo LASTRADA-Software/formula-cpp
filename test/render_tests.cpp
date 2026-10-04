@@ -2546,6 +2546,13 @@ inline constexpr formula::Unit WideOffsetGram { .dimension = formula::dim::Mass,
                                                 .magnitudeDenominator = INT64_MAX - 24,
                                                 .offsetNumerator = 1,
                                                 .offsetDenominator = INT64_MAX - 164 };
+/// A point and a limit of 1/(2^63 - 1) of that unit, which no coherent unit can hold.
+inline constexpr BreakpointTable<1> WideOffsetPoints { breakpoint(1, INT64_MAX) };
+constexpr formula::Envelope<1> wideOffsetEnvelope { formula::LimitRow {
+    formula::limit(formula::Rational { 1, INT64_MAX }), formula::unbounded } };
+/// One invented band in a per-gram unit with no symbol, whose coherent unit
+/// has a power: 1 to under 2 per gram is 1000 to under 2000 per kilogram.
+inline constexpr BandTable<1> UnlabelledPerGramBands { band(1, 1, 2, 1) };
 } // namespace
 
 TEST_CASE("render: every number a formula declares in a unit with no symbol is in the coherent unit",
@@ -2566,11 +2573,27 @@ TEST_CASE("render: every number a formula declares in a unit with no symbol is i
     constexpr auto unlabelledBanded = banded_lookup<UnlabelledGram, UnlabelledGramBands, unit::Percent>(
         var<UnlabelledWeight>, { rat(10), rat(20) });
     CHECK(formula::render(unlabelledBanded) == "lookup(w, 1/4 to under 1/2 kg gives 10 %, 1/2 to under 3/4 kg gives 20 %)");
+    // In LaTeX the coherent unit is set outside the row's words, as a
+    // constant's is, so that a power is raised rather than escaped.
     CHECK(formula::render<Dialect::LaTeX>(unlabelledBanded)
-          == "\\operatorname{lookup}(w,\\allowbreak \\mathrm{1/4\\ to\\ under\\ 1/2\\ kg\\ gives\\ 10\\ \\%},"
-             "\\allowbreak \\mathrm{1/2\\ to\\ under\\ 3/4\\ kg\\ gives\\ 20\\ \\%})");
-    CHECK(formula::render(exact_lookup<ShapeKeys, UnlabelledGram>(MouldShape::Cylinder, { rat(250), rat(500), rat(750) }))
+          == "\\operatorname{lookup}(w,\\allowbreak \\mathrm{1/4\\ to\\ under\\ 1/2}\\,\\mathrm{kg}"
+             "\\mathrm{\\ gives\\ 10\\ \\%},\\allowbreak \\mathrm{1/2\\ to\\ under\\ 3/4}\\,\\mathrm{kg}"
+             "\\mathrm{\\ gives\\ 20\\ \\%})");
+    constexpr auto perGramBanded =
+        banded_lookup<UnlabelledPerGram, UnlabelledPerGramBands, unit::Percent>(var<UnlabelledLoading>, { rat(10) });
+    CHECK(formula::render(perGramBanded) == "lookup(q, 1000 to under 2000 kg^-1 gives 10 %)");
+    CHECK(formula::render<Dialect::LaTeX>(perGramBanded)
+          == "\\operatorname{lookup}(q,\\allowbreak \\mathrm{1000\\ to\\ under\\ 2000}\\,\\mathrm{kg}^{-1}"
+             "\\mathrm{\\ gives\\ 10\\ \\%})");
+    constexpr auto unlabelledKeyed =
+        exact_lookup<ShapeKeys, UnlabelledGram>(MouldShape::Cylinder, { rat(250), rat(500), rat(750) });
+    CHECK(formula::render(unlabelledKeyed)
           == "lookup(key Cylinder, key Cube gives 1/4 kg, key Cylinder gives 1/2 kg, key Prism gives 3/4 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledKeyed)
+          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak "
+             "\\mathrm{key\\ Cube\\ gives\\ 1/4}\\,\\mathrm{kg},\\allowbreak "
+             "\\mathrm{key\\ Cylinder\\ gives\\ 1/2}\\,\\mathrm{kg},\\allowbreak "
+             "\\mathrm{key\\ Prism\\ gives\\ 3/4}\\,\\mathrm{kg})");
 
     // An interpolating lookup's rows, and the values it states at them.
     CHECK(formula::render(interpolating_lookup<UnlabelledGram, UnlabelledGramRows, UnlabelledGram>(var<UnlabelledWeight>,
@@ -2590,6 +2613,21 @@ TEST_CASE("render: every number a formula declares in a unit with no symbol is i
     constexpr auto unlabelledLimits = formula::conformity<UnlabelledGram>(
         formula::series<UnlabelledWeight, 2>, unlabelledGramEnvelope, formula::Verdict { "reject the specimen" });
     CHECK(formula::render(unlabelledLimits) == "conform(w(i), from 1/4 to 1/2 kg, at least 3/4 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledLimits)
+          == "\\operatorname{conform}({w}_{i},\\allowbreak \\mathrm{from\\ 1/4\\ to\\ 1/2}\\,\\mathrm{kg},"
+             "\\allowbreak \\mathrm{at\\ least\\ 3/4}\\,\\mathrm{kg})");
+
+    // A point or a limit the coherent unit cannot hold says so, as a trace
+    // does: a point in its list, with the unit after the list, and a limit
+    // for its whole row.
+    CHECK(formula::render(formula::domain<WideOffsetGram, WideOffsetPoints>)
+          == "domain((not shown: overflow in exact arithmetic) kg)");
+    CHECK(formula::render(formula::snapped<WideOffsetGram, WideOffsetPoints, formula::SnapTie::TowardLower>(
+              var<UnlabelledWeight>))
+          == "snap(w, to (not shown: overflow in exact arithmetic) kg)");
+    CHECK(formula::render(formula::conformity<WideOffsetGram>(
+              formula::series<UnlabelledWeight, 1>, wideOffsetEnvelope, formula::Verdict { "reject the specimen" }))
+          == "conform(w(i), (not shown: overflow in exact arithmetic))");
 
     // A unit with a symbol is never converted: the same tables in grams.
     CHECK(formula::render(formula::series_constant<unit::Gram>(rat(3), rat(5))) == "values(3 g, 5 g)");
@@ -2598,6 +2636,10 @@ TEST_CASE("render: every number a formula declares in a unit with no symbol is i
     CHECK(formula::render(banded_lookup<unit::Gram, UnlabelledGramBands, unit::Gram>(var<UnlabelledWeight>,
                                                                                     { rat(3), rat(5) }))
           == "lookup(w, 250 to under 500 g gives 3 g, 500 to under 750 g gives 5 g)");
+    CHECK(formula::render<Dialect::LaTeX>(banded_lookup<unit::Gram, UnlabelledGramBands, unit::Gram>(var<UnlabelledWeight>,
+                                                                                                     { rat(3), rat(5) }))
+          == "\\operatorname{lookup}(w,\\allowbreak \\mathrm{250\\ to\\ under\\ 500\\ g\\ gives\\ 3\\ g},"
+             "\\allowbreak \\mathrm{500\\ to\\ under\\ 750\\ g\\ gives\\ 5\\ g})");
     CHECK(formula::render(formula::conformity<unit::Gram>(
               formula::series<UnlabelledWeight, 2>, unlabelledGramEnvelope, formula::Verdict { "reject the specimen" }))
           == "conform(w(i), from 250 to 500 g, at least 750 g)");
