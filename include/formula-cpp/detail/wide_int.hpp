@@ -111,12 +111,12 @@ class WideUnsigned
         for (std::size_t limbAt = 4; limbAt < Limbs; ++limbAt)
             aboveLow |= _limbs[limbAt];
         // The low four limbs, zero past the top of a narrower value.
-        std::array<std::uint64_t, 4> low {};
-        for (std::size_t limbAt = 0; limbAt < low.size() && limbAt < Limbs; ++limbAt)
-            low[limbAt] = _limbs[limbAt];
+        std::array<std::uint64_t, 4> lowLimbs {};
+        for (std::size_t limbAt = 0; limbAt < lowLimbs.size() && limbAt < Limbs; ++limbAt)
+            lowLimbs[limbAt] = _limbs[limbAt];
         if (aboveLow != 0U)
             return std::nullopt;
-        return UInt128 { (low[3] << 32U) | low[2], (low[1] << 32U) | low[0] };
+        return UInt128 { (lowLimbs[3] << 32U) | lowLimbs[2], (lowLimbs[1] << 32U) | lowLimbs[0] };
     }
 
     /// Whether this is zero.
