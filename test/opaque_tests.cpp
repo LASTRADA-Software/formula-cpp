@@ -1055,7 +1055,9 @@ TEST_CASE("the coherent unit is spelt from its base units", "[opaque][trace]")
     CHECK(formula::detail::coherent_unit_text(formula::Dimension { .length = formula::exponent(1, 2) }) == "m^(1/2)");
 }
 
-TEST_CASE("a named base dimension is spelt by its name and ahead of the SI units on its side", "[opaque][trace]")
+TEST_CASE("a named base dimension is spelt by its name and ahead of the SI units on its side of the slash, "
+          "or among the negated factors when nothing stands above it",
+          "[opaque][trace]")
 {
     constexpr formula::Dimension euros = formula::base_dimension("EUR");
     constexpr formula::Dimension yen = formula::base_dimension("JPY");
@@ -1066,7 +1068,7 @@ TEST_CASE("a named base dimension is spelt by its name and ahead of the SI units
     CHECK(formula::detail::coherent_unit_text(formula::power(yen, -1)) == "JPY^-1");
     CHECK(formula::detail::coherent_unit_text(euros / yen) == "EUR/JPY");
     CHECK(formula::detail::coherent_unit_text(formula::nth_root(euros, 2)) == "EUR^(1/2)");
-    // It leads the denominator too.
+    // With nothing above the slash, it leads the negated factors.
     CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar / (formula::dim::Time * euros)) == "EUR^-1 s^-1");
 
     // `base_dimension` admits only letters and digits, but `namedBases` is a
