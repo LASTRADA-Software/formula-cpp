@@ -333,20 +333,26 @@ TEST_CASE("a scope reported without its origin records none, and says so", "[rec
 
 TEST_CASE("a step costs what it cost before records were traced", "[record-trace]")
 {
-    // 1296 bytes, measured on cl, clang-cl, g++ 13 and 14, and clang++ with
-    // libstdc++, all 64-bit. It was 1008 until a `Dimension` could carry named base
-    // dimensions: each of its four slots holds a 16-byte name and an 8-byte
-    // exponent, so a `Dimension` grew from 56 bytes to 152 and a `Unit` from
-    // 152 to 248, and a step holds one dimension and two units -- 3 x 96 = 288
-    // bytes more. Records' per-step facts -- the source, whether a replaced
-    // entry was empty, and the record's number -- still fit in padding `Step`
-    // already had; each origin and each lineage comparison lives once, in the
-    // trace's side tables. A checked standard library's containers are larger,
-    // and so is every step there, so only an unchecked 64-bit build pins the
-    // number.
+    // 1320 bytes, measured on cl and clang-cl (release, /MD) and on g++ 14 and
+    // clang++ 20 with libstdc++, all 64-bit. It was 1296 until `Rational` held
+    // its numerator and denominator in 128 bits: a `Rational` grew from 16
+    // bytes to 32, and the one a step holds inline, its `std::optional` value,
+    // from 24 to 40 -- 16 bytes more -- and `lookupKeyHigh`, a count's top 64
+    // bits, adds 8 more after `lookupKeyIsSigned`. A step's band, segment and
+    // covered range keep their declared 64-bit numerators and denominators, and
+    // its other values live in its vectors, so neither grew. Before that it was
+    // 1008, until a `Dimension` could carry named base dimensions and a step's
+    // one dimension and two units grew by 96 bytes each. Records' per-step
+    // facts -- the source, whether a replaced entry was empty, and the record's
+    // number -- still fit in padding `Step` already had; each origin and each
+    // lineage comparison lives once, in the trace's side tables. A checked
+    // standard library's containers are larger, and so is every step there, so
+    // only an unchecked 64-bit build pins the number. The optional value's 40
+    // bytes depend on no container, so they are pinned on every build.
+    static_assert(sizeof(std::optional<formula::Rational>) == 40);
 #if (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0) || defined(_GLIBCXX_DEBUG)
     SUCCEED("a checked standard library's containers change every step's size, so nothing is pinned here");
 #else
-    STATIC_REQUIRE((sizeof(void*) != 8 || sizeof(formula::Step<formula::Rational>) == 1296));
+    STATIC_REQUIRE((sizeof(void*) != 8 || sizeof(formula::Step<formula::Rational>) == 1320));
 #endif
 }

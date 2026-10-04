@@ -204,8 +204,8 @@ int main()
     std::string const meanLine = last_line(
         formula::render_trace(formula::trace_of<Reading>(formula::sample_mean(threeReadings), readings), { .maxSteps = 80 }));
     std::println("the readings: {}\ntheir sum: {}\ntheir range: {}\ntheir mean: {}\n", readingsLine, sumLine, rangeLine, meanLine);
-    check(sumLine == "2. sum(#1) = 18447/20", "922.35 K, no reading");
-    check(rangeLine == "2. sample_range(#1) = 88/5", "17.6 K, no reading");
+    check(sumLine == "2. sum(#1) = 18447/20 K", "922.35 K, no reading");
+    check(rangeLine == "2. sample_range(#1) = 88/5 K", "17.6 K, no reading");
     check(meanLine == "2. sample_mean(#1) = 343/10 \xc2\xb0" "C", "a mean of readings is a reading, 34.3 degC");
 
     std::println("== 2. Elementwise arithmetic: one step per operation ==\n");
@@ -214,8 +214,8 @@ int main()
     std::println("{}", passingTrace);
     check(passingTrace.contains("3. cumulative(#2, from last) = 803 g; 673 g; 463 g; 368 g; 28 g\n"),
           "the running total from the coarsest screen");
-    // A computed step has no declared unit, so it reads in the coherent one:
-    // 447/1250 is 35.76 %.
+    // A percentage less a pure number is in two units, so it borrows neither
+    // and reads in the coherent one, a plain fraction: 447/1250 is 35.76 %.
     check(passingTrace.ends_with("6. #1 - #5 = 447/1250; 577/1250; 787/1250; 441/625; 611/625\n"),
           "35.76, 46.16, 62.96, 70.56 and 97.76 % passing");
     std::println("the same, within a budget of 8:\n{}", formula::render_trace(passingRun.trace, { .maxSteps = 8 }));

@@ -309,8 +309,9 @@ formula::Measured<WaterVolume> const fractional { 10.3_r };
 ```
 
 `10.3_r` is exactly 103/10. A plain `10.3` is refused with a message that
-says why -- it is the double nearest 10.3, not 10.3 -- and so is an unsigned
-integer wide enough to hold values a `Rational` cannot.
+says why -- it is the double nearest 10.3, not 10.3. Every built-in integer
+of up to 64 bits, `std::uint64_t` among them, converts exactly; a wider one
+is refused.
 
 `formula::measured_series<Q>` takes the same spellings, mixed freely, and
 `formula::not_measured` for a point that was not measured. It is the same

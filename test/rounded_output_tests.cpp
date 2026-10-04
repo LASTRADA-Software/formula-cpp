@@ -93,8 +93,8 @@ struct ReadingSpan
 };
 
 // The sum of the draws' reciprocals, with the exact hook: over ten invented
-// primes its exact denominator is their product, 75 bits, which no Rational
-// holds and four 32-bit limbs do. Counts which route ran.
+// primes its exact denominator is their product, 134 bits, which no Rational
+// holds and eight 32-bit limbs do. Counts which route ran.
 struct ReciprocalSum
 {
     static constexpr std::string_view name = "reciprocal sum";
@@ -140,7 +140,7 @@ struct ReciprocalSum
         return std::array { running };
     }
 
-    static constexpr std::size_t exact_limbs = 4;
+    static constexpr std::size_t exact_limbs = 8;
 
     static constexpr std::expected<std::array<formula::detail::WideRatio<exact_limbs>, 1>, formula::ArithmeticError>
     compute_exact(std::span<formula::Rational const> draws) noexcept
@@ -156,8 +156,8 @@ struct ReciprocalSum
             if (each.sign() <= 0)
                 return std::unexpected { formula::ArithmeticError::DomainError };
             // running + 1 / (p / q) = (running.numerator * p + running.denominator * q) / (running.denominator * p)
-            Wide const top = Wide::from_u64(static_cast<std::uint64_t>(each.numerator()));
-            Wide const bottom = Wide::from_u64(static_cast<std::uint64_t>(each.denominator()));
+            Wide const top = Wide::from_u128(formula::detail::wide_magnitude(each.numerator()));
+            Wide const bottom = Wide::from_u128(formula::detail::wide_magnitude(each.denominator()));
             std::optional<Wide> const kept = formula::detail::mul_checked_or_none(running.numerator, top);
             std::optional<Wide> const added = formula::detail::mul_checked_or_none(running.denominator, bottom);
             std::optional<Wide> const summed =
@@ -195,7 +195,7 @@ struct NarrowReciprocalSum: ReciprocalSum
     }
 };
 
-// The product of two gains, with the exact hook: 2^40 times 2^40 is 2^80,
+// The product of two gains, with the exact hook: 2^70 times 2^70 is 2^140,
 // which the hook holds and no Rational does.
 struct WideProduct
 {
@@ -220,7 +220,7 @@ struct WideProduct
         return std::array { *product };
     }
 
-    static constexpr std::size_t exact_limbs = 4;
+    static constexpr std::size_t exact_limbs = 8;
 
     static constexpr std::expected<std::array<formula::detail::WideRatio<exact_limbs>, 1>, formula::ArithmeticError>
     compute_exact(formula::Rational multiplicand, formula::Rational multiplier) noexcept
@@ -269,22 +269,34 @@ constexpr auto oddTiedReadings =
 
 // Five and ten invented primes. The five's reciprocals sum to
 // 2101205901/58386114749, which Rational holds; the ten's to a fraction over
-// a 75-bit denominator, which it does not.
+// a 134-bit denominator, which it does not.
 constexpr auto fiveDraws = formula::environment(formula::measured_series<Draw>(formula::Measured<Draw> { rat(103) },
                                                                                formula::Measured<Draw> { rat(127) },
                                                                                formula::Measured<Draw> { rat(139) },
                                                                                formula::Measured<Draw> { rat(163) },
                                                                                formula::Measured<Draw> { rat(197) }));
-constexpr auto tenDraws = formula::environment(formula::measured_series<Draw>(formula::Measured<Draw> { rat(103) },
-                                                                              formula::Measured<Draw> { rat(127) },
-                                                                              formula::Measured<Draw> { rat(139) },
-                                                                              formula::Measured<Draw> { rat(163) },
-                                                                              formula::Measured<Draw> { rat(197) },
-                                                                              formula::Measured<Draw> { rat(211) },
-                                                                              formula::Measured<Draw> { rat(227) },
-                                                                              formula::Measured<Draw> { rat(229) },
-                                                                              formula::Measured<Draw> { rat(233) },
-                                                                              formula::Measured<Draw> { rat(239) }));
+constexpr auto tenDraws = formula::environment(formula::measured_series<Draw>(formula::Measured<Draw> { rat(10067) },
+                                                                              formula::Measured<Draw> { rat(10069) },
+                                                                              formula::Measured<Draw> { rat(10079) },
+                                                                              formula::Measured<Draw> { rat(10091) },
+                                                                              formula::Measured<Draw> { rat(10093) },
+                                                                              formula::Measured<Draw> { rat(10099) },
+                                                                              formula::Measured<Draw> { rat(10103) },
+                                                                              formula::Measured<Draw> { rat(10111) },
+                                                                              formula::Measured<Draw> { rat(10133) },
+                                                                              formula::Measured<Draw> { rat(10139) }));
+// The 75-bit denominator, which 64 bits refused: the ten primes from 103.
+constexpr auto tenSmallDraws =
+    formula::environment(formula::measured_series<Draw>(formula::Measured<Draw> { rat(103) },
+                                                        formula::Measured<Draw> { rat(127) },
+                                                        formula::Measured<Draw> { rat(139) },
+                                                        formula::Measured<Draw> { rat(163) },
+                                                        formula::Measured<Draw> { rat(197) },
+                                                        formula::Measured<Draw> { rat(211) },
+                                                        formula::Measured<Draw> { rat(227) },
+                                                        formula::Measured<Draw> { rat(229) },
+                                                        formula::Measured<Draw> { rat(233) },
+                                                        formula::Measured<Draw> { rat(239) }));
 constexpr auto fiveCall = formula::opaque<ReciprocalSum>(reciprocalClause, formula::series<Draw, 5>);
 constexpr auto tenCall = formula::opaque<ReciprocalSum>(reciprocalClause, formula::series<Draw, 10>);
 
@@ -448,10 +460,19 @@ TEST_CASE("rounded output: a tie is broken by the mode as checked_round breaks i
 TEST_CASE("rounded output: the exact hook answers where the exact route overflows", "[rounded-output]")
 {
     STATIC_REQUIRE(formula::detail::declares_compute_exact<ReciprocalSum, formula::SeriesVarNode<Draw, 10>>);
-    // Ten reciprocals: the exact total needs a 75-bit denominator.
+    // Ten reciprocals: the exact total needs a 134-bit denominator.
     auto const exactRoute = formula::checked_evaluate<Reciprocals>(formula::opaque_output<"total">(tenCall), tenDraws);
     REQUIRE(!exactRoute.has_value());
     CHECK(exactRoute.error() == formula::ArithmeticError::Overflow);
+    // Over the ten primes from 103, the 75 bits 64 refused: the exact route
+    // answers, 0.0579755... as the rounded route gave it.
+    auto const smallExact =
+        formula::checked_evaluate<Reciprocals>(formula::opaque_output<"total">(tenCall), tenSmallDraws);
+    REQUIRE(smallExact.has_value());
+    REQUIRE(smallExact->is_value());
+    CHECK(formula::checked_round(
+              smallExact->measurement().value(), formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven)
+          == rat(2319, 40000));
 
     ReciprocalSum::computeCalls = 0;
     ReciprocalSum::exactCalls = 0;
@@ -459,13 +480,14 @@ TEST_CASE("rounded output: the exact hook answers where the exact route overflow
         formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(tenCall),
         tenDraws);
     REQUIRE(rounded.has_value());
-    CHECK(rounded->measurement().value() == rat(2319, 40000)); // 0.057975
+    CHECK(rounded->measurement().value() == rat(99, 100000)); // 0.000990
     CHECK(ReciprocalSum::exactCalls == 1);
     CHECK(ReciprocalSum::computeCalls == 0);
     auto const upwards = formula::checked_evaluate<Reciprocals>(
         formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Ceiling>(tenCall),
         tenDraws);
-    CHECK(upwards->measurement().value() == rat(7247, 125000)); // 0.057976
+    REQUIRE(upwards.has_value());
+    CHECK(upwards->measurement().value() == rat(991, 1000000)); // 0.000991
 }
 
 TEST_CASE("rounded output: where both routes answer it is the exact output rounded in every mode", "[rounded-output]")
@@ -541,14 +563,14 @@ TEST_CASE("rounded output: the hook's own failure is the operation's", "[rounded
 TEST_CASE("rounded output: a rounding that fails after the call answered is the output's alone", "[rounded-output]")
 {
     constexpr auto productCall = formula::opaque<WideProduct>(productClause, formula::var<Gain>, formula::var<Boost>);
-    constexpr std::int64_t twoToForty = std::int64_t { 1 } << 40;
+    constexpr formula::Rational twoToSeventy { formula::Rational::Int { 1 } << 70 };
     auto const huge =
-        formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
-    // The exact route cannot hold 2^80 at all.
+        formula::environment(formula::Measured<Gain> { twoToSeventy }, formula::Measured<Boost> { twoToSeventy });
+    // The exact route cannot hold 2^140 at all.
     auto const plain = formula::checked_evaluate<Amplified>(formula::opaque_output<"product">(productCall), huge);
     REQUIRE(!plain.has_value());
     CHECK(plain.error() == formula::ArithmeticError::Overflow);
-    // The hook holds it -- the call answers -- but no Rational holds 2^80
+    // The hook holds it -- the call answers -- but no Rational holds 2^140
     // rounded to units either: the output fails, not the call.
     auto const called = formula::detail::evaluate_rounded_call<0>(productCall, huge, formula::NullSink {});
     CHECK(called.has_value());
@@ -558,15 +580,22 @@ TEST_CASE("rounded output: a rounding that fails after the call answered is the 
         huge);
     REQUIRE(!rounded.has_value());
     CHECK(rounded.error() == formula::ArithmeticError::Overflow);
-    // The control: 2^40 times 1/2^30 is 1024.
-    auto const modest = formula::environment(formula::Measured<Gain> { rat(twoToForty) },
-                                             formula::Measured<Boost> { rat(1, std::int64_t { 1 } << 30) });
+    // The control: 2^70 times 1/2^60 is 1024.
+    auto const modest = formula::environment(formula::Measured<Gain> { twoToSeventy },
+                                             formula::Measured<Boost> { rat(1, std::int64_t { 1 } << 60) });
     auto const answered = formula::checked_evaluate<Amplified>(
         formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
             productCall),
         modest);
     REQUIRE(answered.has_value());
     CHECK(answered->measurement().value() == rat(1024));
+    // 2^40 times 2^40, which 64 bits refused, is 2^80 on either route.
+    constexpr std::int64_t twoToForty = std::int64_t { 1 } << 40;
+    auto const wide80 =
+        formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
+    auto const exact80 = formula::checked_evaluate<Amplified>(formula::opaque_output<"product">(productCall), wide80);
+    REQUIRE(exact80.has_value());
+    CHECK(exact80->measurement().value() == formula::Rational { formula::Rational::Int { 1 } << 80 });
 }
 
 TEST_CASE("rounded output: a sink hearing the call is told it holds no values", "[rounded-output]")
@@ -655,9 +684,9 @@ TEST_CASE("rounded output: a rounding that fails after the call answered is the 
           "[rounded-output][trace]")
 {
     constexpr auto productCall = formula::opaque<WideProduct>(productClause, formula::var<Gain>, formula::var<Boost>);
-    constexpr std::int64_t twoToForty = std::int64_t { 1 } << 40;
+    constexpr formula::Rational twoToSeventy { formula::Rational::Int { 1 } << 70 };
     auto const huge =
-        formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
+        formula::environment(formula::Measured<Gain> { twoToSeventy }, formula::Measured<Boost> { twoToSeventy });
     formula::Trace<> recorded {};
     (void) formula::detail::dispatch<formula::Rational>(
         formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
@@ -665,8 +694,8 @@ TEST_CASE("rounded output: a rounding that fails after the call answered is the 
         huge,
         formula::RecordingSink { recorded });
     CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
-          == "1. g_1 = 1099511627776\n"
-             "2. g_2 = 1099511627776\n"
+          == "1. g_1 = 1180591620717411303424\n"
+             "2. g_2 = 1180591620717411303424\n"
              "3. wide product(#1, #2) = product: rounded where used [inside not shown] [Product of gains, Example Standard "
              "7, 2.5]\n"
              "4. round(product of #3, to 0 dp) = overflow in exact arithmetic [nearest, ties to even]\n");

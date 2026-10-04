@@ -122,20 +122,20 @@ constexpr formula::DecimalRounding slopeRounding =
     formula::declared_rounding(millimetrePerSecond, formula::RoundingMode::HalfEven);
 constexpr auto roundedSlope = formula::rounded_output<"slope", slopeRounding>(fit);
 
-/// Fifteen points, each on a different denominator: point k at
+/// Twenty-seven points, each on a different denominator: point k at
 /// ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) mm).
 auto distinctDenominators()
 {
-    std::array<formula::Measured<Elapsed>, 15> times;
-    std::array<formula::Measured<Length>, 15> lengths;
-    for (std::size_t k = 0; k < 15; ++k)
+    std::array<formula::Measured<Elapsed>, 27> times;
+    std::array<formula::Measured<Length>, 27> lengths;
+    for (std::size_t k = 0; k < 27; ++k)
     {
         auto const position = static_cast<std::int64_t>(k);
         times[k] = formula::Measured<Elapsed> { formula::Rational { position + 1, position + 2 } };
         lengths[k] = formula::Measured<Length> { formula::Rational { 2 * position + 3, position + 3 } };
     }
-    return formula::environment(formula::MeasuredSeries<Elapsed, 15> { times },
-                                formula::MeasuredSeries<Length, 15> { lengths });
+    return formula::environment(formula::MeasuredSeries<Elapsed, 27> { times },
+                                formula::MeasuredSeries<Length, 27> { lengths });
 }
 
 // ---- 5. A retry ------------------------------------------------------------------------
@@ -235,8 +235,9 @@ constexpr auto observedPoints =
     formula::environment(formula::MeasuredObservations<Elapsed, 64>(1_r, 2_r, 4_r, 7_r),
                          formula::MeasuredObservations<Length, 64>(10.2_r, 10.9_r, 12.1_r, 14.3_r));
 
-/// Fifty readings at four decimals: t = k + 1 + (7919 k mod 997) / 10^4 s and
-/// L = 2410 + 3.17 k + ((3217 k mod 1009) - 504) / 10^4 mm, for k from 0.
+/// Fifty readings at eight decimals: t = k + 1 + (7919 k mod 997) / 10^4
+/// + (1237 k mod 10^4) / 10^8 s and L = 2410 + 3.17 k + ((3217 k mod 1009)
+/// - 504) / 10^4 + (4111 k mod 10^4) / 10^8 mm, for k from 0.
 auto fiftyReadings()
 {
     std::array<formula::Rational, 50> times;
@@ -244,8 +245,13 @@ auto fiftyReadings()
     for (std::size_t k = 0; k < 50; ++k)
     {
         auto const position = static_cast<std::int64_t>(k);
-        times[k] = formula::Rational { 10'000 * (position + 1) + (7919 * position) % 997, 10'000 };
-        lengths[k] = formula::Rational { 24'100'000 + 31'700 * position + (3217 * position) % 1009 - 504, 10'000 };
+        times[k] = formula::Rational {
+            (10'000 * (position + 1) + (7919 * position) % 997) * 10'000 + (1237 * position) % 10'000, 100'000'000
+        };
+        lengths[k] = formula::Rational {
+            (24'100'000 + 31'700 * position + (3217 * position) % 1009 - 504) * 10'000 + (4111 * position) % 10'000,
+            100'000'000
+        };
     }
     return formula::MeasuredObservations<Elapsed, 64>::from(times).and_then([&](auto const& timesMade) {
         return formula::MeasuredObservations<Length, 64>::from(lengths).transform(
@@ -351,22 +357,24 @@ int main()
     std::println("one point: {}", noLine.has_value() ? "a line" : formula::describe(noLine.error()));
     check(!noLine.has_value() && noLine.error() == formula::ArithmeticError::DomainError, "no line through one point");
 
-    constexpr auto fifteen = formula::linear_least_squares(
-        formula::curve(formula::series<Elapsed, 15>, formula::series<Length, 15>), { .reference = "Example Standard 12" });
-    auto const tooWide = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(fifteen), distinctDenominators());
-    std::println("fifteen distinct denominators: {}", tooWide.has_value() ? "a line" : formula::describe(tooWide.error()));
+    constexpr auto twentySeven = formula::linear_least_squares(
+        formula::curve(formula::series<Elapsed, 27>, formula::series<Length, 27>), { .reference = "Example Standard 12" });
+    auto const tooWide =
+        formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(twentySeven), distinctDenominators());
+    std::println("twenty-seven distinct denominators: {}",
+                 tooWide.has_value() ? "a line" : formula::describe(tooWide.error()));
     check(!tooWide.has_value() && tooWide.error() == formula::ArithmeticError::Overflow, "Overflow, never a wrong line");
     std::println("{}", formula::render(roundedSlope));
     auto const roundedRate = formula::explain<Rate>(roundedSlope, points);
     std::println("{}", formula::render_trace(roundedRate.trace, { .maxSteps = 20 }));
     check(formula::number_of(roundedRate.outcome) == 40.716_r, "0.6786 mm/s is 40.716 mm/min");
 
-    constexpr auto roundedFifteen = formula::rounded_output<"slope", slopeRounding>(fifteen);
-    auto const roundedWide = formula::checked_evaluate<Rate>(roundedFifteen, distinctDenominators());
-    check(formula::number_of(roundedWide) == 116.232_r,
-          "rounded where used, fifteen distinct denominators answer: 1.9372 mm/s");
+    constexpr auto roundedTwentySeven = formula::rounded_output<"slope", slopeRounding>(twentySeven);
+    auto const roundedWide = formula::checked_evaluate<Rate>(roundedTwentySeven, distinctDenominators());
+    check(formula::number_of(roundedWide) == 122.238_r,
+          "rounded where used, twenty-seven distinct denominators answer: 2.0373 mm/s");
     if (roundedWide.has_value())
-        std::println("fifteen distinct denominators, rounded where used: {}\n", *roundedWide);
+        std::println("twenty-seven distinct denominators, rounded where used: {}\n", *roundedWide);
 
     std::println("== 4. A citation is required ==\n");
 
@@ -474,7 +482,7 @@ int main()
         return 1;
     }
     auto const exactFifty = formula::checked_evaluate(observedLine, *fifty);
-    std::println("fifty readings at 4 decimals, exact: {}",
+    std::println("fifty readings at 8 decimals, exact: {}",
                  exactFifty.has_value() ? "a line" : formula::describe(exactFifty.error()));
     auto const slopeOfFifty = formula::checked_evaluate(observedSlope, *fifty);
     auto const startOfFifty = formula::checked_evaluate<StartLength>(
@@ -488,7 +496,7 @@ int main()
         *fifty);
     check(slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value(), "fifty readings, rounded");
     if (slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value())
-        std::println("fifty readings at 4 decimals, rounded: slope {}, intercept {}, r squared {}\n",
+        std::println("fifty readings at 8 decimals, rounded: slope {}, intercept {}, r squared {}\n",
                      *slopeOfFifty,
                      *startOfFifty,
                      *qualityOfFifty);

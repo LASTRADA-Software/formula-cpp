@@ -470,15 +470,12 @@ constexpr auto settledEstimate = formula::retry<IteratedEstimate, 4, formula::Fi
     formula::Verdict { "repeat the determination" },
     { .title = "Settled estimate", .reference = "Example Standard 12", .section = "6" });
 
-/// An exact rational as text: `4`, or `3/5` when it is not whole.
-///
-/// `formula::fraction_text` (`number_text.hpp`) spells the same text; this
-/// helper predates it.
+/// An exact rational as text: `4`, or `3/5` when it is not whole, as
+/// `formula::fraction_text` (`number_text.hpp`) spells it.
 [[nodiscard]] std::string exact_text(formula::Rational value)
 {
-    if (value.denominator() == 1)
-        return std::to_string(value.numerator());
-    return std::to_string(value.numerator()) + "/" + std::to_string(value.denominator());
+    formula::NumberText const spelled = formula::fraction_text(value);
+    return std::string { spelled.view() };
 }
 
 /// A unit's symbol for a table cell, or a word for the one unit that has none.
@@ -950,8 +947,9 @@ int main(int argc, char** argv)
 
     out << "## Worked derivation: a grading curve read between two screens\n\n";
     out << "The same percentages paired with the declared screens as a curve, and read at 173 m. The last step "
-           "names the two screens the answer lay between. Its value, like every computed step's, reads in the "
-           "coherent unit, a plain fraction for a percentage: 6927/10625 is about 65.2 %.\n\n";
+           "names the two screens the answer lay between. Its value is read off computed percentages -- 100 % less "
+           "a ratio of two masses, in two units with no one unit to borrow -- so it reads in the coherent unit, a "
+           "plain fraction: 6927/10625 is about 65.2 %.\n\n";
 
     write_worked_formula(out, passingAtOpening);
 

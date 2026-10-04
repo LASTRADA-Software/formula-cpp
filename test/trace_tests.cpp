@@ -154,9 +154,9 @@ TEST_CASE("a step records the unit its value was declared in", "[trace]")
     CHECK(trace.steps[1].unit == unit::Millilitre);
     CHECK(trace.steps[1].value == formula::Rational { 1, 2000 });
 
-    // Anything computed has no declared unit of its own, so the coherent SI
-    // unit of its dimension is the truthful answer -- not the unit of either
-    // operand, which a sum of litres and millilitres shows there is no
+    // A sum of values in two units has no one unit to borrow, so the coherent
+    // SI unit of its dimension is the truthful answer -- not the unit of
+    // either operand, which a sum of litres and millilitres shows there is no
     // defensible way to pick.
     CHECK(trace.steps[2].kind == formula::StepKind::Add);
     CHECK(trace.steps[2].unit == formula::coherent(formula::dim::Volume));
@@ -863,19 +863,22 @@ inline constexpr BreakpointTable<3> CurvePoints {
         var<Diameter>, { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
 }
 
-/// `2^62`, an ordinary representable `Rational` used where the scale rather
+/// `2^126`, an ordinary representable `Rational` used where the scale rather
 /// than the arithmetic is the point -- `lookup_tests.cpp`'s own constant, for
 /// the same purpose.
-constexpr std::int64_t Huge = std::int64_t { 1 } << 62;
+constexpr formula::Rational::Int Huge = formula::Rational::Int { 1 } << 126;
+/// `Huge` as a `Rational`, and one less.
+inline constexpr formula::Rational HugeValue { Huge };
+inline constexpr formula::Rational HugeLessOne { Huge - 1 };
 
-/// Keys 0 and 4 mm against values 0 and 2^62 - 1: probed at 3 mm the exact
-/// answer is 3(2^62 - 1)/4, whose reduced numerator is above `Rational`'s
+/// Keys 0 and 4 mm against values 0 and 2^126 - 1: probed at 3 mm the exact
+/// answer is 3(2^126 - 1)/4, whose reduced numerator is above `Rational`'s
 /// maximum, so the **interpolation itself** overflows. The same table
 /// `lookup_tests.cpp` pins the behaviour of.
 inline constexpr BreakpointTable<2> UnrepresentableAnswer { breakpoint(0), breakpoint(4) };
 
 /// One band wide enough to hit, whose correction is stated in **kilometres**,
-/// so that a hit still has an arithmetic step left to fail at: 2^62 km is a
+/// so that a hit still has an arithmetic step left to fail at: 2^126 km is a
 /// perfectly representable `Rational` that does not survive being multiplied
 /// by 1000 on the way to metres. The band was found, so this is emphatically
 /// not a miss.
@@ -891,7 +894,7 @@ inline constexpr BandTable<2> InnerBands {
 };
 
 /// An exact table whose corrections are stated in **kilometres**, so that a
-/// row that IS found can still fail on the way out: 2^62 km is a perfectly
+/// row that IS found can still fail on the way out: 2^126 km is a perfectly
 /// representable `Rational` that does not survive being multiplied by 1000.
 /// That is the one failure an exact lookup can have which is not a miss, and
 /// the exact lookup is a kind where no other own-failure state exists to
@@ -900,7 +903,7 @@ inline constexpr KeyTable<SpecimenShape, 2> FarKeys { SpecimenShape::Cube, Speci
 
 /// Two rows in centimetres whose values are stated in **kilometres**. 0 cm
 /// sits exactly on the first row, so the interpolation performs no arithmetic
-/// at all and cannot overflow -- and the row's own 2^62 km then does not
+/// at all and cannot overflow -- and the row's own 2^126 km then does not
 /// survive the conversion into metres. The one table that separates "the
 /// interpolation overflowed" from "the conversion after it did".
 inline constexpr BreakpointTable<2> FarValues { breakpoint(0), breakpoint(437, 100) };
@@ -1179,7 +1182,7 @@ TEST_CASE("an interpolating lookup step tells its own overflow apart from an ope
     // computes, so only this kind can overflow of its own accord. Both
     // derivations below end in a step carrying `Overflow`.
     constexpr auto own = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
-        var<Diameter>, { rat(0), rat(Huge - 1) });
+        var<Diameter>, { rat(0), HugeLessOne });
 
     formula::Trace<> ownOverflow {};
     {
@@ -1190,11 +1193,11 @@ TEST_CASE("an interpolating lookup step tells its own overflow apart from an ope
     CHECK(ownOverflow.steps[1].error == formula::ArithmeticError::Overflow);
     CHECK(ownOverflow.steps[1].lookupFailure == formula::LookupFailure::Computation);
 
-    // The same enumerator, produced below the lookup instead: 2^62 mm times
-    // 2^62 is not representable, and the curve is never consulted.
-    constexpr auto overflowingLength = formula::constant<unit::Millimetre>(rat(Huge)) * formula::number(rat(Huge));
+    // The same enumerator, produced below the lookup instead: 2^126 mm times
+    // 2^126 is not representable, and the curve is never consulted.
+    constexpr auto overflowingLength = formula::constant<unit::Millimetre>(HugeValue) * formula::number(HugeValue);
     constexpr auto relayed = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
-        overflowingLength, { rat(0), rat(Huge - 1) });
+        overflowingLength, { rat(0), HugeLessOne });
 
     formula::Trace<> relayedOverflow {};
     {
@@ -1291,7 +1294,7 @@ TEST_CASE("an exact lookup that found its row can still fail converting it out",
     // interpolate, so there is no `Computation` state to mix it up with, and
     // nothing else here would notice the recorder leaving the field alone.
     constexpr auto node =
-        exact_lookup<FarKeys, unit::Kilometre>(SpecimenShape::Cylinder, { rat(1127, 1000), rat(Huge) });
+        exact_lookup<FarKeys, unit::Kilometre>(SpecimenShape::Cylinder, { rat(1127, 1000), HugeValue });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1299,7 +1302,7 @@ TEST_CASE("an exact lookup that found its row can still fail converting it out",
 
     REQUIRE(trace.steps.size() == 1);
     CHECK(trace.steps[0].error == formula::ArithmeticError::Overflow);
-    // The row WAS found: `Cylinder` is row 1 of this table, and 2^62 km is a
+    // The row WAS found: `Cylinder` is row 1 of this table, and 2^126 km is a
     // perfectly good `Rational` until it is asked to become metres.
     CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::Conversion);
     CHECK(static_cast<long long>(trace.steps[0].lookupKey) == 7);
@@ -1315,7 +1318,7 @@ TEST_CASE("an interpolating lookup separates its own overflow from the conversio
     // whole field exists to refuse, one enumerator to the left of where it was
     // refused.
     constexpr auto node =
-        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1127, 1000) });
+        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { HugeValue, rat(1127, 1000) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1333,12 +1336,12 @@ TEST_CASE("an interpolating lookup separates its own overflow from the conversio
 TEST_CASE("an interpolating lookup whose key conversion failed never consulted its curve",
           "[trace][lookup]")
 {
-    // The third own-failure, on the other side of the curve: converting 2^62
+    // The third own-failure, on the other side of the curve: converting 2^126
     // metres into the table's centimetres overflows before any row is looked
     // at. Reporting it as a miss would print "the curve declares no rows"
     // about a three-row curve.
     constexpr auto node = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
-        formula::constant<unit::Metre>(rat(Huge)), { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
+        formula::constant<unit::Metre>(HugeValue), { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1358,9 +1361,9 @@ TEST_CASE("a lookup whose own unit conversion failed is not recorded as a miss",
     // relayed error.
 
     // The result side: 30 mm is comfortably inside [0, 103) mm, so the band IS
-    // found -- and the correction it selects, 2^62 km, then does not survive
+    // found -- and the correction it selects, 2^126 km, then does not survive
     // the conversion into metres.
-    constexpr auto wide = banded_lookup<unit::Millimetre, WideBand, unit::Kilometre>(var<Diameter>, { rat(Huge) });
+    constexpr auto wide = banded_lookup<unit::Millimetre, WideBand, unit::Kilometre>(var<Diameter>, { HugeValue });
     formula::Trace<> resultSide {};
     {
         formula::RecordingSink<> sink { resultSide };
@@ -1372,10 +1375,10 @@ TEST_CASE("a lookup whose own unit conversion failed is not recorded as a miss",
     CHECK(!resultSide.steps[1].selectedBand.has_value());
     CHECK(!resultSide.steps[1].coveredRange.has_value());
 
-    // The key side: the operand succeeds, and converting its 2^62 metres into
+    // The key side: the operand succeeds, and converting its 2^126 metres into
     // the table's own centimetres overflows before any band is looked at.
     constexpr auto farTooLong = banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(
-        formula::constant<unit::Metre>(rat(Huge)), { rat(863, 10), rat(1127, 10), rat(1043, 10) });
+        formula::constant<unit::Metre>(HugeValue), { rat(863, 10), rat(1127, 10), rat(1043, 10) });
     formula::Trace<> keySide {};
     {
         formula::RecordingSink<> sink { keySide };
@@ -1900,7 +1903,7 @@ TEST_CASE("a series step records every element in coherent SI, and no single val
 TEST_CASE("a series step that failed records the error and the element, and no elements", "[series][trace]")
 {
     using series_recording::Stockpile;
-    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
+    constexpr formula::Rational::Int tooLarge = std::numeric_limits<formula::Rational::Int>::max() / 100;
     constexpr auto overflowing = formula::environment(
         formula::measured_series<Stockpile>(formula::Measured<Stockpile> { formula::Rational { 1 } },
                                             formula::Measured<Stockpile> { formula::Rational { 2 } },
@@ -1978,7 +1981,7 @@ TEST_CASE("explain_series keeps a failure and its element, and the step that fai
     // A series has no throwing spelling, so explain_series carries the
     // failure in its outcome rather than throwing it away.
     using series_recording::Stockpile;
-    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
+    constexpr formula::Rational::Int tooLarge = std::numeric_limits<formula::Rational::Int>::max() / 100;
     constexpr auto overflowing = formula::environment(
         formula::measured_series<Stockpile>(formula::Measured<Stockpile> { formula::Rational { 1 } },
                                             formula::Measured<Stockpile> { formula::Rational { tooLarge } }));

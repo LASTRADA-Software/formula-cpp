@@ -545,9 +545,9 @@ In it, a calculated value it reads is one step, marked `calculated`:
 daily_load = fridge_kwh + oven_kwh + heater_kwh = 13.3 kWh
   1. fridge_kwh = 4.8 kWh, calculated
   2. oven_kwh = 2.5 kWh, calculated
-  3. #1 + #2 = 26280000
+  3. #1 + #2 = 7.3 kWh
   4. heater_kwh = 6 kWh, calculated
-  5. #3 + #4 = 47880000
+  5. #3 + #4 = 13.3 kWh
 ```
 
 The blocks of the calculated values it reads follow it, the last calculated
@@ -559,7 +559,7 @@ the fridge's energy reads. The inputs read come last, one line each:
 fridge_kwh = fridge_kw * fridge_h = 4.8 kWh
   1. fridge_kw = 0.4 kW, calculated
   2. fridge_h = 12 h
-  3. #1 * #2 = 17280000
+  3. #1 * #2 = 17280000 m^2 kg/s^2
 fridge_kw = fridge_w = 0.4 kW
   1. fridge_w = 400 W
 inputs
@@ -594,9 +594,11 @@ Asking for `Q` brings it up to date, as `checked_calculate` does, and counts as
 it does; recording the blocks calculates nothing again. Here nothing was out
 of date, and the example checks that neither counter moved.
 
-A computed step states its value in the coherent unit of its dimension, as
-every trace does: the fridge's 4.8 kWh reads `17280000` there, in joules,
-under a header in kilowatt-hours.
+A computed step states its value in the unit its trace step is shown in, as
+every trace does: a unit borrowed from the steps it read where that is safe,
+and otherwise the coherent unit of its dimension, spelt from its base units. A
+power times a time borrows neither one's unit, so the fridge's 4.8 kWh reads
+`17280000 m^2 kg/s^2` there, in joules, under a header in kilowatt-hours.
 
 ## A value typed in by hand
 
@@ -629,7 +631,7 @@ std::string const gridText = formula::render_derivation(gridCost, { .maxSteps = 
 grid_cost = net_draw * price = 62.5 EUR
   1. net_draw = 250 kWh, entered by hand
   2. price = 0.25 EUR/kWh
-  3. #1 * #2 = 62.5
+  3. #1 * #2 = 62.5 EUR
 net_draw = 250 kWh, entered by hand in place of monthly_load - self_used
 ... 1 further step not shown
 ```

@@ -412,11 +412,11 @@ integers, as `linear_least_squares` does
 
 There is one further refusal in the same function, for a different reason.
 `checked_exact_nth_root` rejects the most negative representable numerator
-(`IntMin`) with `ArithmeticError::Overflow` rather than `Inexact`: `IntMin`'s
-cube root exists and is exactly representable, but negating `IntMin` to reach
-a positive intermediate is signed overflow, undefined behaviour, before the
-root is ever taken. `Overflow` names what actually goes wrong; treating it as
-`Inexact` would blame the wrong layer.
+(`Rational::Int`'s minimum, -2^127) with `ArithmeticError::Overflow` rather
+than `Inexact`: its 127th root, -2, exists and is exactly representable, but
+negating it to reach a positive intermediate is signed overflow, undefined
+behaviour, before the root is ever taken. `Overflow` names what actually goes
+wrong; treating it as `Inexact` would blame the wrong layer.
 
 A root of degree zero names no operation at all and is refused at compile
 time, the same way a dimensional mismatch is, by the library's own
@@ -508,8 +508,15 @@ CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 2 }) == Ratio
 whose `lnAt` helper evaluates `rounded_ln<Places, Mode>` at the given ratio.)
 
 The places are the method's own, and at most 18; the result must fit a
-`Rational` there, which at 18 places means a magnitude below about 9.2, so
-the `log10` of a count near 10^18 is reported at 17. Only ln 1, log10 10^k and
+`Rational` there, which any logarithm does: the `log10` of 10^18 - 1 is
+reported to all 18 places. The integer kernel takes an argument whose
+numerator and denominator each fit 64 bits, the range it was built for: a
+wider argument, which a `Rational` can hold, is `Overflow`, as `log10` of
+2^70 is, and so is `exp` of more than 44. Two kinds of wide argument never
+reach the kernel: a power of ten, 10^19 up to 10^38 or one over it, is
+answered exactly, so `log10` of 10^30 is 30; and `exp` of less than -43 is
+0, or one unit under `Ceiling` and `AwayFromZero`, whatever its width.
+Only ln 1, log10 10^k and
 exp 0 can tie, and the mode breaks the tie as `rounded<>` does: `log10` of
 10^15 at -1 places is 20, 10 or 20 under `HalfAwayFromZero`,
 `HalfTowardZero` and `HalfEven`. A rounding the computation cannot decide --
@@ -600,15 +607,15 @@ parenthesis is needed to preserve the meaning:
 3. V_c = 300 l
 4. #2 / #3 = 3/5
 5. #4 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
-6. #1 * #5 = 150
-7. #6 = 150 [Cost of a mix at a given water/cement ratio, Example Standard 9:2021, 2.1]
+6. #1 * #5 = 150 EUR
+7. #6 = 150 EUR [Cost of a mix at a given water/cement ratio, Example Standard 9:2021, 2.1]
 ```
 
 Step 5 is the reused formula, carrying its own citation; step 6 consumes it.
 `c_u` is a price in euros, a dimension of its own rather than a bare number
 ([Base dimensions the SI does not have](dimensions.md#base-dimensions-the-si-does-not-have)),
-so the cost is in euros too; steps 6 and 7 show no unit only because a
-computed step carries no unit symbol of its own
+so the cost is in euros too: step 6 scales the price by a pure number, the
+ratio, and so reads in the price's unit, and step 7 restates step 6
 ([Tracing](tracing.md#reading-a-derivation)).
 
 One asymmetry is worth knowing before you rely on it. Using the same

@@ -95,14 +95,19 @@ the rounded variant beneath it. The rounding step says whose rule it was:
 ```text
 1. k_s = 1043/1000
 2. F = 89300 N
-3. #1 * #2 = 931399/10
+3. #1 * #2 = 931399/10 N
 4. a = 163 mm
 5. b = 103 mm
-6. #4 * #5 = 16789/1000000
-7. #3 / #6 = 93139900000/16789
+6. #4 * #5 = 16789/1000000 m^2
+7. #3 / #6 = 93139900000/16789 kg/(m s^2)
 8. round(#7, in MPa) = 11/2 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
 9. #8 = 11/2 MPa [variant Cube (2nd of 3), selected by tag]
 ```
+
+Each computed step reads in a unit written after it. The force scaled by the
+shape factor, a pure number, keeps the force's newtons. The area and the
+stress borrow neither operand's unit, so each reads in the coherent unit of its
+dimension, spelt from the base units: `m^2`, and `kg/(m s^2)` for the pascal.
 
 ### Naming a variant as the published method does
 
@@ -270,11 +275,11 @@ north cube: 4590000 Pa
 
 1. k_s = 863/1000 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.1]
 2. F = 89300 N
-3. #1 * #2 = 770659/10
+3. #1 * #2 = 770659/10 N
 4. a = 163 mm
 5. b = 103 mm
-6. #4 * #5 = 16789/1000000
-7. #3 / #6 = 77065900000/16789
+6. #4 * #5 = 16789/1000000 m^2
+7. #3 / #6 = 77065900000/16789 kg/(m s^2)
 8. round(#7, in N/mm2) = 459/100 N/mm2 [rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, NA.4); nearest, ties away from zero]
 9. #8 = 459/100 N/mm2 [variant Cube (2nd of 3), selected by tag]
 ```
@@ -318,11 +323,11 @@ south cube: 3400000 Pa
 3. #1 / #2 = 103/163
 4. k_s = #3 = 103/163 [derived by jurisdiction overlay: Example Standard 7:2019 A, A.3]
 5. F = 89300 N
-6. #4 * #5 = 9197900/163
+6. #4 * #5 = 9197900/163 N
 7. a = 163 mm
 8. b = 103 mm
-9. #7 * #8 = 16789/1000000
-10. #6 / #9 = 89300000000/26569
+9. #7 * #8 = 16789/1000000 m^2
+10. #6 / #9 = 89300000000/26569 kg/(m s^2)
 11. round(#10, in MPa) = 17/5 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
 12. #11 = 17/5 MPa [variant Cube (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
 ```
@@ -338,10 +343,10 @@ the position is the published one, not the Cylinder's place in what is left:
 1. F = 89300 N
 2. 1127/1000
 3. d = 135 mm
-4. #3^2 = 729/40000
-5. #2 * #4 = 821583/40000000
-6. #1 / #5 = 3572000000000/821583
-7. #6 = 3572000000000/821583 [replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]
+4. #3^2 = 729/40000 m^2
+5. #2 * #4 = 821583/40000000 m^2
+6. #1 / #5 = 3572000000000/821583 kg/(m s^2)
+7. #6 = 3572000000000/821583 kg/(m s^2) [replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]
 8. round(#7, in MPa) = 43/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
 9. #8 = 43/10 MPa [variant cylinder 135 x 271 mm (3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
 ```
@@ -583,16 +588,16 @@ them:
 4. a = 163 mm
 5. 173/100
 6. b = 103 mm
-7. #5 * #6 = 17819/100000
+7. #5 * #6 = 17819/100 mm
 8. require #4 <= #7 [satisfied; jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
 9. acceptance(#3, #8) [jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
 ```
 
 A method with no constraints still gets its `acceptance` line --
 `acceptance(none)`, with whose it is -- so a jurisdiction that removed every
-check is never silent about it. Step 7 is `1.73 x 103 mm` in coherent SI, 0.17819 m,
-written without its unit, as the computed steps of the cube's trace above are
-too.
+check is never silent about it. Step 7 is `1.73 x 103 mm`, a length scaled by a
+pure number, so it reads in the length's millimetres, `17819/100 mm`, as the
+force scaled by the shape factor in the cube's trace above reads in newtons.
 
 The constraints carry whose they are with them: `with_constraints` puts an
 `OverlaidConstraints` in the method -- the jurisdiction's set together with

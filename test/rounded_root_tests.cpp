@@ -165,53 +165,71 @@ TEST_CASE("rounded_sqrt of an absent radicand is absent", "[rounded_root]")
 
 TEST_CASE("rounded_sqrt reports overflow rather than a wrapped result", "[rounded_root]")
 {
-    // An integer radicand of about 10^6 fits at 6 dp and overflows at
-    // 7 dp, because floor(v) * 10^(2p) must stay below 2^64. 1000001 rather
+    // An integer radicand of about 10^6 fits at 16 dp and overflows at
+    // 17 dp, because floor(v) * 10^(2p) must stay below 2^128. 1000001 rather
     // than 10^6 itself, whose root is exactly 1000 and would take the tie
     // path, which has headroom of its own. Its root is 1000.000499999875...
     STATIC_REQUIRE(rootInGrams<DecimalPlaces { 6 }, RoundingMode::Floor>(Rational { 1'000'001 })
                    == Rational { 1'000'000'499, 1'000'000 });
-    constexpr auto node = formula::rounded_sqrt<unit::Gram, DecimalPlaces { 7 }, RoundingMode::Floor>(var<MassSquared>);
+    // 7 dp, which overflowed 64 bits, and 16 dp, the most that fits.
+    STATIC_REQUIRE(rootInGrams<DecimalPlaces { 7 }, RoundingMode::Floor>(Rational { 1'000'001 })
+                   == Rational { 10'000'004'999, 10'000'000 });
+    STATIC_REQUIRE(rootInGrams<DecimalPlaces { 16 }, RoundingMode::Floor>(Rational { 1'000'001 })
+                   == Rational { 8'000'003'999'999, 8'000'000'000 });
+    constexpr auto node = formula::rounded_sqrt<unit::Gram, DecimalPlaces { 17 }, RoundingMode::Floor>(var<MassSquared>);
     constexpr auto outcome = formula::checked_evaluate<Spread>(node, variance(Rational { 1'000'001 }));
     STATIC_REQUIRE(!outcome.has_value());
     STATIC_REQUIRE(outcome.error() == formula::ArithmeticError::Overflow);
 }
 
-TEST_CASE("rounded_sqrt reports overflow at the exact 2^64 edge of the whole part", "[rounded_root]")
+TEST_CASE("rounded_sqrt reports overflow at the exact 2^128 edge of the whole part", "[rounded_root]")
 {
-    // v * 10^4 for 1844674407370955161/1000 is 18446744073709551610, six
-    // below 2^64: it fits, and its root rounds down to 42949672.95. One more in
-    // the numerator puts v * 10^4 at 2^64 + 4. There floor(v) * 10^4 still
-    // fits and it is adding the remainder's share that crosses, so this pins
-    // the check on that addition, which the case above never reaches.
+    // v * 10^4 for N/1000, with N = 34028236692093846346337460743176821145
+    // (the largest Int over 5, which is 2^128 / 10 rounded down), is
+    // 2^128 - 6: it fits, and its root rounds down to (2^64 - 1) / 100. One
+    // more in the numerator puts v * 10^4 at 2^128 + 4. There floor(v) * 10^4
+    // still fits and it is adding the remainder's share that crosses, so this
+    // pins the check on that addition, which the case above never reaches.
     using formula::detail::rounded_square_root;
+    constexpr Rational::Int tenthOfTop = std::numeric_limits<Rational::Int>::max() / 5;
+    STATIC_REQUIRE(rounded_square_root(Rational { tenthOfTop, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor).value()
+                   == Rational { 3'689'348'814'741'910'323, 20 });
+    STATIC_REQUIRE(rounded_square_root(Rational { tenthOfTop + 1, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor).error()
+                   == formula::ArithmeticError::Overflow);
+    // The same edge at 2^64, which 64 bits refused one past: the root of
+    // 2^64 + 4 rounds down to 2^32 / 100.
     STATIC_REQUIRE(
         rounded_square_root(Rational { 1'844'674'407'370'955'161, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor).value()
         == Rational { 858'993'459, 20 });
     STATIC_REQUIRE(
-        rounded_square_root(Rational { 1'844'674'407'370'955'162, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor).error()
-        == formula::ArithmeticError::Overflow);
+        rounded_square_root(Rational { 1'844'674'407'370'955'162, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor).value()
+        == Rational { 1'073'741'824, 25 });
 }
 
-TEST_CASE("rounded_sqrt never wraps when a negative number of places widens the denominator past 2^64", "[rounded_root]")
+TEST_CASE("rounded_sqrt never wraps when a negative number of places widens the denominator past 2^128", "[rounded_root]")
 {
-    // At -1 places the divisor is b * 10^2. With b = 184467440737095517, the
-    // smallest b for which that product reaches 2^64, a wrapping multiply
-    // leaves 84 -- and dividing 10^18 by 84 instead of by b * 100 answers
-    // 1091089460 where the root of 10^18 / b (about 5.42) is 2.33, 10 to the
-    // next ten up. Today the guard answers Overflow; were the headroom ever
-    // widened, the true 10 would be right too. Only a wrapped value is wrong,
-    // and that is all this pins.
+    // At -1 places the divisor is b * 10^2. With b just above 2^128 / 100,
+    // and sharing no factor with 10, that product leaves 128 bits: a
+    // wrapping multiply would divide 10^18 by a small number instead, and
+    // answer a wrong root. The guard answers Overflow.
     using formula::detail::rounded_square_root;
-    constexpr auto wide = Rational::make(1'000'000'000'000'000'000, 184'467'440'737'095'517).value();
-    constexpr auto rooted = rounded_square_root(wide, DecimalPlaces { -1 }, RoundingMode::Ceiling);
-    STATIC_REQUIRE(rooted.has_value() ? *rooted == Rational { 10 } : rooted.error() == formula::ArithmeticError::Overflow);
+    constexpr Rational::Int pastTop = std::numeric_limits<Rational::Int>::max() / 50 + 3;
+    constexpr auto wide = Rational::make(1'000'000'000'000'000'000, pastTop);
+    STATIC_REQUIRE(wide.has_value());
+    STATIC_REQUIRE(rounded_square_root(*wide, DecimalPlaces { -1 }, RoundingMode::Ceiling).error()
+                   == formula::ArithmeticError::Overflow);
+    // With b = 184467440737095517, the smallest b for which b * 100 reaches
+    // 2^64, the root of 10^18 / b (about 5.42) is 2.33, 10 to the next ten
+    // up -- which 64 bits refused.
+    constexpr auto wide64 = Rational::make(1'000'000'000'000'000'000, 184'467'440'737'095'517);
+    STATIC_REQUIRE(wide64.has_value());
+    STATIC_REQUIRE(rounded_square_root(*wide64, DecimalPlaces { -1 }, RoundingMode::Ceiling).value() == Rational { 10 });
 }
 
-TEST_CASE("rounded_sqrt runs its 64-bit path at runtime too", "[rounded_root]")
+TEST_CASE("rounded_sqrt runs its 128-bit path at runtime too", "[rounded_root]")
 {
     // Every case above is a STATIC_REQUIRE, evaluated by the compiler, so a
-    // sanitizer never sees the uint64 arithmetic execute. These run it: the
+    // sanitizer never sees the 128-bit arithmetic execute. These run it: the
     // table is read at runtime, so each call happens there, in clang-ubsan as
     // everywhere else.
     struct Case
@@ -221,7 +239,7 @@ TEST_CASE("rounded_sqrt runs its 64-bit path at runtime too", "[rounded_root]")
         RoundingMode mode;
         Rational expected;
     };
-    std::array<Case, 7> const cases { {
+    std::array<Case, 8> const cases { {
         { Rational { 427, 125 }, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero, Rational { 37, 20 } },
         { Rational { 4057, 600 }, DecimalPlaces { 2 }, RoundingMode::Ceiling, Rational { 261, 100 } },
         { Rational { 9, 4 }, DecimalPlaces { 0 }, RoundingMode::HalfTowardZero, Rational { 1 } },
@@ -232,6 +250,10 @@ TEST_CASE("rounded_sqrt runs its 64-bit path at runtime too", "[rounded_root]")
           DecimalPlaces { 2 },
           RoundingMode::Floor,
           Rational { 858'993'459, 20 } },
+        { Rational { 1'844'674'407'370'955'162, 1000 },
+          DecimalPlaces { 2 },
+          RoundingMode::Floor,
+          Rational { 1'073'741'824, 25 } },
     } };
     for (Case const& each: cases)
     {
@@ -241,7 +263,7 @@ TEST_CASE("rounded_sqrt runs its 64-bit path at runtime too", "[rounded_root]")
     }
 
     auto const wrapped = formula::detail::rounded_square_root(
-        Rational { 1'844'674'407'370'955'162, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor);
+        Rational { std::numeric_limits<Rational::Int>::max() / 5 + 1, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor);
     REQUIRE(!wrapped.has_value());
     CHECK(wrapped.error() == formula::ArithmeticError::Overflow);
 

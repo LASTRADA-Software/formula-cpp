@@ -6,7 +6,8 @@
 //   1. A trace of a soil specimen's moisture content, in the default
 //      fractions, as exact decimals, rounded where no decimal ends, and padded
 //      to each unit's declared decimals.
-//   2. A value in a unit nobody declared, and a comparison, which no style
+//   2. A value in the coherent unit, nobody's declared unit; a value in the
+//      unit it borrows from its operands; and a comparison, which no style
 //      rounds.
 //   3. The formula's own text: its typed numbers as decimals, never rounded
 //      and never padded.
@@ -48,6 +49,12 @@ using DishWeighing = formula::Quantity<struct DishWeighingTag, "t", "a weighing 
 using DishMass = formula::Quantity<struct DishMassTag, "m_t", "mass of the empty dish", unit::Gram>;
 using OvenTemperature = formula::Quantity<struct OvenTemperatureTag, "T", "oven temperature", unit::Celsius>;
 using GrainSize = formula::Quantity<struct GrainSizeTag, "D", "grain size", unit::Micrometre>;
+using PlateLength = formula::Quantity<struct PlateLengthTag, "l_p", "a bearing plate's length", unit::Millimetre>;
+using PlateWidth = formula::Quantity<struct PlateWidthTag, "b_p", "a bearing plate's width", unit::Millimetre>;
+using PlateArea = formula::Quantity<struct PlateAreaTag, "A_p", "a bearing plate's area", unit::SquareMillimetre>;
+using Elongation = formula::Quantity<struct ElongationTag, "dl", "elongation under the held load", unit::Millimetre>;
+using HoldTime = formula::Quantity<struct HoldTimeTag, "t_h", "time the load was held", unit::Hour>;
+using CreepRate = formula::Quantity<struct CreepRateTag, "v", "creep rate", unit::MillimetrePerMinute>;
 
 // ---- 1. The moisture content -----------------------------------------------------
 // The water the specimen lost over its dry mass, the dish's typed 25.5 g taken off.
@@ -58,6 +65,18 @@ inline constexpr auto specimen =
     formula::environment(formula::Measured<WetMass> { 157.4_r }, formula::Measured<DryMass> { 144 });
 
 // ---- 2. A value in a unit nobody declared, and a comparison ------------------------
+// A bearing plate's area: a product of two lengths, which borrows neither one's unit.
+inline constexpr auto plateArea = var<PlateLength> * var<PlateWidth>;
+
+inline constexpr auto plate =
+    formula::environment(formula::Measured<PlateLength> { 100 }, formula::Measured<PlateWidth> { 200 });
+
+// A creep rate: a length over a time, which borrows neither one's unit.
+inline constexpr auto creepRate = var<Elongation> / var<HoldTime>;
+
+inline constexpr auto heldLoad =
+    formula::environment(formula::Measured<Elongation> { 2.4_r }, formula::Measured<HoldTime> { 0.75_r });
+
 // The mean of three weighings: their sum times a typed 1/3, which has no exact decimal.
 inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) * formula::number(Rational { 1, 3 });
 
@@ -155,6 +174,36 @@ int main()
     // ---- 2. A unit nobody declared, and a comparison ---------------------------------
     std::println("== 2. A unit nobody declared, and a comparison ==\n");
 
+    auto const area = formula::checked_explain<PlateArea>(plateArea, plate);
+    if (!area)
+    {
+        std::println("the plate's area: {}", area.error().error);
+        return 1;
+    }
+    check(area->outcome.is_value(), "the plate's area is a value");
+    std::string const areaTraceText = formula::render_trace(area->trace, { .maxSteps = 20, .numbers = paddedStyle });
+    std::println("{}", areaTraceText);
+    formula::NumberText const areaText = formula::number_text(area->outcome.measurement(), roundedStyle);
+    std::println("the plate's area in its declared square millimetres: {}\n", areaText.view());
+    check(areaTraceText.contains("1. l_p = 100.0 mm\n") && areaTraceText.contains("3. #1 * #2 = 0.02 m^2\n"),
+          "a value in the coherent unit is not padded, where a value in millimetres is");
+    check(areaText == "20000 mm2", "the declared result in square millimetres");
+
+    auto const creep = formula::checked_explain<CreepRate>(creepRate, heldLoad);
+    if (!creep)
+    {
+        std::println("the creep rate: {}", creep.error().error);
+        return 1;
+    }
+    check(creep->outcome.is_value(), "the creep rate is a value");
+    std::string const creepTraceText = formula::render_trace(creep->trace, { .maxSteps = 20, .numbers = paddedStyle });
+    std::println("{}", creepTraceText);
+    formula::NumberText const creepText = formula::number_text(creep->outcome.measurement(), roundedStyle);
+    std::println("the creep rate in its declared millimetres per minute: {}\n", creepText.view());
+    check(creepTraceText.contains("3. #1 / #2 = \xe2\x89\x88" "0.0000009 m/s\n"),
+          "a value in the coherent unit is rounded at its first significant digit");
+    check(creepText == "\xe2\x89\x88" "0.05 mm/min", "the declared result rounds at its unit's two decimals");
+
     auto const dish = formula::checked_explain<DishMass>(dishMass, weighings);
     if (!dish)
     {
@@ -205,7 +254,7 @@ int main()
     std::println("trace, padded style:\n{}", tareTraceText);
     check(tareFormula == "m_d - 24 g" && tareTraceText.contains("2. 24.0 g\n"),
           "a formula states the typed 24 g, a trace pads it");
-    check(tareTraceText.contains("3. #1 - #2 = 0.12\n"), "a unit nobody declared is not padded");
+    check(tareTraceText.contains("3. #1 - #2 = 120.0 g\n"), "a difference of two gram values is padded as grams are");
 
     // ---- 4. number_text and decimal_text ------------------------------------------------
     std::println("== 4. number_text and decimal_text ==\n");

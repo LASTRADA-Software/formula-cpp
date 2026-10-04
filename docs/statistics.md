@@ -107,13 +107,13 @@ round(sqrt(sample_variance(m(i))), to 2 dp of g) = 37/20 g
 LaTeX: \operatorname{round}_{2\,\mathrm{g}}(\sqrt{s^{2}({m}_{i})})
 ```
 
-The trace shows the variance as the evaluator holds it, in the coherent unit
-(kg², so 427/125 g² is 427/125000000), and the root rounded in the unit the
-formula declares:
+The trace shows the variance in the coherent unit, written `kg^2` after it --
+no unit of the formula's names a squared mass, so 427/125 g² reads
+427/125000000 kg^2 -- and the root rounded in the unit the formula declares:
 
 ```text
 1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
-2. sample_variance(#1) = 427/125000000
+2. sample_variance(#1) = 427/125000000 kg^2
 3. round(sqrt(#2), to 2 dp of g) = 37/20 g [nearest, ties away from zero]
 ```
 
@@ -179,21 +179,25 @@ at first -- in pass 2, and pass 3 settles:
 1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
 2. 3/50
 3. pass mean = 413/10 g
-4. #2 * #3 = 1239/500000
+4. #2 * #3 = 1239/500 g
 5. pass 1: 6 values, mean 413/10 g
 6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)
 7. 3/50
 8. pass mean = 1019/25 g
-9. #7 * #8 = 3057/1250000
+9. #7 * #8 = 3057/1250 g
 10. pass 2: 5 values, mean 1019/25 g
 11. rejected element 6 of 6 (433/10 g) in pass 2: abs(x - mean) = 127/50 g > 3057/1250 g (deviation from mean)
 12. 3/50
 13. pass mean = 321/8 g
-14. #12 * #13 = 963/400000
+14. #12 * #13 = 963/400 g
 15. pass 3: 4 values, mean 321/8 g
 16. settled: 2 rejected, 4 remain
 17. sample_mean(#16) = 321/8 g
 ```
+
+Each pass's limit is 3/50 of that pass's mean: a mean in grams scaled by a pure
+number, so it reads in grams as the mean does. Line 4's 1239/500 g is 2.478 g,
+and line 6 states it again beside the deviation it was compared with.
 
 **An abort is the author's verdict.** When the next rejection would pass
 `AtMost` or `KeepAtLeast`, nothing more is rejected: the trace records the
@@ -323,9 +327,9 @@ LaTeX: \text{require } \left\lvert x_A - x_B\right\rvert \leq r\left(1/10\,\math
 11. 1/10 g
 12. 1/50
 13. level = 16181/400 g [bound by #16]
-14. #12 * #13 = 16181/20000000
-15. #11 + #14 = 18181/20000000
-16. r at level #10 (pass 2 of 2) = #15 = 18181/20000000
+14. #12 * #13 = 16181/20000 g
+15. #11 + #14 = 18181/20000 g
+16. r at level #10 (pass 2 of 2) = #15 = 18181/20000 g
 17. require #4 <= #16 [satisfied]
 ```
 
@@ -354,10 +358,13 @@ no rendering in any dialect holds a `|`.
 
 ## How much room exact arithmetic has
 
-Statistics of determinations read at fine resolution are where a 64-bit
-exact fraction runs out first: a variance of masses read to 1 µg overflows on
-about four samples in ten, and a rejection in standard deviations sooner.
-The result is then `Overflow`, never a wrong number. See
+Statistics of determinations read at fine resolution are where an exact
+fraction's integers grow fastest: the exact variance of six masses near 40 g
+read to 1 µg needs up to 65 bits in kg². `Rational`'s 128-bit integers hold
+it for every one of the 1000 samples measured, with at least 62 of their 127
+bits to spare, and a rejection in standard deviations with at least 58.
+Where a computation does outgrow them, the result is `Overflow`, never a
+wrong number. See
 [Numeric headroom](numeric-headroom.md) for the measurements.
 
 ## What is not modelled

@@ -225,7 +225,7 @@ that did not run:
 2. 173/10 mm
 3. d = 127/5 mm
 4. round(#3, to 0 dp of mm) = 25 mm [nearest, ties away from zero]
-5. if #1 > #2 then #4 = 1/40
+5. if #1 > #2 then #4 = 25 mm
 ```
 
 Step 5 is the conditional. `#1` and `#2` are the predicate's two sides,
@@ -257,13 +257,13 @@ rather than an inconsistency: a rendered formula states what a method says,
 while a trace explains why one particular number came out as it did, and the
 tie rule can be the entire reason a value is 13 rather than 12.
 
-Note too that step 5's own value, `1/40`, carries no `mm` -- a `when()`
-step is a computed value like any other, and every computed step is shown in
-the coherent unit of its dimension with no symbol at all, the same rule
-[Tracing and audit trails](tracing.md) explains for `#1 / #2` in a plain
-division. For a second worked derivation of a conditional -- a different
-formula, a different threshold, still naming the branch it took -- see
-[the gallery](gallery.md).
+Note too that step 5's own value, `25 mm`, reads in the unit of the branch it
+names: a `when()` step's value is its chosen branch's, so it is shown in the
+unit that branch's line shows, millimetres here -- one of the rules
+[Tracing and audit trails](tracing.md#reading-a-derivation) gives for the unit
+a computed step borrows from the steps it read. For a second worked derivation
+of a conditional -- a different formula, a different threshold, still naming
+the branch it took -- see [the gallery](gallery.md).
 
 ## The traced escape hatch: `numeric_value_of`
 

@@ -238,16 +238,28 @@ TEST_CASE("a retry of exactly the cap runs every attempt, and one of one or two 
 
 TEST_CASE("a retry whose exact values outgrow Rational says Overflow at that attempt", "[retry]")
 {
-    // The fixture's own fixpoint doubles its denominator every attempt: never
-    // settling by a strict margin, it passes 2^63 at attempt 53 (zero-based
-    // 52), before the cap. Reported, never wrapped.
+    // A step that squares its value: from 3/2 g, w(k) = w(k-1)^2 / 1 g, never
+    // settling by a strict margin, outgrows 128 bits at attempt 7 (zero-based
+    // 6), before the cap. Reported, never wrapped.
     constexpr auto flat =
         formula::previous_attempt<Estimate> - formula::this_attempt<Estimate> >= formula::constant<unit::Gram>(rat(0));
+    constexpr auto fromThreeHalves = formula::starting_from(formula::constant<unit::Gram>(rat(3, 2)));
+    constexpr auto squaring =
+        formula::previous_attempt<Estimate> * formula::previous_attempt<Estimate> / formula::constant<unit::Gram>(rat(1));
     auto const sixtyFour =
-        formula::retry<Estimate, 64, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, flat, repeat, cite);
+        formula::retry<Estimate, 64, formula::FirstJudged::AtFirstAttempt>(fromThreeHalves, squaring, flat, repeat, cite);
     auto const ran = formula::checked_evaluate_retry(sixtyFour, nothing);
     REQUIRE(!ran.has_value());
-    CHECK(ran.error() == formula::RetryFailure { formula::ArithmeticError::Overflow, 52 });
+    CHECK(ran.error() == formula::RetryFailure { formula::ArithmeticError::Overflow, 6 });
+
+    // The fixture's own fixpoint, which doubles its denominator every
+    // attempt and passed 2^63 at attempt 53, runs all 64 attempts: 2^64 is a
+    // denominator 128 bits hold.
+    auto const halvingRun = formula::checked_evaluate_retry(
+        formula::retry<Estimate, 64, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, flat, repeat, cite), nothing);
+    REQUIRE(halvingRun.has_value());
+    CHECK(halvingRun->end() == formula::RetryEnd::Exhausted);
+    CHECK(halvingRun->attempts_made() == 64);
 }
 
 TEST_CASE("a result that is only measured is recomputed, not taken as entered", "[retry]")
@@ -450,37 +462,38 @@ std::vector<formula::AttemptJudgement> judgements(formula::Trace<> const& record
 }
 
 // The first three attempts of the fixpoint, as the trace shows them: the same
-// for the four-attempt retry and the three-attempt one. Computed steps read in
-// the coherent unit, as everywhere in a trace.
+// for the four-attempt retry and the three-attempt one. Each computed step is a
+// mass halved, or a sum or difference of masses in grams, so it reads in grams,
+// as the values it is computed from do.
 constexpr std::string_view firstThreeAttempts = "1. 0 g\n"
                                                 "2. 152/25 g\n"
                                                 "3. w(k-1) = 0 g\n"
                                                 "4. 2\n"
-                                                "5. #3 / #4 = 0\n"
-                                                "6. #2 + #5 = 19/3125\n"
+                                                "5. #3 / #4 = 0 g\n"
+                                                "6. #2 + #5 = 152/25 g\n"
                                                 "7. w(k-1) = 0 g\n"
                                                 "8. w(k) = 152/25 g\n"
-                                                "9. #7 - #8 = -19/3125\n"
+                                                "9. #7 - #8 = -152/25 g\n"
                                                 "10. -19/25 g\n"
                                                 "11. attempt 1: w(k) = #6 = 152/25 g; judged #9 >= #10: rejected\n"
                                                 "12. 152/25 g\n"
                                                 "13. w(k-1) = 152/25 g\n"
                                                 "14. 2\n"
-                                                "15. #13 / #14 = 19/6250\n"
-                                                "16. #12 + #15 = 57/6250\n"
+                                                "15. #13 / #14 = 76/25 g\n"
+                                                "16. #12 + #15 = 228/25 g\n"
                                                 "17. w(k-1) = 152/25 g\n"
                                                 "18. w(k) = 228/25 g\n"
-                                                "19. #17 - #18 = -19/6250\n"
+                                                "19. #17 - #18 = -76/25 g\n"
                                                 "20. -19/25 g\n"
                                                 "21. attempt 2: w(k) = #16 = 228/25 g; judged #19 >= #20: rejected\n"
                                                 "22. 152/25 g\n"
                                                 "23. w(k-1) = 228/25 g\n"
                                                 "24. 2\n"
-                                                "25. #23 / #24 = 57/12500\n"
-                                                "26. #22 + #25 = 133/12500\n"
+                                                "25. #23 / #24 = 114/25 g\n"
+                                                "26. #22 + #25 = 266/25 g\n"
                                                 "27. w(k-1) = 228/25 g\n"
                                                 "28. w(k) = 266/25 g\n"
-                                                "29. #27 - #28 = -19/12500\n"
+                                                "29. #27 - #28 = -38/25 g\n"
                                                 "30. -19/25 g\n"
                                                 "31. attempt 3: w(k) = #26 = 266/25 g; judged #29 >= #30: rejected\n";
 } // namespace
@@ -505,11 +518,11 @@ TEST_CASE("every attempt of an accepted retry is in the trace, and how it ended"
                  + "32. 152/25 g\n"
                    "33. w(k-1) = 266/25 g\n"
                    "34. 2\n"
-                   "35. #33 / #34 = 133/25000\n"
-                   "36. #32 + #35 = 57/5000\n"
+                   "35. #33 / #34 = 133/25 g\n"
+                   "36. #32 + #35 = 57/5 g\n"
                    "37. w(k-1) = 266/25 g\n"
                    "38. w(k) = 57/5 g\n"
-                   "39. #37 - #38 = -19/25000\n"
+                   "39. #37 - #38 = -19/25 g\n"
                    "40. -19/25 g\n"
                    "41. attempt 4: w(k) = #36 = 57/5 g; judged #39 >= #40: accepted\n"
                    "42. w = retry: accepted at attempt 4 of 4 = 57/5 g [Settled estimate, Example Standard 12, 6]\n");
@@ -550,7 +563,7 @@ TEST_CASE("a failed attempt ends the trace: no step for an attempt that did not 
              "2. k = 1\n"
              "3. 2\n"
              "4. #2 - #3 = -1\n"
-             "5. #1 / #4 = -19/3125\n"
+             "5. #1 / #4 = -152/25 g\n"
              "6. w(k) = -152/25 g\n"
              "7. 103000 g\n"
              "8. attempt 1: w(k) = #5 = -152/25 g; judged #6 > #7: rejected\n"
@@ -674,7 +687,7 @@ TEST_CASE("an absent attempt ends the trace not judgeable, and never accepted", 
              "2. t_w = (not measured)\n"
              "3. w(k-1) = 0 g\n"
              "4. 2\n"
-             "5. #3 / #4 = 0\n"
+             "5. #3 / #4 = 0 g\n"
              "6. #2 + #5 = (not measured)\n"
              "7. attempt 1: w(k) = #6 = (not measured); cannot be judged\n"
              "8. w = retry: not judgeable at attempt 1 [Settled estimate, Example Standard 12, 6]\n");
@@ -693,8 +706,8 @@ TEST_CASE("an absent judgement ends the trace not judgeable, naming the sides it
              "2. 152/25 g\n"
              "3. w(k-1) = 0 g\n"
              "4. 2\n"
-             "5. #3 / #4 = 0\n"
-             "6. #2 + #5 = 19/3125\n"
+             "5. #3 / #4 = 0 g\n"
+             "6. #2 + #5 = 152/25 g\n"
              "7. w(k) = 152/25 g\n"
              "8. t_w = (not measured)\n"
              "9. attempt 1: w(k) = #6 = 152/25 g; judged #7 >= #8: cannot be judged\n"
@@ -715,8 +728,8 @@ TEST_CASE("a judgement that fails names the failing side, and the attempt keeps 
              "2. 152/25 g\n"
              "3. w(k-1) = 0 g\n"
              "4. 2\n"
-             "5. #3 / #4 = 0\n"
-             "6. #2 + #5 = 19/3125\n"
+             "5. #3 / #4 = 0 g\n"
+             "6. #2 + #5 = 152/25 g\n"
              "7. w(k) = 152/25 g\n"
              "8. 1 g\n"
              "9. k = 1\n"

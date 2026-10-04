@@ -832,7 +832,7 @@ TEST_CASE("an override between calculated blocks is one line of the budget", "[c
     std::string const everything = "energy_cost = grid_cost - feed_in_credit = 388/5 EUR\n"
                                    "  1. grid_cost = 80 EUR, calculated\n"
                                    "  2. feed_in_credit = 12/5 EUR, calculated\n"
-                                   "  3. #1 - #2 = 388/5\n"
+                                   "  3. #1 - #2 = 388/5 EUR\n"
                                    "feed_in_credit = exported * feed_in = 12/5 EUR\n"
                                    "  1. exported = 30 kWh, calculated\n"
                                    "  2. feed_in = 2/25 EUR/kWh\n"
@@ -845,11 +845,11 @@ TEST_CASE("an override between calculated blocks is one line of the budget", "[c
                                    "exported = solar - self_used = 30 kWh\n"
                                    "  1. solar = 150 kWh\n"
                                    "  2. self_used = 120 kWh, calculated\n"
-                                   "  3. #1 - #2 = 108000000\n"
+                                   "  3. #1 - #2 = 30 kWh\n"
                                    "self_used = solar * 4/5 = 120 kWh\n"
                                    "  1. solar = 150 kWh\n"
                                    "  2. 4/5\n"
-                                   "  3. #1 * #2 = 432000000\n"
+                                   "  3. #1 * #2 = 120 kWh\n"
                                    "inputs\n"
                                    "  solar = 150 kWh\n"
                                    "  price = 8/25 EUR/kWh\n"
@@ -880,7 +880,7 @@ TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][wo
     CHECK(formula::render_derivation(explained, { .maxSteps = 4 }) == "C_bill = S + vat = 190043/2000 EUR\n"
                                                                       "  1. S = 1597/20 EUR, calculated\n"
                                                                       "  2. vat = 30343/2000 EUR, calculated\n"
-                                                                      "  3. #1 + #2 = 190043/2000\n"
+                                                                      "  3. #1 + #2 = 190043/2000 EUR\n"
                                                                       "... 66 further steps not shown\n");
 
     // In full: the inputs close it, the typed-in price saying so.
@@ -888,12 +888,13 @@ TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][wo
     CHECK(full.find("further step") == std::string::npos);
     CHECK(full.find("\nvat = S * 19/100 = 30343/2000 EUR\n  1. S = 1597/20 EUR, calculated\n") != std::string::npos);
     CHECK(full.find("\nfridge_kw = fridge_w = 1/5 kW\n  1. fridge_w = 200 W\n") != std::string::npos);
-    // A computed step states its value in the coherent unit, as render_trace
-    // does: 24/5 kWh in joules.
+    // A computed step states its value as render_trace does: a power times a
+    // time borrows neither one's unit, so 24/5 kWh reads in the coherent
+    // unit, joules spelt from the base units.
     CHECK(full.find("\nfridge_kwh = fridge_kw * fridge_h = 24/5 kWh\n"
                     "  1. fridge_kw = 1/5 kW, calculated\n"
                     "  2. fridge_h = 24 h\n"
-                    "  3. #1 * #2 = 17280000\n")
+                    "  3. #1 * #2 = 17280000 m^2 kg/s^2\n")
           != std::string::npos);
     CHECK(full.ends_with("inputs\n"
                          "  fridge_w = 200 W\n"
@@ -1047,9 +1048,12 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
     // The bill with the energy drawn entered by hand, rendered rounded and
     // padded: each value in a unit that declares decimals is padded to them
     // -- the euro's two, the kilowatt-hour's three, the tariff's four -- in a
-    // header and on the line that reads it alike. A computed step, stated in
-    // the coherent unit nobody declared, is never padded, and the typed 4/5
-    // is written exactly, 0.8, in the definition and on its step.
+    // header and on the line that reads it alike. A computed step that
+    // borrows its operands' unit -- a difference of euros, of kilowatt-hours
+    // -- is padded as that unit is; one in the coherent unit nobody declared,
+    // a product of an energy and a tariff, is a bare number here, never
+    // padded. The typed 4/5 is written exactly, 0.8, in the definition and on
+    // its step.
     using namespace household;
     auto sheet = formula::worksheet(bill, bill_environment(billValues));
     sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
@@ -1060,7 +1064,7 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
           == "energy_cost = grid_cost - feed_in_credit = 77.60 EUR\n"
              "  1. grid_cost = 80.00 EUR, calculated\n"
              "  2. feed_in_credit = 2.40 EUR, calculated\n"
-             "  3. #1 - #2 = 77.6\n"
+             "  3. #1 - #2 = 77.60 EUR\n"
              "feed_in_credit = exported * feed_in = 2.40 EUR\n"
              "  1. exported = 30.000 kWh, calculated\n"
              "  2. feed_in = 0.0800 EUR/kWh\n"
@@ -1073,11 +1077,11 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
              "exported = solar - self_used = 30.000 kWh\n"
              "  1. solar = 150.000 kWh\n"
              "  2. self_used = 120.000 kWh, calculated\n"
-             "  3. #1 - #2 = 108000000\n"
+             "  3. #1 - #2 = 30.000 kWh\n"
              "self_used = solar * 0.8 = 120.000 kWh\n"
              "  1. solar = 150.000 kWh\n"
              "  2. 0.8\n"
-             "  3. #1 * #2 = 432000000\n"
+             "  3. #1 * #2 = 120.000 kWh\n"
              "inputs\n"
              "  solar = 150.000 kWh\n"
              "  price = 0.3200 EUR/kWh\n"
@@ -1206,8 +1210,9 @@ TEST_CASE("a derivation's header says a value is not shown where its style canno
 {
     // A length in a unit declaring 19 decimals, more than a rounding or a
     // padding can take: under a style that pads or rounds, its header and
-    // the line reading it say it is not shown, while its root, in metres,
-    // spells it. In fractions every value is shown.
+    // the line reading it say it is not shown, while its root, a width in
+    // millimetres scaled by a pure number and so in millimetres too, spells
+    // it. In fractions every value is shown.
     auto sheet = formula::worksheet(overPrecise, formula::environment(formula::Measured<Width> { rat(3) }));
     auto const explained = formula::explain_worksheet<Depth>(sheet);
     std::string const fractions = formula::render_derivation(explained, { .maxSteps = 20 });
@@ -1220,8 +1225,14 @@ TEST_CASE("a derivation's header says a value is not shown where its style canno
         std::string const styled = formula::render_derivation(explained, { .maxSteps = 20, .numbers = style });
         CHECK(styled.find("\nl_u = b * 2 = (not shown: overflow in exact arithmetic)\n") != std::string::npos);
         CHECK(styled.find("\n  1. l_u = (not shown: overflow in exact arithmetic), calculated\n") != std::string::npos);
-        CHECK(styled.find("\n  3. #1 * #2 = 0.006\n") != std::string::npos);
     }
+    std::string const padded = formula::render_derivation(
+        explained, { .maxSteps = 20, .numbers = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded) });
+    CHECK(padded.find("\n  3. #1 * #2 = 6.0 mm\n") != std::string::npos);
+    std::string const approximated = formula::render_derivation(
+        explained,
+        { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) });
+    CHECK(approximated.find("\n  3. #1 * #2 = 6 mm\n") != std::string::npos);
 }
 
 TEST_CASE("a derivation's computed price per energy shows its first significant digit, not a zero",
@@ -1239,7 +1250,7 @@ TEST_CASE("a derivation's computed price per energy shows its first significant 
     CHECK(formula::render_derivation(explained, { .maxSteps = 20 }) == "price = grid_cost / net_draw = 8/25 EUR/kWh\n"
                                                                        "  1. grid_cost = 80 EUR\n"
                                                                        "  2. net_draw = 250 kWh\n"
-                                                                       "  3. #1 / #2 = 1/11250000\n"
+                                                                       "  3. #1 / #2 = 1/11250000 s^2/(m^2 kg)\n"
                                                                        "inputs\n"
                                                                        "  grid_cost = 80 EUR\n"
                                                                        "  net_draw = 250 kWh\n");
@@ -1250,7 +1261,7 @@ TEST_CASE("a derivation's computed price per energy shows its first significant 
              "  1. grid_cost = 80 EUR\n"
              "  2. net_draw = 250 kWh\n"
              "  3. #1 / #2 = \xe2\x89\x88"
-             "0.00000009\n"
+             "0.00000009 s^2/(m^2 kg)\n"
              "inputs\n"
              "  grid_cost = 80 EUR\n"
              "  net_draw = 250 kWh\n");
@@ -1309,25 +1320,27 @@ TEST_CASE("money of its own is calculated, derived, documented and spelled in it
     formula::NumberStyle const decimals = formula::NumberStyle::exact_decimal();
 
     // The derivation in exact decimals, each value in its quantity's unit. A
-    // computed step is in the coherent unit, the rate's in euros per joule,
-    // and neither it nor the rate, 3401/9300 EUR/kWh, has an exact decimal.
+    // sum of euros reads in euros; the rate, an amount over an energy,
+    // borrows neither unit and reads in the coherent euros per joule, and
+    // neither it nor the rate's header, 3401/9300 EUR/kWh, has an exact
+    // decimal.
     auto const explained = formula::explain_worksheet<MeanRate>(sheet);
     CHECK(explained.entries.front().unit == MoneyEuroPerKwh);
     CHECK(formula::render_derivation(explained, { .maxSteps = 30, .numbers = decimals })
           == "rate = total / draw = 3401/9300 EUR/kWh\n"
              "  1. total = 102.03 EUR, calculated\n"
              "  2. draw = 279 kWh\n"
-             "  3. #1 / #2 = 3401/33480000000\n"
+             "  3. #1 / #2 = 3401/33480000000 EUR s^2/(m^2 kg)\n"
              "total = charge + fee + 0.25 EUR = 102.03 EUR\n"
              "  1. charge = 89.28 EUR, calculated\n"
              "  2. fee = 12.5 EUR\n"
-             "  3. #1 + #2 = 101.78\n"
+             "  3. #1 + #2 = 101.78 EUR\n"
              "  4. 0.25 EUR\n"
-             "  5. #3 + #4 = 102.03\n"
+             "  5. #3 + #4 = 102.03 EUR\n"
              "charge = draw * tariff = 89.28 EUR\n"
              "  1. draw = 279 kWh\n"
              "  2. tariff = 0.32 EUR/kWh\n"
-             "  3. #1 * #2 = 89.28\n"
+             "  3. #1 * #2 = 89.28 EUR\n"
              "inputs\n"
              "  draw = 279 kWh\n"
              "  tariff = 0.32 EUR/kWh\n"

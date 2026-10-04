@@ -74,7 +74,7 @@ census_block(regression regressionTable)
 
 # ---- The census twins ---------------------------------------------------------------
 set(examplesTable "| program | numerator bits | denominator bits | intermediate bits | headroom |\n|---|---|---|---|---|\n")
-set(censusLine "overflow census: numerator ([0-9]+) bits, denominator ([0-9]+) bits, intermediate ([0-9]+) bits, unsigned ([0-9]+) bits; headroom ([0-9]+) of 63")
+set(censusLine "overflow census: numerator ([0-9]+) bits, denominator ([0-9]+) bits, intermediate ([0-9]+) bits, unsigned ([0-9]+) bits; headroom ([0-9]+) of 127")
 
 function(twin_row label program outVariable)
     execute_process(

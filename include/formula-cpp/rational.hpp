@@ -2,7 +2,7 @@
 #pragma once
 
 /// @file
-/// An exact rational number over std::int64_t.
+/// An exact rational number over `formula::Int128`.
 ///
 /// Norm rounding rules are specified behaviour, not presentation: "round the
 /// result to 0.1 %" is part of the method. Binary floating point cannot express
@@ -15,6 +15,7 @@
 
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/error.hpp>
+#include <formula-cpp/int128.hpp>
 
 #include <bit>
 #include <compare>
@@ -50,28 +51,27 @@ namespace detail
 class Rational
 {
   public:
-    /// The signed integer type numerator and denominator are stored in.
-    using Int = detail::Int;
+    /// The signed integer numerator and denominator are stored in: 128 bits
+    /// (`int128.hpp`).
+    using Int = Int128;
 
     /// Zero.
     constexpr Rational() noexcept = default;
 
     /// An integer is a rational, exactly and without narrowing.
     ///
-    /// Constrained to integer types that reach Int without loss. An unsigned type
-    /// as wide as Int is rejected at compile time: `std::size_t { 1 } << 63` would
-    /// otherwise convert by modular wraparound and become a *negative* Rational,
-    /// and `SIZE_MAX` would become -1. Producing a wrong number without saying so
-    /// is the one thing this library must never do.
+    /// Every built-in integer type of up to 64 bits fits `Int` exactly.
     template <typename T>
-        requires std::is_integral_v<T> && (!std::is_same_v<std::remove_cv_t<T>, bool>)
+        requires std::is_integral_v<T> && (!std::is_same_v<std::remove_cv_t<T>, bool>) && (sizeof(T) <= 8)
     constexpr Rational(T whole) noexcept:
-        _numerator { static_cast<Int>(whole) }
+        _numerator { whole }
     {
-        static_assert(std::is_signed_v<T> || sizeof(T) < sizeof(Int),
-                      "formula: this unsigned type can hold values above Rational's maximum, where the "
-                      "conversion would silently produce a negative value; check the range and use "
-                      "Rational::make(value, 1), or cast explicitly");
+    }
+
+    /// An `Int`, exactly.
+    constexpr Rational(Int whole) noexcept:
+        _numerator { whole }
+    {
     }
 
     /// Deliberately unusable. A double is a binary fraction: `Rational r = 0.45;`
@@ -103,24 +103,24 @@ class Rational
         if (dividend == 0)
             return Rational {};
 
-        // Reduce in the unsigned domain so that IntMin is an ordinary operand.
-        std::uint64_t const numeratorMagnitude = detail::magnitude(dividend);
-        std::uint64_t const denominatorMagnitude = detail::magnitude(divisor);
-        std::uint64_t const common = detail::gcd(numeratorMagnitude, denominatorMagnitude);
-        std::uint64_t const reducedNumerator = numeratorMagnitude / common;
-        std::uint64_t const reducedDenominator = denominatorMagnitude / common;
+        // Reduce in the unsigned domain so that the minimum is an ordinary operand.
+        detail::UInt128 const numeratorMagnitude = detail::magnitude(dividend);
+        detail::UInt128 const denominatorMagnitude = detail::magnitude(divisor);
+        detail::UInt128 const common = detail::gcd(numeratorMagnitude, denominatorMagnitude);
+        detail::UInt128 const reducedNumerator = detail::u128_divmod(numeratorMagnitude, common).quotient;
+        detail::UInt128 const reducedDenominator = detail::u128_divmod(denominatorMagnitude, common).quotient;
 
         bool const negative = (dividend < 0) != (divisor < 0);
 
-        constexpr std::uint64_t PositiveLimit = static_cast<std::uint64_t>(detail::IntMax);
-        std::uint64_t const numeratorLimit = negative ? PositiveLimit + 1U : PositiveLimit;
-        if (reducedDenominator > PositiveLimit || reducedNumerator > numeratorLimit)
+        constexpr detail::UInt128 PositiveLimit = detail::magnitude(std::numeric_limits<Int>::max());
+        detail::UInt128 const numeratorLimit =
+            negative ? detail::u128_add(PositiveLimit, detail::UInt128::from_u64(1)) : PositiveLimit;
+        if (PositiveLimit < reducedDenominator || numeratorLimit < reducedNumerator)
             return std::unexpected { ArithmeticError::Overflow };
 
         Rational made {};
-        // Well defined since C++20: conversion to a signed type is modular.
-        made._numerator = negative ? static_cast<Int>(0U - reducedNumerator) : static_cast<Int>(reducedNumerator);
-        made._denominator = static_cast<Int>(reducedDenominator);
+        made._numerator = detail::signed_from_magnitude(reducedNumerator, negative);
+        made._denominator = detail::signed_from_magnitude(reducedDenominator, false);
         return made;
     }
 
@@ -173,15 +173,13 @@ class Rational
             ++shifted;
         }
 
-        if (reduced > static_cast<std::uint64_t>(detail::IntMax))
-            return std::unexpected { ArithmeticError::Overflow };
-        auto scaledReduced = static_cast<Int>(reduced);
+        Int scaledReduced { reduced };
         if (negative)
             scaledReduced = -scaledReduced;
 
         if (shifted >= 0)
         {
-            if (shifted >= 63)
+            if (shifted >= 127)
                 return std::unexpected { ArithmeticError::Overflow };
             std::optional<Int> const scaledNumerator = detail::mul_checked_or_none(scaledReduced, Int { 1 } << shifted);
             if (!scaledNumerator)
@@ -189,7 +187,7 @@ class Rational
             return Rational { *scaledNumerator };
         }
 
-        if (-shifted >= 63)
+        if (-shifted >= 127)
             return std::unexpected { ArithmeticError::Overflow };
         return make(scaledReduced, Int { 1 } << -shifted);
     }
@@ -226,7 +224,7 @@ class Rational
     /// at the call site.
     [[nodiscard]] constexpr double to_double() const noexcept
     {
-        return static_cast<double>(_numerator) / static_cast<double>(_denominator);
+        return _numerator.to_double() / _denominator.to_double();
     }
 
     /// Exact for every representable pair. Uses the continued-fraction
@@ -283,6 +281,24 @@ class Rational
     Int _denominator { 1 };
 };
 
+namespace detail
+{
+    /// The `Rational::Int` of magnitude @p magnitudeOf, negative when
+    /// @p negative, or nothing when `Rational::Int` cannot hold it: one
+    /// spelling for code that builds a numerator from a wide magnitude,
+    /// whatever `Rational::Int`'s width.
+    [[nodiscard]] constexpr std::optional<Rational::Int> rational_int_from_magnitude(UInt128 magnitudeOf,
+                                                                                     bool negative) noexcept
+    {
+        UInt128 const largestPositive = wide_magnitude(std::numeric_limits<Rational::Int>::max());
+        UInt128 const largestAllowed = negative ? u128_add(largestPositive, UInt128::from_u64(1)) : largestPositive;
+        if (largestAllowed < magnitudeOf)
+            return std::nullopt;
+        UInt128 const wordPattern = negative ? u128_sub(UInt128 {}, magnitudeOf) : magnitudeOf;
+        return int_from_pattern(wordPattern, std::type_identity<Rational::Int> {});
+    }
+} // namespace detail
+
 /// Reciprocal. Fails on zero, and on the one value whose reciprocal is not
 /// representable. Checked-only: there is no natural infallible-looking
 /// spelling for this operation the way negation has unary `-`.
@@ -297,7 +313,7 @@ class Rational
 /// representable. Its throwing counterpart is unary `operator-`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_negate(Rational operandValue) noexcept
 {
-    if (operandValue.numerator() == detail::IntMin)
+    if (operandValue.numerator() == std::numeric_limits<Rational::Int>::min())
         return std::unexpected { ArithmeticError::Overflow };
     // Already canonical: negating the numerator preserves both invariants.
     return Rational::make(-operandValue.numerator(), operandValue.denominator());
@@ -311,18 +327,16 @@ class Rational
 ///
 /// Known limitation: the numerator sum itself is not protected, so this reports
 /// Overflow for a few operand pairs whose reduced result would fit -- both
-/// numerators near 2^63 over denominators sharing a large factor. Measured: it
-/// never occurs for numerators below roughly 10^6. The failure direction is
-/// safe (a refusal, never a wrong number); lifting it needs 128-bit
-/// intermediates, which MSVC cannot express portably.
+/// numerators near 2^127 over denominators sharing a large factor. The failure
+/// direction is safe: a refusal, never a wrong number.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_add(Rational leftOperand,
                                                                              Rational rightOperand) noexcept
 {
     // Scale by the least common multiple rather than by the product: with
     // denominators 6 and 10 this uses 30, not 60 -- the difference between
     // fitting and overflowing once denominators get large.
-    auto const common = static_cast<Rational::Int>(detail::gcd(static_cast<std::uint64_t>(leftOperand.denominator()),
-                                                               static_cast<std::uint64_t>(rightOperand.denominator())));
+    Rational::Int const common = detail::signed_from_magnitude(
+        detail::gcd(detail::magnitude(leftOperand.denominator()), detail::magnitude(rightOperand.denominator())), false);
     Rational::Int const leftScale = leftOperand.denominator() / common;
     Rational::Int const rightScale = rightOperand.denominator() / common;
 
@@ -355,16 +369,16 @@ class Rational
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_mul(Rational leftOperand,
                                                                              Rational rightOperand) noexcept
 {
-    // Cross-reduce before multiplying: (IntMax/3) * (3/IntMax) is exactly 1, but
+    // Cross-reduce before multiplying: (max/3) * (3/max) is exactly 1, but
     // multiplying the numerators first would overflow.
     //
-    // Each gcd divides a denominator, so it is positive and at most IntMax.
-    // Signed division by it is therefore always safe -- the only signed division
-    // that can overflow is IntMin / -1.
-    auto const leftCross = static_cast<Rational::Int>(
-        detail::gcd(detail::magnitude(leftOperand.numerator()), static_cast<std::uint64_t>(rightOperand.denominator())));
-    auto const rightCross = static_cast<Rational::Int>(
-        detail::gcd(detail::magnitude(rightOperand.numerator()), static_cast<std::uint64_t>(leftOperand.denominator())));
+    // Each gcd divides a denominator, so it is positive and at most `Int`'s
+    // maximum. Signed division by it is therefore always safe -- the only
+    // signed division that can overflow is the minimum / -1.
+    Rational::Int const leftCross = detail::signed_from_magnitude(
+        detail::gcd(detail::magnitude(leftOperand.numerator()), detail::magnitude(rightOperand.denominator())), false);
+    Rational::Int const rightCross = detail::signed_from_magnitude(
+        detail::gcd(detail::magnitude(rightOperand.numerator()), detail::magnitude(leftOperand.denominator())), false);
 
     Rational::Int const leftNumerator = leftOperand.numerator() / leftCross;
     Rational::Int const rightNumerator = rightOperand.numerator() / rightCross;
@@ -682,35 +696,35 @@ namespace detail
     if (radicand.sign() < 0 && degree % 2 == 0)
         return std::unexpected { ArithmeticError::DomainError };
 
-    // IntMin has no positive counterpart Int can hold -- its magnitude is
-    // IntMax + 1 -- so negating it to reach a positive intermediate is signed
-    // overflow, undefined behaviour. checked_negate refuses the same numerator
-    // for the same reason; this follows that precedent rather than inventing a
-    // second rule for it. Overflow is the honest answer here, not Inexact:
-    // Inexact means no exact root exists, but IntMin's cube root, -2^21, both
-    // exists and is representable -- it is only the magnitude of the
-    // intermediate numerator that is not. Reworking the search onto an
+    // `Int`'s minimum, -2^127, has no positive counterpart `Int` can hold --
+    // its magnitude is the maximum + 1 -- so negating it to reach a positive
+    // intermediate breaks `Int`'s contract. checked_negate refuses the same
+    // numerator for the same reason; this follows that precedent rather than
+    // inventing a second rule for it. Overflow is the honest answer here, not
+    // Inexact: Inexact means no exact root exists, but the minimum's 127th
+    // root, -2, both exists and is representable -- it is only the magnitude
+    // of the intermediate numerator that is not. Reworking the search onto an
     // unsigned magnitude to rescue this one input would add new numeric code
     // at the end of a phase to save a single edge case, which risks a worse
     // bug than the one it fixes.
-    if (radicand.numerator() == detail::IntMin)
+    if (radicand.numerator() == std::numeric_limits<Rational::Int>::min())
         return std::unexpected { ArithmeticError::Overflow };
 
     bool const negative = radicand.sign() < 0;
     Rational::Int const magnitudeNumerator = negative ? -radicand.numerator() : radicand.numerator();
 
-    // At degree 63 or higher, exact_integer_root's binary search is
+    // At degree 127 or higher, exact_integer_root's binary search is
     // pathological rather than merely slow: once it probes middle == 1, power
     // stays 1 for the rest of that probe's inner loop, so the loop runs the
     // full `degree` multiplications of 1 by 1 before concluding "too small" --
     // and degree is an ordinary int a caller controls, so nothing bounds how
-    // long that takes. The search is also unnecessary at this degree: 2^63
-    // alone exceeds IntMax, so no numerator or denominator magnitude of 2 or
-    // more could have an exact root here -- reaching it would need at least
-    // 2^63, which Int cannot hold. That leaves only magnitude 0 and 1, both
-    // fixed points of every power, so the answer is read off directly instead
-    // of searched for.
-    if (degree >= 63)
+    // long that takes. The search is also unnecessary at this degree: 2^127
+    // alone exceeds the largest `Int`, so no numerator or denominator
+    // magnitude of 2 or more could have an exact root here -- reaching it
+    // would need at least 2^127, which `Int` cannot hold. That leaves only
+    // magnitude 0 and 1, both fixed points of every power, so the answer is
+    // read off directly instead of searched for.
+    if (degree >= 127)
     {
         if (magnitudeNumerator > 1 || radicand.denominator() > 1)
             return std::unexpected { ArithmeticError::Inexact };

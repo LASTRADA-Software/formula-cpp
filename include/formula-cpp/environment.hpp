@@ -179,9 +179,9 @@ namespace detail
 {
     /// Fails to compile when an element of `measured_series<Q>` is neither a
     /// `Measured<Q>`, `not_measured`, nor something `Rational` is built from
-    /// (a `Measured` of another quantity, a string, ...). A `double` or a wide
-    /// unsigned integer is refused by `Rational` itself, in its own words, and
-    /// draws nothing here.
+    /// (a `Measured` of another quantity, a string, ...). A `double` is refused
+    /// by `Rational` itself, in its own words. A built-in integer up to 64 bits
+    /// converts exactly; `bool`, and an integer wider than that, draw this one.
     template <Described Q, typename Given>
     struct RequireSeriesElementOf
     {

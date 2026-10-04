@@ -77,6 +77,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -111,11 +113,32 @@ struct Band
     return { lowNumerator, lowDenominator, highNumerator, highDenominator };
 }
 
+namespace detail
+{
+    /// A `band` bound that a `Band`'s `std::int64_t` numerator or denominator
+    /// cannot hold. Deliberately not `constexpr`: reaching it in a constant
+    /// expression fails to compile, naming it. At run time it ends the
+    /// program -- a `Band` is a template argument, built at compile time,
+    /// and has no way to carry a failure.
+    [[noreturn]] inline void formula_band_bound_out_of_range()
+    {
+        std::abort();
+    }
+} // namespace detail
+
 /// Builds a `Band` from its low (inclusive) and high (exclusive) bound as
-/// exact numbers: `band(83.7_r, 97.3_r)`, `band(0, 127)`.
+/// exact numbers: `band(83.7_r, 97.3_r)`, `band(0, 127)`. A bound beyond 64
+/// bits fails to compile, naming `formula_band_bound_out_of_range`; reached at
+/// run time, that guard ends the program.
 [[nodiscard]] constexpr Band band(Rational lowBound, Rational highBound) noexcept
 {
-    return { lowBound.numerator(), lowBound.denominator(), highBound.numerator(), highBound.denominator() };
+    std::optional<std::int64_t> const lowTop = detail::narrow_to_int64(lowBound.numerator());
+    std::optional<std::int64_t> const lowBottom = detail::narrow_to_int64(lowBound.denominator());
+    std::optional<std::int64_t> const highTop = detail::narrow_to_int64(highBound.numerator());
+    std::optional<std::int64_t> const highBottom = detail::narrow_to_int64(highBound.denominator());
+    if (!lowTop || !lowBottom || !highTop || !highBottom)
+        detail::formula_band_bound_out_of_range();
+    return { *lowTop, *lowBottom, *highTop, *highBottom };
 }
 
 namespace detail

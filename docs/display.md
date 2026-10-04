@@ -101,10 +101,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- fractions, the default --
 1. m_w = 787/5 g
 2. m_d = 144 g
-3. #1 - #2 = 67/5000
+3. #1 - #2 = 67/5 g
 4. m_d = 144 g
 5. 51/2 g
-6. #4 - #5 = 237/2000
+6. #4 - #5 = 237/2 g
 7. #3 / #6 = 134/1185
 ```
 
@@ -112,10 +112,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- exact decimals --
 1. m_w = 157.4 g
 2. m_d = 144 g
-3. #1 - #2 = 0.0134
+3. #1 - #2 = 13.4 g
 4. m_d = 144 g
 5. 25.5 g
-6. #4 - #5 = 0.1185
+6. #4 - #5 = 118.5 g
 7. #3 / #6 = 134/1185
 ```
 
@@ -123,10 +123,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- rounded where no decimal ends --
 1. m_w = 157.4 g
 2. m_d = 144 g
-3. #1 - #2 = 0.0134
+3. #1 - #2 = 13.4 g
 4. m_d = 144 g
 5. 25.5 g
-6. #4 - #5 = 0.1185
+6. #4 - #5 = 118.5 g
 7. #3 / #6 = ≈0.113
 ```
 
@@ -134,10 +134,10 @@ std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 
 -- rounded and padded --
 1. m_w = 157.4 g
 2. m_d = 144.0 g
-3. #1 - #2 = 0.0134
+3. #1 - #2 = 13.4 g
 4. m_d = 144.0 g
 5. 25.5 g
-6. #4 - #5 = 0.1185
+6. #4 - #5 = 118.5 g
 7. #3 / #6 = ≈0.113
 ```
 
@@ -166,24 +166,74 @@ declares, as a line of another block that reads the value states it --
 rounded, padded or exact alike. The block's own last step agrees with the
 header on whether the value is typed, and a typed value is exact on every one
 of those lines. That is all they agree on: where the last step computed the
-value, it states it in the coherent unit, so it may differ from the header in
-its unit, its padding and its decimals, and one may read `≈` where the other
-does not. The header's definition is written as a rendered formula is (see
-below), its typed numbers exact.
+value, it states it in the unit that step is shown in, which may be the
+coherent unit (below), so it may differ from the header in its unit, its
+padding and its decimals, and one may read `≈` where the other does not. The
+header's definition is written as a rendered formula is (see below), its typed
+numbers exact.
 
 ### A value in a unit nobody declared
 
-Line 3 reads `0.0134`, with no unit. A value the arithmetic computed -- a
-difference, a product, a ratio -- is stated in the coherent unit of its
-dimension, here the kilogram: `0.0134` is the 13.4 g the specimen lost. Nobody
-declared that unit for this formula, so its decimals are `Unit`'s default of 3,
-which is no one's statement of precision. Such a value is **never padded** --
-the padded trace in the next section writes a computed 0.12 kg as `0.12`, not
-`0.120` -- and when it is rounded it keeps those **3 places** (bar one
-exception, below): line 7's ratio reads `≈0.113`.
+Most computed values read in a unit someone declared. Lines 3 and 6 above,
+differences of two masses in grams, read in grams, as a value scaled by a pure
+number does: a computed step borrows the unit of the steps it read where that
+is safe ([Reading a derivation](tracing.md#reading-a-derivation)). A product
+or a quotient of two dimensioned values borrows nothing, even of two values in
+one unit: a length times a length is no length, and a length over a time
+neither. It is stated in the **coherent unit** of its dimension, followed by
+that unit's spelling from the base units. A bearing plate's area, from its two
+edges in millimetres:
 
-Three places of a kilogram can hide almost everything. The dish's mass, the
-mean of three weighings in grams, is computed in kilograms:
+```cpp
+// A bearing plate's area: a product of two lengths, which borrows neither one's unit.
+inline constexpr auto plateArea = var<PlateLength> * var<PlateWidth>;
+```
+
+Its trace, rendered in the rounded and padded style:
+
+```text
+1. l_p = 100.0 mm
+2. b_p = 200.0 mm
+3. #1 * #2 = 0.02 m^2
+```
+
+Line 3 is in square metres, written `m^2` after it, though nobody declared that
+unit for this formula. Its decimals are `Unit`'s default of 3, which is no
+one's statement of precision, so such a value is **never padded**: the edges
+are padded to the millimetre's one decimal, and the area reads `0.02`, not
+`0.020`. Read in the unit its quantity declares, the result keeps what
+matters:
+
+```text
+the plate's area in its declared square millimetres: 20000 mm2
+```
+
+When a value in the coherent unit is rounded it keeps those 3 places -- unless
+they round a value other than zero to `≈0`, which says nothing of it. They are
+then extended to its first significant digit, up to 18 places, and the `≈`
+stays. A creep rate, an elongation in millimetres over a time in hours:
+
+```cpp
+// A creep rate: a length over a time, which borrows neither one's unit.
+inline constexpr auto creepRate = var<Elongation> / var<HoldTime>;
+```
+
+```text
+1. dl = 2.4 mm
+2. t_h = 0.75 h
+3. #1 / #2 = ≈0.0000009 m/s
+```
+
+The rate, 0.00000088... m/s, reads `≈0.0000009`, not `≈0`. A price worked out
+in euros per kilowatt-hour is stated in euros per joule: 3401/33480000000 reads
+`≈0.0000001`. A value in a unit someone declared keeps that unit's places,
+whatever they round to:
+
+```text
+the creep rate in its declared millimetres per minute: ≈0.05 mm/min
+```
+
+The dish's mass, the mean of three weighings in grams, is computed in grams:
 
 ```cpp
 // The mean of three weighings: their sum times a typed 1/3, which has no exact decimal.
@@ -196,26 +246,18 @@ Its trace, rendered in the rounded and padded style:
 1. t = 4.21 g; 4.23 g; 4.26 g
 2. sum(#1) = 12.7 g
 3. 1/3
-4. #2 * #3 = ≈0.004
+4. #2 * #3 = ≈4.2 g
 ```
 
 A series' sum keeps its quantity's unit: line 2 is in grams. The product on
-line 4 is not: it is 0.004233... kg, rounded to 3 places of a kilogram, and
-not padded: `≈0.004`. Line 1's weighings keep their second decimal, though the
-gram declares one: padding never cuts a decimal short. The `≈` says line 4 was
-rounded; the result itself, read in the unit its quantity declares, keeps what
-matters:
+line 4 is the sum scaled by a pure number, so it is in grams too, rounded at the
+gram's one decimal: `≈4.2`. Line 1's weighings keep their second decimal,
+though the gram declares one: padding never cuts a decimal short. The `≈` says
+line 4 was rounded, as the result does, read in the unit its quantity declares:
 
 ```text
 the dish's mass in its declared grams: ≈4.2 g
 ```
-
-Where those 3 places would round a value other than zero to `≈0`, which says
-nothing of it, they are extended to its first significant digit, up to 18
-places, and the `≈` stays. A price worked out in euros per kilowatt-hour is
-stated in euros per joule: 3401/33480000000 reads `≈0.0000001`, not `≈0`. A
-value in a unit someone declared keeps that unit's places, whatever they
-round to.
 
 ### What no style rounds
 
@@ -249,8 +291,8 @@ contradicts itself -- so a compared value is never shown rounded.
 ### Values the exact layer cannot hold
 
 A square root, a logarithm or an exponential is irrational almost everywhere,
-and the exact sums behind a line fitted through 34 readings at three decimals
-can already leave the 64-bit integers of `Rational`
+and the exact sums behind a line fitted through 28 points, each on a different
+denominator, can already leave the 128-bit integers of `Rational`
 ([numeric headroom](numeric-headroom.md#least-squares-realistic-and-one-stress-control)).
 The library does not approximate such values. A formula that needs one
 **declares the precision it is reported at** -- a unit, decimal places and a
@@ -365,12 +407,12 @@ formula, padded style: m_d - 24 g
 trace, padded style:
 1. m_d = 144.0 g
 2. 24.0 g
-3. #1 - #2 = 0.12
+3. #1 - #2 = 120.0 g
 ```
 
 The formula states the 24 its author typed; the trace pads it to the gram's one
-decimal, as it pads every value in grams. Line 3, 0.12 kg in a unit nobody
-declared, is not padded to that unit's default 3 decimals.
+decimal, as it pads every value in grams -- line 3 too, a difference of two
+values in grams, and so in grams itself.
 
 The style reaches every node through the vocabulary, the one argument every
 `render_node` already receives -- your own included
@@ -592,8 +634,8 @@ before the call stack of the evaluation:
 
 ```
 test\negative\format_places_without_mode.cpp(17): error C7595: 'std::basic_format_string<char,formula::Rational>::basic_format_string': call to immediate function is not a constant expression
-include\formula-cpp/format.hpp(344): note: failure was caused by call of undefined function or one not declared 'constexpr'
-include\formula-cpp/format.hpp(344): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
+include\formula-cpp/format.hpp(347): note: failure was caused by call of undefined function or one not declared 'constexpr'
+include\formula-cpp/format.hpp(347): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
 ```
 
 clang and g++ name the same function, in their own words.
@@ -626,15 +668,15 @@ see it: `{:~Mode}` on a `Measured` whose unit declares negative decimals --
 rounding to tens or thousands. A value with an exact decimal of at most 18
 places is written as it is and never rounded: 1/10^18 at -3 decimals is
 `0.000000000000000001`. Any other value is rounded through exact arithmetic,
-which overflows for one with a large denominator, such as
-`Rational::from_double_exact(0.1)` at -3 decimals. `std::format` then throws
-`std::format_error` too, starting `formula: this number cannot be spelled as
-the format asks`; it never writes a text that is neither the value nor the
-rounding the spec asked for. No spec rounds such a value to tens or
-thousands. Write `{:~.0HalfEven}` instead to round it to whole units -- a
-rounding to 0 to 18 places is spelled by long division, which cannot
-overflow, so `from_double_exact(0.1)` reads `≈0` -- or `{:/}` for its exact
-fraction, or catch the `std::format_error`.
+which overflows for one with a large denominator, such as 2^-120,
+`Rational { 1, Rational::Int { 1 } << 120 }`, at -3 decimals. `std::format`
+then throws `std::format_error` too, starting `formula: this number cannot be
+spelled as the format asks`; it never writes a text that is neither the
+value nor the rounding the spec asked for. No spec rounds such a value to
+tens or thousands. Write `{:~.0HalfEven}` instead to round it to whole units
+-- a rounding to 0 to 18 places is spelled by long division, which cannot
+overflow, so 2^-120 reads `≈0` -- or `{:/}` for its exact fraction, or catch
+the `std::format_error`.
 
 ## Formatting outcomes, units, dimensions and enumerations
 

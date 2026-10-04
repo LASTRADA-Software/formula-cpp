@@ -383,7 +383,7 @@ TEST_CASE("eight regressors, the most a fit takes, are fitted exactly, rounded w
     // Computed with Python's fractions from the columns above. At run time:
     // ten rows of eight regressors exceed the constant-evaluation limit of
     // cl 19.51 (1048576 steps) and of g++ 14 (33554432 operations), measured.
-    constexpr formula::Rational::Int shared = 156'879'508'961;
+    constexpr std::int64_t shared = 156'879'508'961;
     CHECK(exact_output(formula::opaque_output<"constant">(eightFactors), tenRows) == rat(11'058'652'968'024, shared));
     CHECK(exact_output(formula::opaque_output<"coefficient 1">(eightFactors), tenRows) == rat(758'096'997'271, shared));
     CHECK(exact_output(formula::opaque_output<"coefficient 2">(eightFactors), tenRows) == rat(-183'676'518'433, shared));

@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <optional>
 
 namespace
@@ -19,6 +20,7 @@ using formula::Rational;
 using formula::RoundingMode;
 using W4 = formula::detail::WideUnsigned<4>;
 using R4 = formula::detail::WideRatio<4>;
+using formula::detail::UInt128;
 using formula::detail::decide_rounding;
 using formula::detail::narrow_wide_ratio;
 using formula::detail::round_wide_ratio;
@@ -40,12 +42,20 @@ constexpr std::array<std::int64_t, 11> gridDenominators {
 {
     return wide_from_rational<4>(exact);
 }
+
+/// The bounds of `Rational::Int`.
+constexpr Rational::Int IntMax = std::numeric_limits<Rational::Int>::max();
+constexpr Rational::Int IntMin = std::numeric_limits<Rational::Int>::min();
+
+/// 2^127, the magnitude of `IntMin`, and one past it.
+constexpr W4 twoToOneTwentySeven = W4::from_u128(UInt128 { std::uint64_t { 1 } << 63, 0 });
+constexpr W4 pastIntMin = W4::from_u128(UInt128 { std::uint64_t { 1 } << 63, 1 });
 } // namespace
 
 TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the same Rational", "[wide-rounding]")
 {
     // Wherever checked_round answers, round_wide_ratio gives the same, in
-    // every mode and at every place it accepts. Counted: 43729 cases, those
+    // every mode and at every place it accepts. Counted: 48833 cases, those
     // of the grid and the four extremes, at every place from -18 to 18 and in
     // every mode, where checked_round answers.
     int checkedCases = 0;
@@ -68,23 +78,32 @@ TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the sam
     for (std::int64_t const numeratorValue: gridNumerators)
         for (std::int64_t const denominatorValue: gridDenominators)
             judge(Rational { numeratorValue, denominatorValue });
-    for (Rational const extreme: { Rational { formula::detail::IntMin },
-                                   Rational { formula::detail::IntMax },
-                                   Rational { formula::detail::IntMin, 3 },
-                                   Rational { formula::detail::IntMax, 2 } })
+    for (Rational const extreme:
+         { Rational { IntMin }, Rational { IntMax }, Rational { IntMin, 3 }, Rational { IntMax, 2 } })
         judge(extreme);
-    CHECK(checkedCases == 43729);
+    CHECK(checkedCases == 48833);
     CHECK(agreedCases == checkedCases);
 }
 
 TEST_CASE("wide rounding: a value checked_round refuses is answered when its rounding fits", "[wide-rounding]")
 {
-    // 10/3 at 18 dp: checked_round forms 10 * 10^18, past IntMax, and refuses;
-    // the wide fraction rounds to 3333333333333333333 / 10^18, which fits.
-    STATIC_REQUIRE(formula::checked_round(Rational { 10, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven).error()
+    // (10^21 + 1)/9 at 18 dp: checked_round forms (10^21 + 1) * 10^18, past
+    // IntMax, and refuses; the wide fraction, in 256 bits, rounds to
+    // 111111111111111111111222222222222222222 / 10^18, which fits.
+    constexpr Rational::Int quintillion = 1'000'000'000'000'000'000;
+    constexpr Rational unrounded { quintillion * 1000 + 1, 9 };
+    STATIC_REQUIRE(formula::checked_round(unrounded, DecimalPlaces { 18 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::Overflow);
+    constexpr Rational::Int keptDigits = (Rational::Int { 111'111'111'111'111'111 } * 1000 + 111) * quintillion
+                                         + 222'222'222'222'222'222;
+    STATIC_REQUIRE(*round_wide_ratio(wide_from_rational<8>(unrounded), DecimalPlaces { 18 }, RoundingMode::HalfEven)
+                   == Rational { keptDigits, quintillion });
+    // 10/3 at 18 dp, which checked_round refused in 64 bits, it answers, as
+    // the wide fraction does.
+    STATIC_REQUIRE(formula::checked_round(Rational { 10, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven).value()
+                   == Rational { 3'333'333'333'333'333'333ULL, quintillion });
     STATIC_REQUIRE(*round_wide_ratio(from(Rational { 10, 3 }), DecimalPlaces { 18 }, RoundingMode::HalfEven)
-                   == Rational { 3'333'333'333'333'333'333, 1'000'000'000'000'000'000 });
+                   == Rational { 3'333'333'333'333'333'333ULL, quintillion });
 }
 
 TEST_CASE("wide rounding: ties follow the mode and the sign", "[wide-rounding]")
@@ -155,25 +174,35 @@ TEST_CASE("wide rounding: a fraction wider than 64 bits rounds exactly", "[wide-
 
 TEST_CASE("wide rounding: the kept integer must fit Rational and the places must be in range", "[wide-rounding]")
 {
-    constexpr W4 twoToSixtyThree = W4::from_u64(std::uint64_t { 1 } << 63);
-    // -2^63 is IntMin; +2^63 is one past IntMax, and -2^63 - 1 one past IntMin:
-    // Overflow, never IntMax with the sign lost.
+    // -2^127 is IntMin; +2^127 is one past IntMax, and -2^127 - 1 one past
+    // IntMin: Overflow, never IntMax with the sign lost.
     STATIC_REQUIRE(
-        *round_wide_ratio(R4 { true, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven)
-        == Rational { formula::detail::IntMin });
+        *round_wide_ratio(R4 { true, twoToOneTwentySeven, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven)
+        == Rational { IntMin });
     STATIC_REQUIRE(
-        round_wide_ratio(R4 { false, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
+        round_wide_ratio(R4 { false, twoToOneTwentySeven, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven)
+            .error()
         == formula::ArithmeticError::Overflow);
-    constexpr W4 pastIntMin = W4::from_u64((std::uint64_t { 1 } << 63) + 1U);
     STATIC_REQUIRE(
         round_wide_ratio(R4 { true, pastIntMin, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
         == formula::ArithmeticError::Overflow);
+    // +2^63, which 64 bits refused, is kept.
+    STATIC_REQUIRE(*round_wide_ratio(R4 { false, W4::from_u64(std::uint64_t { 1 } << 63), W4::from_u64(1) },
+                                     DecimalPlaces { 0 },
+                                     RoundingMode::HalfEven)
+                   == Rational { std::uint64_t { 1 } << 63 });
+    // 2^127 to the nearest 10^18 is 170141183460469231732 * 10^18, past IntMax;
+    // 2^70, which 64 bits refused, is 1181 * 10^18.
+    STATIC_REQUIRE(round_wide_ratio(R4 { false, twoToOneTwentySeven, W4::from_u64(1) },
+                                    DecimalPlaces { -18 },
+                                    RoundingMode::HalfEven)
+                       .error()
+                   == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(
-        round_wide_ratio(R4 { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 70), W4::from_u64(1) },
-                         DecimalPlaces { -18 },
-                         RoundingMode::HalfEven)
-            .error()
-        == formula::ArithmeticError::Overflow);
+        *round_wide_ratio(R4 { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 70), W4::from_u64(1) },
+                          DecimalPlaces { -18 },
+                          RoundingMode::HalfEven)
+        == Rational { Rational::Int { 1181 } * 1'000'000'000'000'000'000 });
     STATIC_REQUIRE(round_wide_ratio(from(Rational { 1, 3 }), DecimalPlaces { 19 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(round_wide_ratio(from(Rational { 1, 3 }), DecimalPlaces { -19 }, RoundingMode::HalfEven).error()
@@ -189,20 +218,28 @@ TEST_CASE("wide rounding: the kept integer must fit Rational and the places must
 TEST_CASE("wide rounding: narrow_wide_ratio is the exact value or Overflow", "[wide-rounding]")
 {
     STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, W4::from_u64(6), W4::from_u64(4) }) == Rational { 3, 2 });
-    STATIC_REQUIRE(*narrow_wide_ratio(R4 { true, W4::from_u64(std::uint64_t { 1 } << 63), W4::from_u64(1) })
-                   == Rational { formula::detail::IntMin });
-    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(std::uint64_t { 1 } << 63), W4::from_u64(1) }).error()
+    STATIC_REQUIRE(*narrow_wide_ratio(R4 { true, twoToOneTwentySeven, W4::from_u64(1) }) == Rational { IntMin });
+    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, twoToOneTwentySeven, W4::from_u64(1) }).error()
                    == formula::ArithmeticError::Overflow);
-    // -2^63 - 1 is one past IntMin. A denominator of IntMax fits; of 2^63 it
-    // does not, nor of 2^64 - 1, which a cast to Rational::Int would read as -1.
-    STATIC_REQUIRE(narrow_wide_ratio(R4 { true, W4::from_u64((std::uint64_t { 1 } << 63) + 1U), W4::from_u64(1) }).error()
+    // -2^127 - 1 is one past IntMin. A denominator of IntMax fits; of 2^127
+    // it does not, nor of 2^128 - 1, which a cast to Rational::Int would read
+    // as -1.
+    STATIC_REQUIRE(narrow_wide_ratio(R4 { true, pastIntMin, W4::from_u64(1) }).error()
                    == formula::ArithmeticError::Overflow);
-    constexpr W4 intMaxWide = W4::from_u64(static_cast<std::uint64_t>(formula::detail::IntMax));
-    STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, W4::from_u64(1), intMaxWide }) == Rational { 1, formula::detail::IntMax });
-    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(1), W4::from_u64(std::uint64_t { 1 } << 63) }).error()
+    constexpr W4 intMaxWide = W4::from_u128(formula::detail::wide_magnitude(IntMax));
+    STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, W4::from_u64(1), intMaxWide }) == Rational { 1, IntMax });
+    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(1), twoToOneTwentySeven }).error()
                    == formula::ArithmeticError::Overflow);
-    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(1), W4::from_u64(~std::uint64_t { 0 }) }).error()
-                   == formula::ArithmeticError::Overflow);
+    constexpr W4 allOnes = W4::from_u128(UInt128 { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } });
+    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(1), allOnes }).error() == formula::ArithmeticError::Overflow);
+    // The 64-bit edges, which 64 bits refused, fit: 2^63, and denominators
+    // of 2^63 and 2^64 - 1.
+    STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, W4::from_u64(std::uint64_t { 1 } << 63), W4::from_u64(1) })
+                   == Rational { std::uint64_t { 1 } << 63 });
+    STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, W4::from_u64(1), W4::from_u64(std::uint64_t { 1 } << 63) })
+                   == Rational { 1, Rational::Int { std::uint64_t { 1 } << 63 } });
+    STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, W4::from_u64(1), W4::from_u64(~std::uint64_t { 0 }) })
+                   == Rational { 1, Rational::Int { ~std::uint64_t { 0 } } });
     // 2^64 / (3 * 2^64): reduced first, 1/3.
     constexpr W4 twoToSixtyFour = W4::from_limbs({ 0U, 0U, 1U, 0U });
     STATIC_REQUIRE(
@@ -229,7 +266,7 @@ TEST_CASE("wide rounding: rounded_in_unit rounds in its unit as a rounding node 
                    == formula::ArithmeticError::DomainError);
 
     // Wherever RepRounding<Rational>::round_in answers, the same result, over
-    // units whose factor is and is not a power of ten. Counted: 64582 cases.
+    // units whose factor is and is not a power of ten. Counted: 65450 cases.
     std::array<formula::Unit, 5> const units {
         unit::Gram, unit::Millimetre, unit::MillimetrePerMinute, unit::Minute, unit::Percent
     };
@@ -253,7 +290,7 @@ TEST_CASE("wide rounding: rounded_in_unit rounds in its unit as a rounding node 
                             ++agreedCases;
                     }
             }
-    CHECK(checkedCases == 64582);
+    CHECK(checkedCases == 65450);
     CHECK(agreedCases == checkedCases);
 }
 
@@ -334,4 +371,17 @@ TEST_CASE("wide rounding: a Rational scaled to a common denominator keeps its si
     STATIC_REQUIRE(formula::detail::scaled_to_denominator(Rational { 5, 6 }, twelve)->magnitude == W4::from_u64(10));
     STATIC_REQUIRE(!formula::detail::scaled_to_denominator(Rational { 0 }, twelve)->negative);
     STATIC_REQUIRE(formula::detail::scaled_to_denominator(Rational { 0 }, twelve)->magnitude.is_zero());
+}
+
+TEST_CASE("a wide integer holds 128 bits exactly, and says when it holds more", "[wide-int]")
+{
+    using formula::detail::UInt128;
+    using formula::detail::WideUnsigned;
+    constexpr UInt128 widest { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } };
+    STATIC_REQUIRE(WideUnsigned<4>::from_u128(widest).to_u128() == std::optional<UInt128> { widest });
+    STATIC_REQUIRE(WideUnsigned<8>::from_u128(UInt128 { 0x0123456789abcdef, 0xfedcba9876543210 }).to_u128()
+                   == std::optional<UInt128> { UInt128 { 0x0123456789abcdef, 0xfedcba9876543210 } });
+    constexpr auto twoTo128 = formula::detail::shift_left_checked_or_none(WideUnsigned<8>::from_u64(1), std::size_t { 128 });
+    STATIC_REQUIRE(twoTo128.has_value());
+    STATIC_REQUIRE(twoTo128->to_u128() == std::nullopt);
 }

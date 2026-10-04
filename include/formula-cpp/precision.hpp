@@ -1010,7 +1010,8 @@ template <typename Rep = Rational, PrecisionKind K, Node Level, Node Limit, type
     // The unit the level is shown in: the quantity the limit's first
     // placeholder names; else, when the limit reads its level only through
     // a nested limit or a consumer's node, the quantity the level expression
-    // names; else the coherent unit, as every computed step is shown in.
+    // names; else the coherent unit, as a computed step with no unit to
+    // borrow is shown in.
     [[maybe_unused]] constexpr Unit levelUnit = detail::first_free_level_unit<Limit>().value_or(
         detail::level_expression_unit<Level>().value_or(coherent(Level::dimension)));
 

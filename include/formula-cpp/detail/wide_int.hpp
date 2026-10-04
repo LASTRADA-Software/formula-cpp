@@ -4,12 +4,12 @@
 /// @file
 /// Fixed-width unsigned integers wider than 64 bits, for the exact arithmetic
 /// behind a declared precision (`rounded_output`, `opaque.hpp`): a value the
-/// 64-bit `Rational` cannot hold is computed here exactly, and only its
+/// 128-bit `Rational` cannot hold is computed here exactly, and only its
 /// rounding is ever written.
 ///
 /// `WideUnsigned<Limbs>` holds `Limbs` limbs of 32 bits, least significant
 /// first. Every product of two limbs is formed in `std::uint64_t`: cl has no
-/// 128-bit integer (`rounded_root.hpp` gives the same reason), and nothing here
+/// 128-bit integer (`int128.hpp` gives the same reason), and nothing here
 /// uses an intrinsic or floating point, so a result depends on its operands
 /// alone.
 ///
@@ -27,6 +27,8 @@
 ///
 /// A signed integer is a sign beside a magnitude (`WideSigned`), and a fraction
 /// a sign beside two magnitudes (`WideRatio`). Zero is never negative.
+
+#include <formula-cpp/int128.hpp>
 
 #include <array>
 #include <compare>
@@ -61,6 +63,18 @@ class WideUnsigned
         return from_limbs(held);
     }
 
+    /// @p narrow, exactly. Four limbs hold it.
+    [[nodiscard]] static constexpr WideUnsigned from_u128(UInt128 narrow) noexcept
+        requires(Limbs >= 4)
+    {
+        std::array<std::uint32_t, Limbs> held {};
+        held[0] = static_cast<std::uint32_t>(narrow.lowWord & 0xFFFF'FFFFU);
+        held[1] = static_cast<std::uint32_t>(narrow.lowWord >> 32U);
+        held[2] = static_cast<std::uint32_t>(narrow.highWord & 0xFFFF'FFFFU);
+        held[3] = static_cast<std::uint32_t>(narrow.highWord >> 32U);
+        return from_limbs(held);
+    }
+
     /// The integer whose limbs are @p held, least significant first.
     [[nodiscard]] static constexpr WideUnsigned from_limbs(std::array<std::uint32_t, Limbs> const& held) noexcept
     {
@@ -82,6 +96,27 @@ class WideUnsigned
             if (_limbs[at] != 0)
                 return std::nullopt;
         return (static_cast<std::uint64_t>(_limbs[1]) << 32U) | _limbs[0];
+    }
+
+    /// This value as 128 bits, or nothing when it needs more.
+    [[nodiscard]] constexpr std::optional<UInt128> to_u128() const noexcept
+    {
+        // Every limb is read before anything is decided, with no early return
+        // in between. An early return left g++ 14 at -O3 a tail that reads only
+        // the low four limbs, which it split out of each width and then merged
+        // across widths; the merged copy, typed for a wider one, made
+        // -Warray-bounds report a read past a narrower value that never
+        // happens.
+        std::uint32_t aboveLow = 0;
+        for (std::size_t limbAt = 4; limbAt < Limbs; ++limbAt)
+            aboveLow |= _limbs[limbAt];
+        // The low four limbs, zero past the top of a narrower value.
+        std::array<std::uint64_t, 4> lowLimbs {};
+        for (std::size_t limbAt = 0; limbAt < lowLimbs.size() && limbAt < Limbs; ++limbAt)
+            lowLimbs[limbAt] = _limbs[limbAt];
+        if (aboveLow != 0U)
+            return std::nullopt;
+        return UInt128 { (lowLimbs[3] << 32U) | lowLimbs[2], (lowLimbs[1] << 32U) | lowLimbs[0] };
     }
 
     /// Whether this is zero.

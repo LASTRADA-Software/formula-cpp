@@ -72,6 +72,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/format.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/formula.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/function.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/int128.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/least_squares.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/lineage.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/lookup.hpp"
@@ -210,7 +211,7 @@ if(FORMULA_BUILD_TESTS AND FORMULA_BUILD_EXAMPLES AND FORMULA_TOOLS)
         add_test(NAME census.exact-sizes
             COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/census/exact_sizes.py")
         set_tests_properties(census.exact-sizes PROPERTIES PASS_REGULAR_EXPRESSION
-            "at 6 dp: the exact variance does not fit 64 bits in 374 of 1000 in kg2 \\(SI\\), in 0 of 1000 in g2 \\(declared. widest 45 bits\\)[\r\n]+[^\r\n]*at d = 101 \\(64 bits\\), 103 \\(64 bits\\), 107 \\(64 bits\\), 109 \\(64 bits\\), 113 \\(64 bits\\), 119 \\(64 bits\\), 121 \\(64 bits\\), 127 \\(64 bits\\), 131 \\(64 bits\\), 137 \\(64 bits\\), 139 \\(64 bits\\), 143 \\(64 bits\\), 149 \\(64 bits\\), 151 \\(64 bits\\), 157 \\(64 bits\\), 161 \\(64 bits\\), 163 \\(64 bits\\)[\r\n]+[^\r\n]*in MPa \\(declared\\) it does not fit at 0 of 63 \\(widest 44 bits\\)")
+            "at 6 dp: the exact variance does not fit 128 bits in 0 of 1000 in kg2 \\(SI. widest 65 bits\\), in 0 of 1000 in g2 \\(declared. widest 45 bits\\)[\r\n]+[^\r\n]*in Pa \\(SI\\) the exact strength does not fit 128 bits at 0 of 63 \\(widest 64 bits\\)[\r\n]+[^\r\n]*in MPa \\(declared\\) it does not fit at 0 of 63 \\(widest 44 bits\\)")
     endif()
     add_test(NAME docs.numeric-headroom
         COMMAND "${CMAKE_COMMAND}" ${censusPageArguments} -P "${PROJECT_SOURCE_DIR}/cmake/CheckCensusPage.cmake")

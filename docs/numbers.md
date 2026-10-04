@@ -116,8 +116,8 @@ compile. The diagnostic names the function that was reached:
 
 | Spelling | Why it is refused | Named in the diagnostic |
 |---|---|---|
-| `9'223'372'036'854'775'808_r` | more significant digits than `Rational`'s 64-bit numerator holds | `formula_rational_literal_out_of_range` |
-| `0.0000000000000000001_r` | a denominator of 10^19 does not fit either | `formula_rational_literal_out_of_range` |
+| `9'223'372'036'854'775'808_r` | one more than the largest 64-bit integer, 9'223'372'036'854'775'807, which bounds the literal's mantissa -- though a `Rational` holds the value | `formula_rational_literal_out_of_range` |
+| `0.0000000000000000001_r` | a denominator of 10^19: the literal's scale, like `from_decimal`'s, stops at 10^18 | `formula_rational_literal_out_of_range` |
 | `0x1F_r`, `0b101_r` | not a decimal | `formula_rational_literal_not_a_decimal` |
 | `017_r` | C++ reads a leading zero as octal, so it is not the decimal 17 | `formula_rational_literal_not_a_decimal` |
 
@@ -249,16 +249,19 @@ the answer.
 
 ## Limits
 
-`Rational`'s numerator and denominator are `std::int64_t`. `DecimalPlaces`
-and the decimal-place form of `round` are limited to ±18 places, because the
-scale factor `10^places` must itself fit in `Int`; an out-of-range
+`Rational`'s numerator and denominator are `formula::Int128`, signed 128-bit
+integers: each holds up to 2^127 − 1, and a numerator down to −2^127 -- up to
+39 decimal digits. That is the integer width only. `DecimalPlaces` and the
+decimal-place form of `round` stay limited to ±18 places, as `from_decimal`'s
+exponent and the `_r` literal's 18 places are; an out-of-range
 `DecimalPlaces` reports `Overflow`, while an out-of-range `SignificantDigits`
 (fewer than 1) reports `DomainError` -- both mean "argument outside the
 domain of the operation", but a caller switching on the code should expect
-either one. That ±18 ceiling is rarely the one actually hit, though.
+either one.
 
 Rounding to `N` decimal places scales the value by `10^N`. Common factors of
-two cancel against the denominator first, so what must fit in `Int` is
+two cancel against the denominator first, so what must fit in `Rational::Int`
+is
 
 ```
 |numerator| * (10^N / gcd(10^N, denominator))
@@ -266,31 +269,24 @@ two cancel against the denominator first, so what must fit in `Int` is
 
 which for a power-of-two denominator is `|numerator| * 5^N`. **The limit is set
 by the numerator's magnitude**, not by the denominator and not by the size of
-the value:
+the value: `1 / 2^121` rounds correctly at all 18 places, while a 100-bit
+numerator over the same denominator is refused at 18.
 
-| numerator (over `2^54`) | max decimal places |
-|---|---|
-| `1` | 18 |
-| `10^9` | 18 |
-| `10^12` | 15 |
-| `8106479329266893` (a `double`'s mantissa) | 4 |
+A `double` below 2^53 in magnitude has a numerator of at most 53 bits, and
+rounding it at up to 18 places forms at most 2^53 · 5^18 · 2^18, below 2^113,
+so such a value from `from_double_exact` or `rational_from_double` rounds at
+every place from 0 to 18: 0,45 as a `double` is exactly
+`8106479329266893 / 2^54`, and rounds to 18 places as 0.450000000000000011.
+Past that the limit returns: a whole `double` such as 1e21 has a numerator of
+its own magnitude and nothing to cancel, so it is refused at 18 places, 1e38
+even at 1, and `2^-100` at -18 places multiplies its denominator past 2^127.
+`from_decimal(45, -2)` is `9/20` -- the same nominal value, and what a method
+that writes 0,45 means.
 
-Holding the numerator at 53 bits and varying the denominator from `2^10` to
-`2^62` leaves the answer at 4 places throughout; `1 / 2^60` rounds correctly at
-all 18.
-
-This is why `from_decimal` and `rational_from_double` behave so differently for
-the same nominal value. `from_decimal(45, -2)` is `9/20` -- numerator 9, so all
-18 places work. The same 0,45 as a `double` is exactly
-`8106479329266893 / 2^54`: a `double`'s mantissa is always about 53 bits
-whatever its exponent, so **any** value from `from_double_exact` or
-`rational_from_double` caps out at 4 decimal places, large or small alike.
-Asking for more reports `Overflow`, never a wrong number.
-
-`from_double_exact` additionally refuses a `double` whose exact value would need
-a denominator above `2^63`. Measured, that rules out a full-mantissa value below
-`2^-10` (about 0,00098): `0.0009765625` converts, `0.0001` is refused outright,
-before rounding is even reached.
+`from_double_exact` refuses a `double` whose exact value would need a
+denominator of `2^127` or more, before rounding is even reached. That limit is
+set by the value's magnitude: `0.0001` converts, over `2^66`, while `1e-30`,
+over `2^147`, is refused.
 
 For an exact decimal, prefer `from_decimal`: its numerator is whatever you
 passed -- usually a handful of significant digits -- so the limit above does not
@@ -302,21 +298,18 @@ rounding to decimals.
 Rounding to a *negative* number of places -- to whole tens, hundreds, thousands
 -- scales the other way: the step is an integer, so it multiplies the
 denominator rather than the numerator, and there the denominator is what
-constrains you. `1/10^18` is refused at every negative place for exactly that
-reason, while `1/3` handles them all.
+constrains you.
 
 Reach for `rational_from_double` only when the input is a genuinely measured
-`double`, and only at modest decimal precision.
+`double`.
 
 Overflow is always reported, never absorbed -- with one nuance worth knowing.
 `checked_add` and `checked_sub` can report overflow for a result that would,
-once reduced, actually fit: if both operands' numerators are near `2^63` and
+once reduced, actually fit: if both operands' numerators are near `2^127` and
 their denominators share a large common factor, the intermediate numerator
-sum can exceed `int64_t` even though the reduced answer is representable --
-for example `IntMax/3037000500 + IntMax/3037000500`, whose exact value
-`IntMax/1518500250` fits easily. Multiplication does not have this problem,
-because it cross-reduces before multiplying. Measured over 473,984 operand
-pairs against 128-bit ground truth: no wrong values were ever produced, and
-no false overflows occurred at all for numerators below roughly 10^6, which
-covers realistic use. The failure direction is always the safe one -- a
-reported error, never a wrong number.
+sum can exceed `Rational::Int` even though the reduced answer is
+representable -- for example `IntMax/3037000500 + IntMax/3037000500`, with
+`IntMax` the largest `Rational::Int`, whose exact value `IntMax/1518500250`
+fits easily. Multiplication does not have this problem, because it
+cross-reduces before multiplying. The failure direction is always the safe
+one -- a reported error, never a wrong number.

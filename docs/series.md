@@ -103,13 +103,16 @@ names the two screens the answer lay between:
 10. interpolate(#8, at #9) = 6927/10625 [between 163 and 197 m]
 ```
 
-A computed step has no declared unit, as a computed single value has none, so
-it reads in the **coherent unit**: the SI unit of its dimension, with no prefix
-([Expressions and evaluation](expressions.md)), times one of each
+A computed step with no unit to borrow from the steps it read reads in the
+**coherent unit**, as a computed single value does: the SI unit of its
+dimension, with no prefix ([Expressions and evaluation](expressions.md)),
+times one of each
 [named base dimension](dimensions.md#base-dimensions-the-si-does-not-have) it
-carries -- the euro, for an amount in euros. For a percentage that is a plain
-fraction, so 447/1250 is 35.76 % and 6927/10625 is 27708/425 %. For a mass it
-is the kilogram.
+carries -- the euro, for an amount in euros -- written after the number. A
+ratio of two masses is a pure number, and a percentage less a pure number is
+in two units, so for steps 6 and 7 that is a plain fraction, and for step 10,
+read off step 7's values, too: 447/1250 is 35.76 % and 6927/10625 is
+27708/425 %. For a mass it is `kg`.
 
 A few computed steps are still in their series' unit, and say so: a running
 total, a `sum` and a range read in the unit of the series they add up, and a
@@ -133,8 +136,8 @@ is 922.35 K, the range 17.6 K and the mean 34.3 °C:
 
 ```text
 the readings: 1. T_r = 237/10 °C; 413/10 °C; 379/10 °C
-their sum: 2. sum(#1) = 18447/20
-their range: 2. sample_range(#1) = 88/5
+their sum: 2. sum(#1) = 18447/20 K
+their range: 2. sample_range(#1) = 88/5 K
 their mean: 2. sample_mean(#1) = 343/10 °C
 ```
 

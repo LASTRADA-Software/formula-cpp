@@ -272,12 +272,12 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
     CHECK(traceOf(overlaid, everyNamedQuantity)
           == "1. k_s = 863/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. E = 30 MPa\n"
-             "3. #1 * #2 = 25890000\n"
+             "3. #1 * #2 = 2589/100 MPa\n"
              "4. D = 241 mm\n"
              "5. lookup(#4) = 1973/1000 [163 to under 331 mm]\n"
-             "6. #3 * #5 = 51080970\n"
+             "6. #3 * #5 = 5108097/100000 MPa\n"
              "7. R = 12 MPa\n"
-             "8. #6 - #7 = 39080970\n"
+             "8. #6 - #7 = 3908097/100000 MPa\n"
              "9. round(#8, in MPa) = 391/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "10. #9 = 391/10 MPa [variant Cube (1st of 1), selected by tag]\n");
 
@@ -287,12 +287,12 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
     CHECK(traceOf(overlaid)
           == "1. k = 863/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. f_c = 30 MPa\n"
-             "3. #1 * #2 = 25890000\n"
+             "3. #1 * #2 = 2589/100 MPa\n"
              "4. d = 241 mm\n"
              "5. lookup(#4) = 1973/1000 [163 to under 331 mm]\n"
-             "6. #3 * #5 = 51080970\n"
+             "6. #3 * #5 = 5108097/100000 MPa\n"
              "7. E_m = 12 MPa\n"
-             "8. #6 - #7 = 39080970\n"
+             "8. #6 - #7 = 3908097/100000 MPa\n"
              "9. round(#8, in MPa) = 391/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "10. #9 = 391/10 MPa [variant Cube (1st of 1), selected by tag]\n");
 }
@@ -1128,9 +1128,9 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 
     // Every series kind: each series step in the jurisdiction's symbol, the
     // fixed factor broadcast once, the running total from the last screen,
-    // and the sum a single value. Computed steps have no declared unit, so
-    // they read in kilograms, exactly -- except a series scaled by a pure
-    // number, which reads in its series' grams.
+    // and the sum a single value. A series or a mean scaled by a pure number
+    // reads in its series' grams; a variance, and a product of two ranges,
+    // borrow no unit and read in the coherent kg^2, exactly.
     // The statistics read the fixed factor through their sample, and each
     // reads its sample's own step, with every element. The rejection reads
     // the fixed factor in its sample and again in each pass's limit, and its
@@ -1148,7 +1148,7 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "10. m_n = 10 g; 20 g; 40 g\n"
              "11. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "12. #10 * #11 = 1487/100 g; 1487/50 g; 1487/25 g\n"
-             "13. sample_variance(#12) = 15478183/30000000000\n"
+             "13. sample_variance(#12) = 15478183/30000000000 kg^2\n"
              "14. m_n = 10 g; 20 g; 40 g\n"
              "15. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "16. #14 * #15 = 1487/100 g; 1487/50 g; 1487/25 g\n"
@@ -1157,7 +1157,7 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "19. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "20. #18 * #19 = 1487/100 g; 1487/50 g; 1487/25 g\n"
              "21. sample_range(#20) = 4461/100 g\n"
-             "22. #17 * #21 = 19900521/10000000000\n"
+             "22. #17 * #21 = 19900521/10000000000 kg^2\n"
              "23. #13 / #22 = 7/27\n"
              "24. #9 + #23 = 1445227/5454000\n"
              "25. m_n = 10 g; 20 g; 40 g\n"
@@ -1167,14 +1167,14 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "29. 3\n"
              "30. #28 / #29 = 1487/3000\n"
              "31. pass mean = 10409/300 g\n"
-             "32. #30 * #31 = 15478183/900000000\n"
+             "32. #30 * #31 = 15478183/900000 g\n"
              "33. pass 1: 3 values, mean 10409/300 g\n"
              "34. rejected element 3 of 3 (1487/25 g) in pass 1: abs(x - mean) = 1487/60 g > 15478183/900000 g (deviation from mean)\n"
              "35. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "36. 3\n"
              "37. #35 / #36 = 1487/3000\n"
              "38. pass mean = 4461/200 g\n"
-             "39. #37 * #38 = 2211169/200000000\n"
+             "39. #37 * #38 = 2211169/200000 g\n"
              "40. pass 2: 2 values, mean 4461/200 g\n"
              "41. settled: 1 rejected, 2 remain\n"
              "42. sample_count(#41) = 2\n"
@@ -1185,13 +1185,13 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "47. #46 = 53/2 % [variant EverySample (6th of 6), selected by tag]\n");
     CHECK(everyTraceOf<EverySeries>()
           == "1. m_n = 10 g; 20 g; 40 g\n"
-             "2. -#1 = -1/100; -1/50; -1/25\n"
+             "2. -#1 = -1/100 kg; -1/50 kg; -1/25 kg\n"
              "3. m_n = 10 g; 20 g; 40 g\n"
              "4. 1; 2; 3\n"
              "5. #3 * #4 = 10 g; 40 g; 120 g\n"
              "6. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "7. #5 * #6 = 1487/100 g; 1487/25 g; 4461/25 g\n"
-             "8. #2 + #7 = 487/100000; 987/25000; 3461/25000\n"
+             "8. #2 + #7 = 487/100000 kg; 987/25000 kg; 3461/25000 kg\n"
              "9. round(#8, to 0/0/-1 dp of g) = 5 g; 39 g; 140 g [nearest, ties away from zero]\n"
              "10. cumulative(#9, from last) = 184 g; 179 g; 140 g\n"
              "11. sum(#10) = 503 g\n"

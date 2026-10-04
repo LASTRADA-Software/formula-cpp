@@ -255,8 +255,8 @@ TEST_CASE("a scope's trace line shows the unit its operand's line does", "[recor
     INFO(computedText);
     CHECK(computedText == "1. F = 55600 N, from record Reference (sample 23, test 3)\n"
                           "2. x_m = 139 mm, from record Reference (sample 23, test 3)\n"
-                          "3. #1 / #2 = 400000\n"
-                          "4. #3 from record Reference (sample 23, test 3) = 400000\n");
+                          "3. #1 / #2 = 400000 kg/s^2\n"
+                          "4. #3 from record Reference (sample 23, test 3) = 400000 kg/s^2\n");
 }
 
 TEST_CASE("an overlay's constant used here and inside a scope has one row, of no record", "[record-render]")

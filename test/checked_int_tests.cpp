@@ -4,7 +4,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <limits>
+#include <optional>
 #include <random>
+#include <type_traits>
 
 using formula::detail::add_checked_or_none;
 using formula::detail::decimal_digits;
@@ -236,4 +239,55 @@ TEST_CASE("decimal_digits counts the digits of the magnitude", "[checked_int]")
     CHECK(decimal_digits(Int { 100 }) == 3);
     CHECK(decimal_digits(Int { -100 }) == 3);
     CHECK(decimal_digits(Int { 999999999999999999 }) == 18);
+}
+
+TEST_CASE("the 128-bit checked operations refuse exactly at the range's ends", "[checked-int]")
+{
+    using formula::Int128;
+    using formula::detail::add_checked_or_none;
+    using formula::detail::mul_checked_or_none;
+    using formula::detail::sub_checked_or_none;
+    constexpr Int128 largest = std::numeric_limits<Int128>::max();
+    constexpr Int128 smallest = std::numeric_limits<Int128>::min();
+    STATIC_REQUIRE(add_checked_or_none(largest - 1, Int128 { 1 }) == std::optional<Int128> { largest });
+    STATIC_REQUIRE(add_checked_or_none(largest, Int128 { 1 }) == std::nullopt);
+    STATIC_REQUIRE(add_checked_or_none(smallest, Int128 { -1 }) == std::nullopt);
+    STATIC_REQUIRE(sub_checked_or_none(Int128 { -1 }, largest) == std::optional<Int128> { smallest });
+    STATIC_REQUIRE(sub_checked_or_none(smallest, Int128 { 1 }) == std::nullopt);
+    STATIC_REQUIRE(sub_checked_or_none(largest, Int128 { -1 }) == std::nullopt);
+    // 2^63 * 2^64 = 2^127: one past the largest, and exactly the smallest when negative.
+    constexpr Int128 twoTo63 = Int128 { 1 } << 63;
+    constexpr Int128 twoTo64 = Int128 { 1 } << 64;
+    STATIC_REQUIRE(mul_checked_or_none(twoTo63, twoTo64) == std::nullopt);
+    STATIC_REQUIRE(mul_checked_or_none(-twoTo63, twoTo64) == std::optional<Int128> { smallest });
+    STATIC_REQUIRE(mul_checked_or_none(twoTo63, -twoTo64) == std::optional<Int128> { smallest });
+    STATIC_REQUIRE(mul_checked_or_none(smallest, Int128 { -1 }) == std::nullopt);
+    STATIC_REQUIRE(mul_checked_or_none(smallest, Int128 { 1 }) == std::optional<Int128> { smallest });
+    STATIC_REQUIRE(mul_checked_or_none(Int128 { 0 }, smallest) == std::optional<Int128> { Int128 { 0 } });
+}
+
+TEST_CASE("the helpers that read an integer of either width", "[checked-int]")
+{
+    using formula::Int128;
+    using formula::detail::UInt128;
+    STATIC_REQUIRE(formula::detail::wide_magnitude(std::int64_t { -5 }) == UInt128::from_u64(5));
+    STATIC_REQUIRE(formula::detail::wide_magnitude(std::numeric_limits<std::int64_t>::min())
+                   == UInt128::from_u64(std::uint64_t { 1 } << 63));
+    STATIC_REQUIRE(formula::detail::wide_magnitude(std::numeric_limits<Int128>::min())
+                   == UInt128 { std::uint64_t { 1 } << 63, 0 });
+    STATIC_REQUIRE(formula::detail::narrow_to_int64(Int128 { -7 }) == std::optional<std::int64_t> { -7 });
+    STATIC_REQUIRE(formula::detail::narrow_to_int64(Int128 { 1 } << 63) == std::nullopt);
+    STATIC_REQUIRE(formula::detail::int_from_pattern(UInt128 { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } - 4 },
+                                                     std::type_identity<Int128> {})
+                   == Int128 { -5 });
+    STATIC_REQUIRE(formula::detail::int_from_pattern(UInt128 { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } - 4 },
+                                                     std::type_identity<std::int64_t> {})
+                   == std::int64_t { -5 });
+    STATIC_REQUIRE(formula::detail::floor_divmod(Int128 { -7 }, Int128 { 2 }).quotient == Int128 { -4 });
+    STATIC_REQUIRE(formula::detail::floor_divmod(Int128 { -7 }, Int128 { 2 }).remainder == Int128 { 1 });
+    STATIC_REQUIRE(formula::detail::decimal_digits(std::numeric_limits<Int128>::max()) == 39);
+    STATIC_REQUIRE(formula::detail::decimal_digits(Int128 { 0 }) == 1);
+    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 18)
+                   == std::optional<Int128> { Int128 { 3'000'000'000'000'000'000LL } });
+    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 19) == std::nullopt);
 }

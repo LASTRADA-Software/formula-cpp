@@ -87,6 +87,12 @@ plain integers is, and so is a `std::array` of them — which is what makes it
 possible to validate a whole table with `static_assert` rather than only when
 it happens to be loaded at run time.
 
+A bound whose numerator or denominator does not fit those 64 bits is refused,
+never truncated: in a constant expression the table fails to compile, naming
+`formula_band_bound_out_of_range`, and reached at run time the program ends,
+because a `Band` is built to be a template argument and has no way to carry a
+failure.
+
 The node renders as one field per row, in the table's own declared order:
 
 ```
@@ -186,11 +192,11 @@ compiler), with the rest of the instantiation backtrace below these lines:
 
 ```
 In file included from test\negative\lookup_band_gap.cpp:10:
-In file included from include\formula-cpp/lookup.hpp:474:
-include\formula-cpp/band.hpp(257,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{103, 1, 197, 1}, formula::Band{241, 1, 331, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
-  257 |     static_assert(bands_are_adjacent(First, Second),
+In file included from include\formula-cpp/lookup.hpp:473:
+include\formula-cpp/band.hpp(280,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{103, 1, 197, 1}, formula::Band{241, 1, 331, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
+  280 |     static_assert(bands_are_adjacent(First, Second),
       |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-include\formula-cpp/band.hpp(298,29): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{103, 1, 197, 1}, Band{241, 1, 331, 1}>' requested here
+include\formula-cpp/band.hpp(321,29): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{103, 1, 197, 1}, Band{241, 1, 331, 1}>' requested here
 ```
 
 The message names **both offending rows**, as the values you typed: the one
@@ -520,7 +526,11 @@ inline constexpr formula::BreakpointTable<3> SizeCurve {
 };
 ```
 
-so it renders as the points it is, with `at` rather than any interval wording:
+`breakpoint(key)` keeps its key as an `int64` numerator and denominator, as
+`band` keeps its bounds, and refuses a key that does not fit them the same way:
+it fails to compile in a constant expression, naming
+`formula_breakpoint_key_out_of_range`, and ends the program at run time. The
+table renders as the points it is, with `at` rather than any interval wording:
 
 ```
 interpolating: interpolate(d, at 127 mm gives 913/10 %, at 173 mm gives 1051/10 %, at 211 mm gives 1127/10 %)
@@ -714,10 +724,10 @@ interpolation drew on:
 1. f_m = 40 MPa
 2. d = 139 mm
 3. lookup(#2) = 1051/10 % [127 to under 173 mm]
-4. #1 * #3 = 42040000
+4. #1 * #3 = 1051/25 MPa
 5. lookup(key Cylinder) = 863/10 %
-6. #4 * #5 = 36280520
-7. #6 = 36280520 [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
+6. #4 * #5 = 907013/25000 MPa
+7. #6 = 907013/25000 MPa [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
 ```
 
 The exact lookup on line 5 adds no such clause, and that is right: its key is
@@ -746,9 +756,9 @@ being included or excluded, so it needs neither a band's `to under` nor a
 curve's closed `to`.
 
 Both lookup steps report in the unit their own table is stated in — `1051/10 %`,
-`863/10 %` — while lines 4 and 6 report the products in the coherent unit, because an
-intermediate that no quantity declares a unit for has none to be shown in. That
-is ordinary trace behaviour rather than anything to do with tables; see
+`863/10 %` — and lines 4 and 6 report the products in megapascals: each scales
+a strength by a percentage, a pure number, and so reads in the strength's unit.
+That is ordinary trace behaviour rather than anything to do with tables; see
 [Tracing and audit trails](tracing.md).
 
 **On a miss, that clause is what keeps the line from lying:**

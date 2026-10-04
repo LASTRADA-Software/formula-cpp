@@ -299,26 +299,47 @@ metres the arithmetic actually runs on. Every `Step` stores its value in the
 **coherent unit** of its dimension (the SI unit, times one of each
 [named base dimension](dimensions.md#base-dimensions-the-si-does-not-have) it
 carries) -- the one scale every step's value can be compared on -- but also
-remembers the unit it was *declared* in, and `render_trace` converts back
-before printing. `Step`'s own comment explains why the recorder, not the
-renderer, has to be the one holding that unit:
+remembers the unit it is shown in, and `render_trace` converts back before
+printing and writes that unit after the number. `Step`'s own comment states
+which unit that is, and why the recorder, not the renderer, has to be the one
+holding it:
 
 ```cpp
-/// The unit this step's value was **declared** in -- `Describe<Q>::unit`
-/// for a variable or an overridden constant, the constant's own unit for
-/// a constant, the node's own unit for a `Round`, `RoundSignificant`,
-/// `RoundedRoot` or `RoundingRuleApplied` step, the unit of the step it
-/// wraps for a `Documented`, `ReplacedVariant` or `VariantSelected` step --
-/// each passes its operand's value through unchanged, so it states it as
-/// that operand's line does, whenever that line is the wrapped node's own
-/// and not the operands of a consumer's node -- and the coherent unit of
-/// `dimension` for anything else computed, which has no declared unit of
-/// its own.
+/// The unit this step's value is shown in:
+///
+///  - a variable, constant or rounding shows its declared unit --
+///    `Describe<Q>::unit` for a variable or an overridden constant, the
+///    constant's own unit for a constant, the node's own unit for a
+///    `Round`, `RoundSignificant`, `RoundedRoot`, `RoundedOpaqueOutput` or
+///    `RoundingRuleApplied` step;
+///  - a `Documented`, `ReplacedVariant`, `VariantSelected` or `RecordScope`
+///    step passes its operand's value through unchanged, so it shows the
+///    unit that operand's line does, whenever that line is the wrapped
+///    node's own and not the operands of a consumer's node;
+///  - a value scaled by a pure number shows its operand's unit, and so
+///    does a sum or difference on one scale under one name, a series' sum
+///    and its range;
+///  - a negation and an absolute value show their operand's unit;
+///  - a mean and a rejection pass's mean are points on their sample's
+///    scale, and show its unit, offset or not;
+///  - a conditional and a precision limit show the unit of the step they
+///    restate;
+///  - an opaque operation's output shows an input's unit of its
+///    dimension, or a quotient of two (`OpaqueOutputValue::unit`);
+///  - an offset unit is never borrowed for a sum, difference, scaling,
+///    negation or absolute value: such a value is no point on its scale;
+///  - everything else is the coherent unit of `dimension`, which the
+///    renderer writes after the number, spelt from its bases (`kg/m^3`).
+///
+/// A unit is borrowed only from operand steps that are provably the
+/// operands' own, and only when it has a symbol: a value in a unit with
+/// no symbol could not say what scale it is on, and reads in the coherent
+/// unit instead.
 ///
 /// `value` is always in the coherent unit, so that steps are
 /// comparable; this is what a renderer converts back to before showing a
 /// number to a person. Without it a derivation restates every input in a
-/// unit nobody typed: someone who entered 180 l reads `9/50`, which is
+/// unit nobody typed: someone who entered 180 l reads `9/50 m^3`, which is
 /// the same volume and a worse record. The renderer cannot recover this
 /// on its own -- by the time a `Step` exists the quantity type is erased,
 /// so the recorder captures it here.
@@ -329,34 +350,47 @@ walking that quantity's own node; by the time `RecordingSink::produced` builds
 a `Step` for it, the type is gone and only the runtime `Unit` value survives.
 Capturing anything less at that point -- the coherent unit alone, say --
 would make `render_trace` unable to ever show `180 l` again; it would show
-`9/50 m3`, arithmetically identical and a strictly worse record of what
+`9/50 m^3`, arithmetically identical and a strictly worse record of what
 someone actually typed.
 
-A step that is a plain computation, `#1 / #2` above, carries no declared unit
-of its own -- it's whatever the coherent unit of its dimension is, which
-`test/trace_render_tests.cpp` pins directly for a squared mass over a volume:
+A step that is a plain computation, `#1 / #2` above, has no declared unit of
+its own. Where the steps it read say which unit it is in, it borrows theirs, by
+the rules below; otherwise it is in the coherent unit of its dimension, and
+`render_trace` writes that unit after the number, spelt from its base units.
+`test/trace_render_tests.cpp` pins the second case directly for a squared mass
+over a volume:
 
 ```
 1. m = 6 kg
-2. #1^2 = 36
+2. #1^2 = 36 kg^2
 3. V = 3 m3
-4. #2 / #3 = 12
+4. #2 / #3 = 12 kg^2/m^3
 ```
 
 (`test/trace_render_tests.cpp`, `"a derivation renders one line per step, in
-order"`.) `#1^2` and `#2 / #3` carry no unit symbol at all -- and the reason is
-not that `kg2` and `kg2/m3` are awkward to spell. `coherent()`
-(`evaluate.hpp`) hands **every** computed step a `Unit` with no symbol at all,
-whatever its dimension: a computed *mass* prints no `kg` either, nor a
-computed length its `m`. A compound dimension is simply the case where the
-absence is most obvious, since there is no everyday symbol to miss; the
-behaviour itself applies to anything the evaluator computed rather than
-declared, with these exceptions, each of which takes its unit off a step it
-read:
+order"`.) `kg^2` and `kg^2/m^3` are no symbols anyone declared. `coherent()`
+(`evaluate.hpp`) hands a computed step a `Unit` with no symbol at all, and the
+renderer spells such a unit from the SI base units -- `m`, `kg`, `s`, `A`, `K`,
+`mol`, `cd` -- with the name of each named base dimension ahead of them:
+`kg/(m s^2)` for a pressure, `EUR` for a price per kilowatt-hour times an
+energy. A computed mass reads `kg`, a computed length `m`. Only a
+dimensionless value is a bare number: `#1 / #2` above, a ratio of two volumes,
+reads `3/5`. A value declared in a unit of the author's own that has no symbol
+reads in the coherent unit too, converted, since its number alone could not
+say what scale it is on.
+
+A computed step borrows its unit off the steps it read in these cases:
 
 - A step that passes a value on unchanged -- a documented step, a
   jurisdiction's replacement, a variant's selection, a read from another
   record -- states it in the unit of the step it wraps, below.
+- A value scaled by a pure number reads in its operand's unit -- 3/50 of a
+  mean of 413/10 g is `#2 * #3 = 1239/500 g` -- and so does a sum or a
+  difference of two values shown on one scale under one name, at the finer of
+  their two precisions.
+- A negation and an absolute value read in their operand's unit, and a
+  conditional in its chosen branch's: `if #1 > #2 then #3 = 60 MPa`. A
+  precision limit reads in its second pass's.
 - A value that is a point on its operand's scale -- a mean, a pass's mean, a
   rejected determination -- reads in that operand's unit when it has a
   symbol, offset or not: a mean of Celsius readings is a Celsius reading.
@@ -368,6 +402,13 @@ read:
   ([Series and grading curves](series.md)).
 - An opaque output reads in an input's unit, or a quotient of two, under the
   same rule ([Opaque operations and bounded retry](opaque-and-retry.md)).
+
+An offset unit is never borrowed for a sum, a difference, a scaling, a
+negation or an absolute value: such a value is no point on its scale. The
+difference of two Celsius readings is an interval, and reads `#1 - #2 = 5 K`,
+not `5 °C`. Nor is a unit with no symbol borrowed, and nor is one read off a
+step that is not provably the operand's own: over a consumer's node that hands
+the sink on to its operands (below), the step reads in the coherent unit.
 
 A binary step whose left operand failed never evaluated its right one, and
 says so where the right operand would stand:
@@ -396,7 +437,8 @@ it documents does"`.) A jurisdiction's replaced variant is the same: its line
 reads as the replacement's own. Over a consumer's node that hands the sink on
 to its operands (see below), there is no line of the node's own to read as --
 only its operands', none of which holds its value -- so the documented step
-states its value in the coherent unit, as any computed step does.
+states its value in the coherent unit, as a computed step with no unit to
+borrow does.
 
 A step that failed shows why instead of a value, and a step with no value at
 all -- an absent measurement, which is not an error -- says so rather than
@@ -436,7 +478,7 @@ std::print("{}", formula::render_trace(derived.trace, { .maxSteps = 20 }));
 ```
 1. F = 562 kN
 2. 19321 mm2
-3. #1 / #2 = 562000000000/19321
+3. #1 / #2 = 562000000000/19321 kg/(m s^2)
 4. round(#3, in MPa) = 291/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
 5. #4 = 291/10 MPa [variant Cube (1st of 3), selected by tag]
 ```

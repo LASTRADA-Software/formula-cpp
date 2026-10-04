@@ -2,10 +2,11 @@
 #pragma once
 
 /// @file
-/// `std::format` for a `Rational`, a `Measured<Q>`, an `Outcome<Q>`, a `Unit`,
-/// a `Dimension` and every enumeration that has a `describe()`:
-/// `std::format("{}", Rational { 3, 5 })` is `0.6`, a measured 5.2 in a unit
-/// whose symbol is `kJ` formats as `5.2 kJ`, `dim::Density` as `L^-3 M^1`, and
+/// `std::format` for a `Rational`, an `Int128`, a `Measured<Q>`, an
+/// `Outcome<Q>`, a `Unit`, a `Dimension` and every enumeration that has a
+/// `describe()`: `std::format("{}", Rational { 3, 5 })` is `0.6`, an `Int128`
+/// writes its decimal digits, a measured 5.2 in a unit whose symbol is `kJ`
+/// formats as `5.2 kJ`, `dim::Density` as `L^-3 M^1`, and
 /// `ArithmeticError::Overflow` as `overflow in exact arithmetic`.
 ///
 /// **Opt-in.** This header is not included by `formula.hpp`: it includes
@@ -43,16 +44,17 @@
 ///
 /// **The library owns these specialisations of `std::formatter`.** A consumer
 /// who specialises `std::formatter` for `formula::Rational`,
-/// `formula::Measured<Q>`, `formula::Outcome<Q>`, `formula::Unit` or
-/// `formula::Dimension` as well defines one entity twice, which breaks the
-/// one-definition rule. A consumer's own `std::formatter<E, char>` for an
-/// enumeration listed in `detail::formats_by_describe` does the same, and a
-/// generic one constrained on `std::is_enum_v` is ambiguous for those
-/// enumerations. Only `char` formatting is provided: a unit's symbol is UTF-8
-/// bytes.
+/// `formula::Int128`, `formula::Measured<Q>`, `formula::Outcome<Q>`,
+/// `formula::Unit` or `formula::Dimension` as well defines one entity twice,
+/// which breaks the one-definition rule. A consumer's own
+/// `std::formatter<E, char>` for an enumeration listed in
+/// `detail::formats_by_describe` does the same, and a generic one constrained
+/// on `std::is_enum_v` is ambiguous for those enumerations. Only `char`
+/// formatting is provided: a unit's symbol is UTF-8 bytes.
 
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
+#include <formula-cpp/int128.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/number_text.hpp>
 #include <formula-cpp/outcome.hpp>
@@ -61,6 +63,7 @@
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/unit.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -509,6 +512,18 @@ inline void append_exponent_text(std::string& spelled, std::string_view baseName
         spelled = "(dimensionless)";
     return spelled;
 }
+
+/// Refuses any format spec for a `formula::Int128` but the empty one: an
+/// `Int128` is formatted only with `{}`, which writes its decimal digits. Not
+/// `constexpr`, for the reason `formula_number_format_needs_a_rounding_mode`
+/// gives.
+/// @throws std::format_error always.
+[[noreturn]] inline void formula_int128_format_spec_not_understood()
+{
+    throw std::format_error(
+        "formula: an Int128 is formatted only with {}, which writes its decimal digits -- it takes no fill, "
+        "alignment, width, precision or type");
+}
 } // namespace formula::detail
 
 // The specialisations are declared inside `namespace std` rather than as
@@ -600,6 +615,38 @@ struct formatter<formula::Rational, char>
 
   private:
     formula::detail::NumberFormatSpec _spec {};
+};
+
+/// `std::format` of a `formula::Int128`: its decimal digits, with a `-` when
+/// it is negative, as `{}` writes a built-in integer. The empty spec is the
+/// only one; any other calls `formula_int128_format_spec_not_understood`, a
+/// compile error in a literal format string and `std::format_error` under
+/// `std::vformat`.
+///
+/// Owned by this library: a consumer's own specialisation of it would define
+/// it twice, which breaks the one-definition rule.
+template <>
+struct formatter<formula::Int128, char>
+{
+    /// Accepts only the empty spec.
+    constexpr auto parse(std::format_parse_context& parseContext)
+    {
+        auto const specAt = parseContext.begin();
+        if (specAt != parseContext.end() && *specAt != '}')
+            formula::detail::formula_int128_format_spec_not_understood();
+        return specAt;
+    }
+
+    /// Writes @p shown's digits.
+    template <typename FormatContext>
+    auto format(formula::Int128 const& shown, FormatContext& formatContext) const
+    {
+        formula::detail::DecimalSpelling const spelled = formula::detail::u128_decimal(formula::detail::magnitude(shown));
+        auto writtenTo = formatContext.out();
+        if (shown.is_negative())
+            *writtenTo++ = '-';
+        return std::copy_n(spelled.characters, spelled.length, writtenTo);
+    }
 };
 
 /// `std::format` of a `formula::Measured<Q>`: the number in `Q`'s declared
