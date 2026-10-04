@@ -1027,6 +1027,7 @@ struct RoundedOpaqueOutputNode: NodeBase
                   U,
                   !OpaqueOutputNode<I, Call, Origin>::refused
                       && U.dimension == OpaqueOutputNode<I, Call, Origin>::dimension>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The call whose output this is. Evaluating this node evaluates it whole.
     Call call;

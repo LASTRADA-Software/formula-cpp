@@ -281,6 +281,7 @@ struct RoundedRootNode: NodeBase
 {
     static_assert(detail::RequireRootUnitMatches<U, Radicand>::value);
     static_assert(detail::RequireRootUnitWithoutOffset<U, U.dimension * U.dimension == Radicand::dimension>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The expression whose square root is taken: a variance, a mean square,
     /// a sum of squared uncertainties.

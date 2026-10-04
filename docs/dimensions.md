@@ -130,7 +130,7 @@ A `formula::Unit` is a small aggregate, and every field earns its place:
 | `dimension` | which quantity this unit measures |
 | `magnitudeNumerator` / `magnitudeDenominator` | the exact multiplicative factor to the coherent unit -- the coherent SI unit, times one of each named base dimension -- as an integer ratio |
 | `offsetNumerator` / `offsetDenominator` | the exact additive offset, for an affine scale such as degrees Celsius or degrees Fahrenheit |
-| `symbolText` | a fixed-capacity display symbol (a `Symbol`, not a `std::string_view`) |
+| `symbolText` | a fixed-capacity display symbol (a `Symbol`, not a `std::string_view`); required for a dimensionless unit with a scale |
 | `decimals` | the declared display precision |
 | `bounds` | an optional valid range, in the unit's own scale |
 
@@ -142,6 +142,15 @@ and `Rational` for the magnitude and offset (same reason) -- hence plain
 fixed-size integer and character-array fields here, with the convenient types
 (`Rational`, `std::string_view`) appearing only at the point of use, via
 `formula::view()` and the conversion functions below.
+
+A dimensionless unit with a scale or an offset must have a symbol. One half in
+hundredths with no symbol would be shown as `50`, a number in a scale nothing
+names, and no spelling of the unit could name it: the coherent dimensionless
+unit is written as nothing. Such a unit is refused wherever it is written -- as
+a quantity's unit, a constant's, a rounding's, or a table's key or result --
+with `formula: a dimensionless unit with a scale must have a symbol`. A
+dimensioned unit may have no symbol: its values are shown in the coherent unit,
+which its dimension spells.
 
 The `formula::unit::` namespace declares fifty-six of these: the coherent SI
 units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Newton`, `Pascal`, `Watt`, ...)

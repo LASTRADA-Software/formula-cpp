@@ -346,6 +346,7 @@ struct Conformity
     static_assert(std::conditional_t<!detail::refused_already<S>(),
                                      detail::RequireConformityUnitMatches<U, S>,
                                      std::true_type>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The series judged.
     S subject;

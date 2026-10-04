@@ -1088,3 +1088,28 @@ TEST_CASE("a unit carrying a named base dimension has the same identity in every
     static_assert(TariffRebuilt == EuroPerKilowattHour);
     CHECK(formula_test::consume_tariff_unit(formula_test::TaggedUnit<TariffRebuilt> { 20 }) == 22);
 }
+
+TEST_CASE("a dimensionless unit with a scale and no symbol is the one a declaration refuses", "[unit]")
+{
+    // Hundredths with no symbol: one half would read 50, in a scale nothing names.
+    constexpr Unit unlabelledHundredth { .dimension = dim::Scalar, .magnitudeNumerator = 1, .magnitudeDenominator = 100 };
+    // The same scale with an offset only.
+    constexpr Unit unlabelledShifted { .dimension = dim::Scalar, .offsetNumerator = 1, .offsetDenominator = 2 };
+    // Scale 1 written as 7/7: still scale 1.
+    constexpr Unit unlabelledSevenSevenths { .dimension = dim::Scalar, .magnitudeNumerator = 7, .magnitudeDenominator = 7 };
+    // A dimensioned unit with no symbol is shown in the coherent unit instead, and is not refused.
+    constexpr Unit unlabelledGram { .dimension = dim::Mass, .magnitudeNumerator = 1, .magnitudeDenominator = 1000 };
+
+    STATIC_REQUIRE(formula::detail::unnamed_scaled_scalar(unlabelledHundredth));
+    STATIC_REQUIRE(formula::detail::unnamed_scaled_scalar(unlabelledShifted));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unlabelledSevenSevenths));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unlabelledGram));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::One));
+    // Every shipped scaled dimensionless unit has a symbol.
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::Percent));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::PerMille));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::PartsPerMillion));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::MilligramPerKilogram));
+    STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::Percent>::value);
+    STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::One>::value);
+}

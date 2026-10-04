@@ -10,6 +10,7 @@
 
 #include <concepts>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace formula
@@ -220,6 +221,21 @@ concept Described = requires {
 template <typename T>
 concept DescribesConsistentDimension = Described<T> && Describe<T>::dimension == Describe<T>::unit.dimension;
 
+namespace detail
+{
+    /// `RequireNamedScaledScalar` of a described type's unit, asked only once the type is described: an
+    /// undescribed type has no unit to ask about, and is already refused, in full, by `RequireDescribed`.
+    template <typename T, bool IsDescribed = Described<T>>
+    struct RequireDescribedUnitNamesItsScale: std::true_type
+    {
+    };
+
+    template <typename T>
+    struct RequireDescribedUnitNamesItsScale<T, true>: RequireNamedScaledScalar<Describe<T>::unit>
+    {
+    };
+} // namespace detail
+
 /// Fails to compile, in our own words, when `T` declares no metadata, or
 /// declares metadata whose `dimension` contradicts its own `unit`.
 ///
@@ -246,6 +262,7 @@ struct RequireDescribed
                   "A quantity's unit already carries a dimension; declaring a second one that "
                   "disagrees mislabels every value read through it -- derive Describe<T>::dimension "
                   "from Describe<T>::unit.dimension instead of stating it independently");
+    static_assert(detail::RequireDescribedUnitNamesItsScale<T>::value);
 
     /// Always `true` once reached -- both `static_assert`s above already failed
     /// compilation otherwise. Present so `::value` is the spelling that

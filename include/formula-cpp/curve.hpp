@@ -108,6 +108,7 @@ struct DomainNode: SeriesNodeBase
 {
     static_assert(detail::RequireDomainNotEmpty<Points>::value);
     static_assert(RequireValidBreakpointTable<Points>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The unit the points are declared in.
     static constexpr Unit unit = U;

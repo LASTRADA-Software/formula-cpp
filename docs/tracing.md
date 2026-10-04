@@ -377,7 +377,8 @@ energy. A computed mass reads `kg`, a computed length `m`. Only a
 dimensionless value is a bare number: `#1 / #2` above, a ratio of two volumes,
 reads `3/5`. A value declared in a unit of the author's own that has no symbol
 reads in the coherent unit too, converted, since its number alone could not
-say what scale it is on.
+say what scale it is on. A dimensionless unit with a scale must have a symbol,
+so a bare number is always a value at scale 1.
 
 A computed step borrows its unit off the steps it read in these cases:
 

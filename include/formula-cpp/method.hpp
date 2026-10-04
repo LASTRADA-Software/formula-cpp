@@ -1081,6 +1081,8 @@ namespace detail
 template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 class RoundingRule
 {
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
+
   public:
     /// The unit the rounding happens in -- see `rounding_node.hpp` for why a
     /// rounding that does not name one means nothing.

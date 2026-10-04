@@ -696,6 +696,8 @@ template <typename Tag, bool Stated = false>
 template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 struct RoundingOverride
 {
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
+
     /// The rule that replaces the method's own, as `rounding_rule<>()` would
     /// spell it.
     using rule = RoundingRule<U, Places, Mode>;

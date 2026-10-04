@@ -659,6 +659,10 @@ namespace detail
     /// bound a table, a curve or a permitted set declared
     /// (`shown_bound_text`), so that every number on a line is in the unit
     /// written after it.
+    /// A dimensionless unit with no symbol is always at scale 1 here:
+    /// one with a scale is refused where it is written
+    /// (`RequireNamedScaledScalar`, `unit.hpp`), so its bare number is the
+    /// value.
     [[nodiscard]] inline bool spells_coherent_unit(Unit const& declared, Dimension dimension)
     {
         return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
@@ -675,7 +679,7 @@ namespace detail
     /// The text written after a value shown in `shown_unit_of(@p declared,
     /// @p dimension)`: the coherent unit's spelling, the declared unit's
     /// escaped symbol, or nothing for a dimensionless value in a unit with
-    /// no symbol.
+    /// no symbol, which is at scale 1.
     [[nodiscard]] inline std::string shown_unit_text(Unit const& declared, Dimension dimension)
     {
         return spells_coherent_unit(declared, dimension) ? coherent_unit_text(dimension) : unit_symbol_text(declared);

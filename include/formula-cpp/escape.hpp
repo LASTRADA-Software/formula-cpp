@@ -87,6 +87,7 @@ struct NumericValueNode: NodeBase
                   "over a bare number rather than over a quantity; one that is empty, blank, or only "
                   "NUL bytes defeats the only safeguard this escape hatch has");
     static_assert(detail::RequireEscapeUnitMatches<U, Operand>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The expression whose numeric value is taken.
     ///
