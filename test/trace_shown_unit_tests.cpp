@@ -384,11 +384,11 @@ TEST_CASE("a value scaled by a pure number reads in its own unit", "[trace-rende
           == "1. m = 413/10 g\n"
              "2. 2\n"
              "3. #1 / #2 = 413/20 g\n");
-    // A pure number divided by a mass is no mass: the coherent unit, 1/kg.
+    // A pure number divided by a mass is no mass: the coherent unit, kg^-1.
     CHECK(trace_text(Rational { 2 } / var<SampleMass>, inputs)
           == "1. 2\n"
              "2. m = 413/10 g\n"
-             "3. #1 / #2 = 20000/413 1/kg\n");
+             "3. #1 / #2 = 20000/413 kg^-1\n");
 }
 
 TEST_CASE("a sum of two values in one unit reads in it, at the finer precision", "[trace-render][shown-unit]")
@@ -708,6 +708,8 @@ TEST_CASE("every value a trace shows is in the unit written after it", "[trace-r
                       -var<Strength>),
         inputs));
     check_each_value_is_in_the_unit_written_after_it(recorded_trace(var<UnnamedMass> * Rational { 2 } - var<TareMass>, inputs));
+    // A pure number over a mass: kg^-1 after a fraction.
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(Rational { 2 } / var<SampleMass>, inputs));
 }
 
 TEST_CASE("every value of a rejection, a bill, the statistics, a precision limit and an opaque call is in the unit written after it",

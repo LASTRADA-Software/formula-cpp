@@ -602,11 +602,16 @@ namespace detail
     /// A named base dimension is spelt by its name -- the name is also the
     /// symbol of its coherent unit -- ahead of the SI units on its side of the
     /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
-    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
+    /// per joule, `JPY^-1`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
     /// read as money per energy, not as seconds squared of money per metre.
     /// Each name goes through `escaped_author_text`: `base_dimension()` admits
     /// only letters and digits, but a hand-filled `namedBases` can hold
     /// anything.
+    ///
+    /// A dimension with no positive exponent is written with negative
+    /// exponents and no slash: `kg^-1`, `m^-1 s^-1`, `kg^(-1/2)`. After a
+    /// number in the fraction style, `20000/413 1/kg` would read as one
+    /// fraction divided again; `20000/413 kg^-1` cannot.
     [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
     {
         struct BaseUnit
@@ -628,6 +633,7 @@ namespace detail
         };
         std::string above;
         std::string below;
+        std::string inverse;
         std::size_t belowCount = 0;
         auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
             if (baseExponent.numerator > 0)
@@ -637,6 +643,8 @@ namespace detail
             {
                 below += (below.empty() ? "" : " ")
                          + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
+                inverse += (inverse.empty() ? "" : " ")
+                           + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
                 ++belowCount;
             }
         };
@@ -646,7 +654,9 @@ namespace detail
             place(base.symbol, base.exponent);
         if (below.empty())
             return above;
-        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
+        if (above.empty())
+            return inverse;
+        return above + "/" + (belowCount > 1 ? "(" + below + ")" : below);
     }
 
     /// Whether a value of @p dimension in @p declared is shown in the coherent

@@ -51,6 +51,10 @@ change is recorded here.
   unit could name it. Give the unit a symbol (`%`, `ppm`, or the author's own), or declare the quantity in scale 1.
   The refusal reads `formula: a dimensionless unit with a scale must have a symbol`. A dimensioned unit with no
   symbol is still accepted, and shown in the coherent unit.
+- A coherent unit with no positive exponent is spelt with negative exponents in a trace: `kg^-1`, `s^-1`,
+  `m^-1 s^-1`, `JPY^-1`, where it was `1/kg`, `1/s`, `1/(m s)`, `1/JPY`. After a number in the fraction style,
+  `20000/413 1/kg` read as a fraction divided again. A unit with a numerator keeps its slash: `m/s`, `EUR/JPY`.
+  A trace text pinned in a test changes where it showed such a unit.
 
 ## [0.3.0] - 2026-10-01
 

@@ -2252,7 +2252,7 @@ TEST_CASE("a series scaled by a pure number reads in the series' unit", "[series
     CHECK(derivation(factor / retained)
           == "1. 3/2\n"
              "2. m_r = 137 g; 213 g; 293 g\n"
-             "3. #1 / #2 = 1500/137 1/kg; 500/71 1/kg; 1500/293 1/kg\n");
+             "3. #1 / #2 = 1500/137 kg^-1; 500/71 kg^-1; 1500/293 kg^-1\n");
 
     // Celsius readings doubled are no readings: 593.7 K is not 2 x 23.7 degC.
     formula::Trace<> doubled {};

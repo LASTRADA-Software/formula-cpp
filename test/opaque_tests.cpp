@@ -1049,7 +1049,7 @@ TEST_CASE("the coherent unit is spelt from its base units", "[opaque][trace]")
     CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar).empty());
     CHECK(formula::detail::coherent_unit_text(formula::dim::Mass) == "kg");
     CHECK(formula::detail::coherent_unit_text(formula::dim::Velocity) == "m/s");
-    CHECK(formula::detail::coherent_unit_text(formula::dim::Frequency) == "1/s");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Frequency) == "s^-1");
     CHECK(formula::detail::coherent_unit_text(formula::dim::Density) == "kg/m^3");
     CHECK(formula::detail::coherent_unit_text(formula::dim::Pressure) == "kg/(m s^2)");
     CHECK(formula::detail::coherent_unit_text(formula::Dimension { .length = formula::exponent(1, 2) }) == "m^(1/2)");
@@ -1063,17 +1063,34 @@ TEST_CASE("a named base dimension is spelt by its name and ahead of the SI units
     // A tariff in euros per joule: the name leads the numerator, and the SI
     // units follow in their usual order on either side.
     CHECK(formula::detail::coherent_unit_text(euros / formula::dim::Energy) == "EUR s^2/(m^2 kg)");
-    CHECK(formula::detail::coherent_unit_text(formula::power(yen, -1)) == "1/JPY");
+    CHECK(formula::detail::coherent_unit_text(formula::power(yen, -1)) == "JPY^-1");
     CHECK(formula::detail::coherent_unit_text(euros / yen) == "EUR/JPY");
     CHECK(formula::detail::coherent_unit_text(formula::nth_root(euros, 2)) == "EUR^(1/2)");
     // It leads the denominator too.
-    CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar / (formula::dim::Time * euros)) == "1/(EUR s)");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar / (formula::dim::Time * euros)) == "EUR^-1 s^-1");
 
     // `base_dimension` admits only letters and digits, but `namedBases` is a
     // public member: a name filled in by hand is escaped as author text is.
     formula::Dimension handFilled {};
     handFilled.namedBases[0] = formula::NamedBase { formula::symbol("a]b"), formula::exponent(1) };
     CHECK(formula::detail::coherent_unit_text(handFilled) == "a\\]b");
+}
+
+TEST_CASE("an inverse-only coherent unit is spelt with negative exponents", "[opaque][trace]")
+{
+    // `1/kg` after a fraction reads as the fraction divided again: `20000/413 1/kg`.
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar / formula::dim::Mass) == "kg^-1");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Frequency) == "s^-1");
+    CHECK(formula::detail::coherent_unit_text(formula::power(formula::dim::Length, -3)) == "m^-3");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar / (formula::dim::Length * formula::dim::Time))
+          == "m^-1 s^-1");
+    CHECK(formula::detail::coherent_unit_text(formula::nth_root(formula::dim::Scalar / formula::dim::Mass, 2))
+          == "kg^(-1/2)");
+    constexpr formula::Dimension yen = formula::base_dimension("JPY");
+    CHECK(formula::detail::coherent_unit_text(formula::power(yen, -1)) == "JPY^-1");
+    // A unit with a numerator keeps its slash.
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Velocity) == "m/s");
+    CHECK(formula::detail::coherent_unit_text(formula::base_dimension("EUR") / yen) == "EUR/JPY");
 }
 
 TEST_CASE("a quotient of two units is not offered when its dimension would need a fifth named base",
@@ -1201,7 +1218,7 @@ TEST_CASE("a borrowed quotient brackets a denominator of more than one unit word
 
 TEST_CASE("a quotient never borrows a dimensionless unit", "[opaque][trace]")
 {
-    // 12.7 % over 1.03 mm is a per-length, in no percentage: 12700/103 1/m in
+    // 12.7 % over 1.03 mm is a per-length, in no percentage: 12700/103 m^-1 in
     // the coherent unit, never 1270/103 %/mm.
     constexpr auto perGap =
         formula::opaque_output<"quotient">(formula::opaque<FirstOverSecond>({}, formula::var<Portion>, formula::var<Gap>));
@@ -1209,7 +1226,7 @@ TEST_CASE("a quotient never borrows a dimensionless unit", "[opaque][trace]")
         formula::environment(formula::Measured<Portion> { rat(127, 10) }, formula::Measured<Gap> { rat(103, 100) });
     formula::Trace<> recorded {};
     (void) formula::detail::dispatch<formula::Rational>(perGap, specimen, formula::RecordingSink { recorded });
-    CHECK(formula::render_trace(recorded, { .maxSteps = 10 }).ends_with("4. quotient of #3 = 12700/103 1/m\n"));
+    CHECK(formula::render_trace(recorded, { .maxSteps = 10 }).ends_with("4. quotient of #3 = 12700/103 m^-1\n"));
 }
 namespace
 {
