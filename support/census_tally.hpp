@@ -14,8 +14,9 @@ namespace formula_census
 {
 
 /// The bits the largest magnitude of @p role used since the last `reset` --
-/// 0 when none was seen. The largest `Rational::Int` uses all but its sign
-/// bit; `rounded_sqrt`'s unsigned intermediates may use every bit.
+/// 0 when none was seen. For `CensusRole::Wide`, the most bits a wide
+/// intermediate used. The largest `Rational::Int` uses all but its sign bit;
+/// `rounded_sqrt`'s unsigned intermediates may use every bit.
 [[nodiscard]] int bits_used(formula::detail::CensusRole role) noexcept;
 
 /// The largest of the three signed roles' bits: what is left of 127 is the

@@ -435,11 +435,11 @@ TEST_CASE("a derivation writes a rounded logarithm or exponential as one step in
                   formula::Rational { -1 },
                   fractions)
           == "1. r = -1\n2. round(exp(#1), to 3 dp) = 367/1000 [toward negative infinity]\n");
-    // A failure reads like any step's, and still names the mode.
+    // A failure reads like any step's, and still names the mode. exp 89 is past every value a Rational holds.
     CHECK(traceOf(formula::rounded_exp<formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
-                  formula::Rational { 50 },
+                  formula::Rational { 89 },
                   fractions)
-          == "1. r = 50\n2. round(exp(#1), to 6 dp) = overflow in exact arithmetic [nearest, ties away from zero]\n");
+          == "1. r = 89\n2. round(exp(#1), to 6 dp) = overflow in exact arithmetic [nearest, ties away from zero]\n");
     // In exact decimals the rounded value is a decimal like any other, with no approximation mark: it is exact.
     CHECK(traceOf(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
                   formula::Rational { 2 },

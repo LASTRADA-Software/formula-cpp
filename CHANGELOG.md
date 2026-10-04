@@ -16,6 +16,12 @@ change is recorded here.
 
 ### Changed
 
+- **Breaking: a dimensionless unit with a scale or an offset and no symbol no longer compiles**, wherever it is
+  written: as a quantity's unit, a constant's, a rounding's, or a table's key or result. A trace showed a value in
+  such a unit as a bare number in a scale nothing named (one half in hundredths read `50`), and no spelling of the
+  unit could name it. Give the unit a symbol (`%`, `ppm`, or the author's own), or declare the quantity in scale 1.
+  The refusal reads `formula: a dimensionless unit with a scale must have a symbol`. A dimensioned unit with no
+  symbol is still accepted, and shown in the coherent unit.
 - **Every computed value in a trace shows a unit.** A value scaled by a pure number, and a sum or difference of
   values shown in one unit, read in that unit: the outlier-rejection limit `#2 * #3 = 1239/500000` is now
   `#2 * #3 = 1239/500 g`. A negation and an absolute value read in their operand's unit, and a conditional and a
@@ -45,12 +51,6 @@ change is recorded here.
   count above 2^64 - 1 names the whole count. Code that reads `lookupKey` for such a step reads both.
 - `Rational`'s converting constructor takes every built-in integer type of at most 64 bits except `bool`, exactly,
   `std::uint64_t` now among them; a wider built-in integer is refused. A constructor from `Int128` is added.
-- **Breaking: a dimensionless unit with a scale or an offset and no symbol no longer compiles**, wherever it is
-  written: as a quantity's unit, a constant's, a rounding's, or a table's key or result. A trace showed a value in
-  such a unit as a bare number in a scale nothing named (one half in hundredths read `50`), and no spelling of the
-  unit could name it. Give the unit a symbol (`%`, `ppm`, or the author's own), or declare the quantity in scale 1.
-  The refusal reads `formula: a dimensionless unit with a scale must have a symbol`. A dimensioned unit with no
-  symbol is still accepted, and shown in the coherent unit.
 - A coherent unit with no positive exponent is spelt with negative exponents in a trace: `kg^-1`, `s^-1`,
   `m^-1 s^-1`, `JPY^-1`, where it was `1/kg`, `1/s`, `1/(m s)`, `1/JPY`. After a number in the fraction style,
   `20000/413 1/kg` read as a fraction divided again. A unit with a numerator keeps its slash: `m/s`, `EUR/JPY`.
@@ -68,6 +68,15 @@ change is recorded here.
 - A precision limit's first pass reads in the unit of the level step it restates, as its second pass already did:
   a level constant declared in grams reads `40 g` on both lines, where the first pass read `1/25 kg`. The unit the
   limit's quantities give is still used when the level's step has none to lend.
+- **`rounded_ln`, `rounded_log10` and `rounded_exp` take every argument a `Rational` holds.** Their integer kernel
+  narrowed the argument's numerator and denominator to 64 bits and answered `Overflow` beyond; `ln` of 2^70 is now
+  48.5203 at 4 places. `rounded_exp` answers up to 88.7, past which no value fits a `Rational`, wherever the result
+  fits the declared places: e^45 to 18 places, e^88 to whole units. The exponential is computed with 192 fraction
+  bits, so a result as wide as a `Rational` is still decided: e^43 to 18 places, `Overflow` before though the result
+  fits, now answers.
+- The numeric headroom page's least-squares table gives the most bits the exact curve fit's wide integers used, as
+  the overflow census measures it, in place of figures no test checked; the opaque-operation guide's widths of an
+  exact fit's outputs are pinned by a test.
 
 ## [0.3.0] - 2026-10-01
 

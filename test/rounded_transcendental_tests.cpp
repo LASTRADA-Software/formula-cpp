@@ -11,6 +11,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <expected>
+#include <limits>
+#include <string_view>
 
 namespace
 {
@@ -62,6 +64,15 @@ template <DecimalPlaces Places, RoundingMode Mode>
 using RoundedOrError = std::expected<Rational, formula::ArithmeticError>;
 constexpr RoundedOrError overflow { std::unexpected { formula::ArithmeticError::Overflow } };
 constexpr RoundedOrError domainError { std::unexpected { formula::ArithmeticError::DomainError } };
+
+/// The integer whose decimal digits are @p digits: a literal too wide for a built-in integer.
+[[nodiscard]] constexpr Rational::Int integer_of(std::string_view digits)
+{
+    Rational::Int parsed {};
+    for (char const each: digits)
+        parsed = parsed * 10 + (each - '0');
+    return parsed;
+}
 } // namespace
 
 TEST_CASE("rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2 with the directions paired the other way",
@@ -123,21 +134,41 @@ TEST_CASE("rounded_transcendental: a special point ties and the mode decides it"
     STATIC_REQUIRE(expAt<DecimalPlaces { -1 }, RoundingMode::Ceiling>(Rational {}) == Rational { 10 });
 }
 
-TEST_CASE("rounded_transcendental: an exponential too large to hold is Overflow", "[rounded_transcendental]")
+TEST_CASE("rounded_transcendental: an exponential answers wherever it fits a Rational, and is Overflow past that",
+          "[rounded_transcendental]")
 {
-    // exp 50 = 5.18 * 10^21: past the early bound.
-    STATIC_REQUIRE(expAt<DecimalPlaces { 6 }, RoundingMode::HalfAwayFromZero>(Rational { 50 }) == overflow);
-    // exp 43.7 = 9.52 * 10^18: through the kernel. Floor to whole 10^18s keeps 9 * 10^18; the nearest
-    // modes give 10^19, which overflowed 64 bits and fits 128.
+    // exp 89 is past 88.7, where e^x has long left the largest Rational, 2^127 - 1: refused before the kernel.
+    STATIC_REQUIRE(expAt<DecimalPlaces { 6 }, RoundingMode::HalfAwayFromZero>(Rational { 89 }) == overflow);
+    // exp 50 = 5184705528587072464087.4533229..., to 6 places.
+    CHECK(expAt<DecimalPlaces { 6 }, RoundingMode::HalfAwayFromZero>(Rational { 50 })
+          == Rational::from_decimal(integer_of("5184705528587072464087453323"), -6));
+    // exp 43.7 = 9.52 * 10^18. Floor to whole 10^18s keeps 9 * 10^18; the nearest modes give 10^19.
     CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 437, 10 }) == Rational { 9'000'000'000'000'000'000 });
     CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::HalfAwayFromZero>(Rational { 437, 10 })
           == Rational { 10'000'000'000'000'000'000ULL });
-    // exp 44 = 1.29 * 10^19, which fitted at no places in 64 bits, floors to 12 * 10^18.
+    // exp 44 = 1.29 * 10^19 floors to 12 * 10^18.
     CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 44 }) == Rational { 12'000'000'000'000'000'000ULL });
-    // exp 43 = 4727839468229346561.47...: whole, it fits.
+    // exp 43 = 4727839468229346561.474457562744280370...: whole, and to all 18 places.
     CHECK(expAt<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 43 })
           == Rational { 4'727'839'468'229'346'561 });
     CHECK(expAt<DecimalPlaces { 0 }, RoundingMode::Ceiling>(Rational { 43 }) == Rational { 4'727'839'468'229'346'562 });
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 43 })
+          == Rational::from_decimal(integer_of("4727839468229346561474457562744280370"), -18));
+    // exp 45 = 34934271057485095348.034797233406099533 41..., to all 18 places: 38 digits, below 2^127.
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 45 })
+          == Rational::from_decimal(integer_of("34934271057485095348034797233406099533"), -18));
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Ceiling>(Rational { 45 })
+          == Rational::from_decimal(integer_of("34934271057485095348034797233406099534"), -18));
+    // exp 88 = 165163625499400185552832979626485876706.9...: whole, 39 digits, below 2^127.
+    CHECK(expAt<DecimalPlaces { 0 }, RoundingMode::Floor>(Rational { 88 })
+          == Rational { integer_of("165163625499400185552832979626485876706") });
+    CHECK(expAt<DecimalPlaces { 0 }, RoundingMode::HalfEven>(Rational { 88 })
+          == Rational { integer_of("165163625499400185552832979626485876707") });
+    // exp 88.5 = 2.7 * 10^38 and exp 88.7 = 3.3 * 10^38 are past 2^127 at every places: through the
+    // kernel, and Overflow.
+    CHECK(expAt<DecimalPlaces { 0 }, RoundingMode::Floor>(Rational { 885, 10 }) == overflow);
+    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 885, 10 }) == overflow);
+    CHECK(expAt<DecimalPlaces { -18 }, RoundingMode::Floor>(Rational { 887, 10 }) == overflow);
 }
 
 TEST_CASE("rounded_transcendental: a tiny exponential is zero or one unit by mode", "[rounded_transcendental]")
@@ -183,26 +214,66 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
     STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::Ceiling>(Rational { -50 }) == overflow);
     STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { -50 }) == overflow);
     STATIC_REQUIRE(expAt<DecimalPlaces { -19 }, RoundingMode::Floor>(Rational { -50 }) == overflow);
-    // An argument whose numerator or denominator does not fit 64 bits is beyond the kernel, which works on
-    // two values below 2^63: ln 2^70, exp 2^-64 and log10 2^70 are Overflow, though a Rational holds each
-    // argument.
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
-                   == overflow);
-    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 64 })
-                   == overflow);
-    STATIC_REQUIRE(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
-                   == overflow);
     // A wide power of ten is a special point, answered before the kernel is asked: log10 10^30 is 30.
     constexpr Rational::Int tenToFifteen = 1'000'000'000'000'000;
     STATIC_REQUIRE(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { tenToFifteen * tenToFifteen })
                    == Rational { 30 });
-    // The rule below -43 comes first, whatever the argument's width: exp -2^70 is 0.
+    // The rule below -43 comes first: exp -2^70 is 0 without the kernel.
     STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { -(Rational::Int { 1 } << 70) })
                    == Rational {});
-    // 2^62 and 1/2^62, inside it, answer: ln 2^62 = 42.97512..., exp 2^-62 rounds to 1.
+}
+
+TEST_CASE("rounded_transcendental: an argument as wide as a Rational holds is answered", "[rounded_transcendental]")
+{
+    constexpr Rational::Int largest = std::numeric_limits<Rational::Int>::max(); // 2^127 - 1
+    constexpr Rational::Int twoTo126 = Rational::Int { 1 } << 126;
+    // Through the kernel, so at run time. ln 2^70 = 48.520302639196171659..., log10 2^70 = 21.072099696478683664...
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
+          == Rational { 485203, 10000 });
+    CHECK(lnAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { Rational::Int { 1 } << 70 })
+          == Rational::from_decimal(integer_of("48520302639196171659"), -18));
+    CHECK(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 70 })
+          == Rational { 210721, 10000 });
+    // exp 2^-64 = 1 + 5.4 * 10^-20 and exp 2^-62 = 1 + 2.2 * 10^-19: 1, and one unit up under Ceiling.
+    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 64 }) == Rational { 1 });
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Ceiling>(Rational { 1, Rational::Int { 1 } << 64 })
+          == Rational::from_decimal(1'000'000'000'000'000'001, -18));
+    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 62 }) == Rational { 1 });
+    // ln 2^62 = 42.97512..., as before.
     CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { Rational::Int { 1 } << 62 })
           == Rational { 429751, 10000 });
-    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, Rational::Int { 1 } << 62 }) == Rational { 1 });
+    // ln (2^127 - 1) = 88.029691931113054295..., and of its reciprocal the negation, which Floor takes down.
+    CHECK(lnAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { largest })
+          == Rational::from_decimal(integer_of("88029691931113054295"), -18));
+    CHECK(lnAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 1, largest })
+          == Rational::from_decimal(-integer_of("88029691931113054296"), -18));
+    // log10 (2^127 - 1) = 38.230809449325611792...
+    CHECK(log10At<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { largest })
+          == Rational::from_decimal(integer_of("38230809449325611792"), -18));
+    CHECK(log10At<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 1, largest })
+          == Rational::from_decimal(-integer_of("38230809449325611793"), -18));
+    // Two 127-bit integers next to each other: ln((2^126 + 1) / 2^126) = 1.18 * 10^-38. 0 at 18 places,
+    // and one unit up under Ceiling.
+    CHECK(lnAt<DecimalPlaces { 18 }, RoundingMode::HalfEven>(Rational { twoTo126 + 1, twoTo126 }) == Rational {});
+    CHECK(lnAt<DecimalPlaces { 18 }, RoundingMode::Ceiling>(Rational { twoTo126 + 1, twoTo126 })
+          == Rational::from_decimal(1, -18));
+    // The same two the other way round, a ratio below 1 of two 127-bit integers: ln(2^126 / (2^126 + 1)) =
+    // -1.18 * 10^-38. 0 at 18 places, and one unit down under Floor.
+    CHECK(lnAt<DecimalPlaces { 18 }, RoundingMode::HalfEven>(Rational { twoTo126, twoTo126 + 1 }) == Rational {});
+    CHECK(lnAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { twoTo126, twoTo126 + 1 })
+          == Rational::from_decimal(-1, -18));
+    // exp of -2^127 / (2^127 - 1), whose numerator is the minimum's magnitude: e^-1.000... = 0.367879441171442321595...
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { std::numeric_limits<Rational::Int>::min(), largest })
+          == Rational::from_decimal(367'879'441'171'442'321, -18));
+    // exp 1/(2^127 - 1) = 1 + 5.9 * 10^-39: 1, and one unit up under Ceiling.
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 1, largest }) == Rational { 1 });
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Ceiling>(Rational { 1, largest })
+          == Rational::from_decimal(1'000'000'000'000'000'001, -18));
+    // exp -1/(2^127 - 1) = 1 - 5.9 * 10^-39, a negative argument with a 127-bit denominator: 1 to nearest,
+    // and one unit below 1 under Floor.
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::HalfEven>(Rational { -1, largest }) == Rational { 1 });
+    CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { -1, largest })
+          == Rational::from_decimal(999'999'999'999'999'999, -18));
 }
 
 TEST_CASE("rounded_transcendental: a percentage is read in the coherent unit", "[rounded_transcendental]")

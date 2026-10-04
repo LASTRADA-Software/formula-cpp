@@ -34,6 +34,8 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
+#include "fifty_readings.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -235,26 +237,12 @@ constexpr auto observedPoints =
     formula::environment(formula::MeasuredObservations<Elapsed, 64>(1_r, 2_r, 4_r, 7_r),
                          formula::MeasuredObservations<Length, 64>(10.2_r, 10.9_r, 12.1_r, 14.3_r));
 
-/// Fifty readings at eight decimals: t = k + 1 + (7919 k mod 997) / 10^4
-/// + (1237 k mod 10^4) / 10^8 s and L = 2410 + 3.17 k + ((3217 k mod 1009)
-/// - 504) / 10^4 + (4111 k mod 10^4) / 10^8 mm, for k from 0.
+/// Fifty readings at eight decimals (fifty_readings.hpp).
 auto fiftyReadings()
 {
-    std::array<formula::Rational, 50> times;
-    std::array<formula::Rational, 50> lengths;
-    for (std::size_t k = 0; k < 50; ++k)
-    {
-        auto const position = static_cast<std::int64_t>(k);
-        times[k] = formula::Rational {
-            (10'000 * (position + 1) + (7919 * position) % 997) * 10'000 + (1237 * position) % 10'000, 100'000'000
-        };
-        lengths[k] = formula::Rational {
-            (24'100'000 + 31'700 * position + (3217 * position) % 1009 - 504) * 10'000 + (4111 * position) % 10'000,
-            100'000'000
-        };
-    }
-    return formula::MeasuredObservations<Elapsed, 64>::from(times).and_then([&](auto const& timesMade) {
-        return formula::MeasuredObservations<Length, 64>::from(lengths).transform(
+    formula_examples::FiftyReadings const atEight = formula_examples::fifty_readings(10'000);
+    return formula::MeasuredObservations<Elapsed, 64>::from(atEight.seconds).and_then([&](auto const& timesMade) {
+        return formula::MeasuredObservations<Length, 64>::from(atEight.millimetres).transform(
             [&](auto const& lengthsMade) { return formula::environment(timesMade, lengthsMade); });
     });
 }

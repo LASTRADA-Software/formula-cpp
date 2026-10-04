@@ -109,6 +109,9 @@ add_executable(formula-cpp-tests
     yields_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
+# The fifty readings examples/opaque_and_retry.cpp fits a line through, whose
+# figures the least-squares tests pin (examples/fifty_readings.hpp).
+target_include_directories(formula-cpp-tests PRIVATE "${PROJECT_SOURCE_DIR}/examples")
 formula_apply_warnings(formula-cpp-tests)
 
 catch_discover_tests(formula-cpp-tests)

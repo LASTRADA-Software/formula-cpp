@@ -16,6 +16,9 @@ namespace
 /// program, one thread: the census programs evaluate on the main thread only.
 std::array<formula::detail::UInt128, 4> largestSeen {};
 
+/// The most bits a wide intermediate used since the last reset.
+std::size_t widestWideBits = 0;
+
 [[nodiscard]] std::size_t slot(formula::detail::CensusRole role) noexcept
 {
     return static_cast<std::size_t>(role);
@@ -32,6 +35,12 @@ void census_record(CensusRole role, UInt128 magnitudeSeen) noexcept
         largestSeen[slot(role)] = magnitudeSeen;
 }
 
+void census_record_width(CensusRole role, std::size_t bitsUsed) noexcept
+{
+    if (role == CensusRole::Wide && widestWideBits < bitsUsed)
+        widestWideBits = bitsUsed;
+}
+
 } // namespace formula::detail
 
 namespace formula_census
@@ -39,6 +48,8 @@ namespace formula_census
 
 int bits_used(formula::detail::CensusRole role) noexcept
 {
+    if (role == formula::detail::CensusRole::Wide)
+        return static_cast<int>(widestWideBits);
     return largestSeen[slot(role)].bit_width();
 }
 
@@ -55,6 +66,7 @@ int signed_bits_used() noexcept
 void reset() noexcept
 {
     largestSeen.fill(formula::detail::UInt128 {});
+    widestWideBits = 0;
 }
 
 } // namespace formula_census
