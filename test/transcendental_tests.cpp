@@ -13,7 +13,9 @@
 //     D = int((abs(v) * Decimal(10) ** scale).to_integral_value(rounding=ROUND_FLOOR))
 //
 // The published values the stored constants are checked against: ln 2 =
-// 0.6931471805599453094172321214581765680755..., log10(e) = 0.4342944819032518276511289189166050822943....
+// 0.6931471805599453094172321214581765680755..., log10(e) = 0.4342944819032518276511289189166050822943...,
+// and ln 2 to 60 digits, for the exponential's 192-bit constant:
+// 0.693147180559945309417232121458176568075500134360255254120680....
 //
 // Every check that runs the kernel runs at run time, but one: a whole rounding costs a quarter of a
 // compiler's default constant-evaluation budget, too near it to pin many. The last case keeps one at
@@ -31,6 +33,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <optional>
 #include <string_view>
 
@@ -77,10 +80,23 @@ constexpr std::array<RoundingMode, 7> everyMode {
     return detail::decide_rounding(enclosure->lower, enclosure->upper, DecimalPlaces { places }, roundingMode);
 }
 
-/// The decimal digits @p decimalDigits as a word.
-[[nodiscard]] constexpr Word word_of(std::string_view decimalDigits)
+/// A word of 16 limbs, wide enough for the checks' cross products.
+using CheckWord = detail::WideUnsigned<16>;
+
+/// @p narrow, the same value, in a `CheckWord`.
+[[nodiscard]] constexpr CheckWord widened_word(Word const& narrow)
 {
-    Word parsed {};
+    std::array<std::uint32_t, 16> limbsCopied {};
+    for (std::size_t limbAt = 0; limbAt < detail::KernelLimbs; ++limbAt)
+        limbsCopied[limbAt] = narrow.limb(limbAt);
+    return CheckWord::from_limbs(limbsCopied);
+}
+
+/// The decimal digits @p decimalDigits as a word of @p Limbs limbs.
+template <std::size_t Limbs = detail::KernelLimbs>
+[[nodiscard]] constexpr detail::WideUnsigned<Limbs> word_of(std::string_view decimalDigits)
+{
+    detail::WideUnsigned<Limbs> parsed {};
     for (char const each: decimalDigits)
         parsed = *detail::add_small_checked_or_none(*detail::mul_small_checked_or_none(parsed, 10U),
                                                     static_cast<std::uint32_t>(each - '0'));
@@ -94,38 +110,45 @@ constexpr std::array<RoundingMode, 7> everyMode {
     bool const rightNegative = right.negative && !right.numerator.is_zero();
     if (leftNegative != rightNegative)
         return leftNegative;
-    Word const leftCross = *detail::mul_checked_or_none(left.numerator, right.denominator);
-    Word const rightCross = *detail::mul_checked_or_none(right.numerator, left.denominator);
+    CheckWord const leftCross = *detail::mul_checked_or_none(widened_word(left.numerator), widened_word(right.denominator));
+    CheckWord const rightCross = *detail::mul_checked_or_none(widened_word(right.numerator), widened_word(left.denominator));
     return leftNegative ? rightCross <= leftCross : leftCross <= rightCross;
 }
 
-/// Whether @p stored is floor(v * 2^128) for the value v whose first 40 digits are @p published:
-/// (D - 1) * 2^128 >= stored * 10^40 and (D + 1) * 2^128 <= (stored + 1) * 10^40. That interval is
-/// 2 * 2^128 / 10^40 < 0.07 units wide, so it pins the floor.
-[[nodiscard]] constexpr bool pinned_by_published_digits(Word const& stored, std::string_view published)
+/// Whether @p stored is floor(v * 2^@p fractionBits) for the value v below one whose first significant digits
+/// are @p published, as many as it has characters: (D - 1) * 2^bits >= stored * 10^digits and
+/// (D + 1) * 2^bits <= (stored + 1) * 10^digits. That interval is 2 * 2^bits / 10^digits units wide -- under
+/// 0.07 for 128 bits and 40 digits, under 0.013 for 192 bits and 60 -- so it pins the floor.
+[[nodiscard]] constexpr bool pinned_by_published_digits(Word const& stored,
+                                                        std::size_t fractionBits,
+                                                        std::string_view published)
 {
-    Word const digitsValue = word_of(published);
-    Word const unit = *detail::shift_left_checked_or_none(Word::from_u64(1), 128);
-    Word const tenTo40 = *detail::pow10<detail::KernelLimbs>(40);
-    return *detail::mul_checked_or_none(stored, tenTo40)
-               <= *detail::mul_checked_or_none(*detail::sub_checked_or_none(digitsValue, Word::from_u64(1)), unit)
+    CheckWord const digitsValue = word_of<16>(published);
+    CheckWord const unit = *detail::shift_left_checked_or_none(CheckWord::from_u64(1), fractionBits);
+    CheckWord const tenToDigits = *detail::pow10<16>(published.size());
+    CheckWord const storedWide = widened_word(stored);
+    return *detail::mul_checked_or_none(storedWide, tenToDigits)
+               <= *detail::mul_checked_or_none(*detail::sub_checked_or_none(digitsValue, CheckWord::from_u64(1)), unit)
            && *detail::mul_checked_or_none(*detail::add_small_checked_or_none(digitsValue, 1U), unit)
-                  <= *detail::mul_checked_or_none(*detail::add_small_checked_or_none(stored, 1U), tenTo40);
+                  <= *detail::mul_checked_or_none(*detail::add_small_checked_or_none(storedWide, 1U), tenToDigits);
 }
 
 /// One row of the reference table: |value| lies in [digits, digits + 1] * 10^-scale.
 struct Reference
 {
     Transcendental function;
-    std::int64_t numerator;
-    std::int64_t denominator;
+    formula::Rational::Int numerator;
+    formula::Rational::Int denominator;
     bool negative;
     std::string_view digits;
     std::size_t scale;
 };
 
+constexpr Rational::Int largestInt = std::numeric_limits<Rational::Int>::max();  // 2^127 - 1
+constexpr Rational::Int smallestInt = std::numeric_limits<Rational::Int>::min(); // -2^127
+
 // clang-format off
-constexpr std::array<Reference, 39> references { {
+constexpr std::array<Reference, 51> references { {
     { Transcendental::NaturalLogarithm, 2, 1, false, "6931471805599453094172321214581765680755", 40 },
     { Transcendental::NaturalLogarithm, 1, 2, true, "6931471805599453094172321214581765680755", 40 },
     { Transcendental::NaturalLogarithm, 3, 1, false, "1098612288668109691395245236922525704647", 39 },
@@ -167,6 +190,19 @@ constexpr std::array<Reference, 39> references { {
     { Transcendental::Exponential, 1, 4611686018427387904, false, "1000000000000000000216840434497100886825", 39 },
     { Transcendental::Exponential, -1, 4611686018427387904, false, "9999999999999999997831595655028991132220", 40 },
     { Transcendental::Exponential, 44, 1, false, "1285160011435930827580929963214309925780", 20 },
+    { Transcendental::NaturalLogarithm, Rational::Int { 1 } << 70, 1, false, "4852030263919617165920624850207235976528", 38 },
+    { Transcendental::NaturalLogarithm, largestInt, 1, false, "8802969193111305429598847942518842414558", 38 },
+    { Transcendental::NaturalLogarithm, 1, largestInt, true, "8802969193111305429598847942518842414558", 38 },
+    { Transcendental::NaturalLogarithm, (Rational::Int { 1 } << 126) + 1, Rational::Int { 1 } << 126, false,
+      "1175494350822287507968736537222245677811", 77 },
+    { Transcendental::DecimalLogarithm, Rational::Int { 1 } << 70, 1, false, "2107209969647868366496172263071451187377", 38 },
+    { Transcendental::DecimalLogarithm, largestInt, 1, false, "3823080944932561179214483963001061439955", 38 },
+    { Transcendental::DecimalLogarithm, 1, largestInt, true, "3823080944932561179214483963001061439955", 38 },
+    { Transcendental::Exponential, 1, Rational::Int { 1 } << 64, false, "1000000000000000000054210108624275221701", 39 },
+    { Transcendental::Exponential, 1, largestInt, false, "1000000000000000000000000000000000000005", 39 },
+    { Transcendental::Exponential, smallestInt, largestInt, false, "3678794411714423215955237701614608674436", 40 },
+    { Transcendental::Exponential, 45, 1, false, "3493427105748509534803479723340609953341", 20 },
+    { Transcendental::Exponential, 877, 10, false, "1223562231638072508562388385422483006583", 1 },
 } };
 // clang-format on
 
@@ -184,17 +220,24 @@ constexpr std::array<Reference, 39> references { {
 
 TEST_CASE("transcendental kernel: the stored ln 2 and log10(e) are the published values", "[transcendental]")
 {
-    STATIC_REQUIRE(pinned_by_published_digits(detail::Ln2Lower, "6931471805599453094172321214581765680755"));
-    STATIC_REQUIRE(pinned_by_published_digits(detail::Log10eLower, "4342944819032518276511289189166050822943"));
+    STATIC_REQUIRE(pinned_by_published_digits(detail::Ln2Lower, 128, "6931471805599453094172321214581765680755"));
+    STATIC_REQUIRE(pinned_by_published_digits(detail::Log10eLower, 128, "4342944819032518276511289189166050822943"));
     STATIC_REQUIRE(detail::Ln2Upper == *detail::add_small_checked_or_none(detail::Ln2Lower, 1U));
     STATIC_REQUIRE(detail::Log10eUpper == *detail::add_small_checked_or_none(detail::Log10eLower, 1U));
+    STATIC_REQUIRE(pinned_by_published_digits(detail::Ln2Lower192, 192,
+                                              "693147180559945309417232121458176568075500134360255254120680"));
+    STATIC_REQUIRE(detail::Ln2Upper192 == *detail::add_small_checked_or_none(detail::Ln2Lower192, 1U));
+    // The exponential's ln 2 begins with the logarithms': floor(L192 / 2^64) = L128.
+    STATIC_REQUIRE(detail::shift_right(detail::Ln2Lower192, 64) == detail::Ln2Lower);
 }
 
 TEST_CASE("transcendental kernel: the kernel re-derives its stored constants from its own series", "[transcendental]")
 {
     // At run time: the kernel's series, like every check that runs it but one (see the last case).
     // ln 2 = 2 atanh(1/3), since (1 + 1/3) / (1 - 1/3) = 2: the series' enclosure of it meets the stored one.
-    std::optional<Word> const atanhThird = detail::atanh_series_lower(detail::scaled_quotient(1, 3).below);
+    std::optional<Word> const atanhThird = detail::atanh_series_lower(
+        detail::scaled_quotient<detail::KernelFractionBits>(detail::UInt128::from_u64(1), detail::UInt128::from_u64(3))
+            .below);
     REQUIRE(atanhThird.has_value());
     Word const ln2Lower = *detail::add_checked_or_none(*atanhThird, *atanhThird);
     Word const ln2Upper = *detail::add_checked_or_none(ln2Lower, Word::from_u64(2 * detail::AtanhSlack));
@@ -202,7 +245,9 @@ TEST_CASE("transcendental kernel: the kernel re-derives its stored constants fro
     CHECK(detail::Ln2Lower <= ln2Upper);
     // log10(e) = 1 / ln 10, and ln 10 = 3 ln 2 + 2 atanh(1/9), since (1 + 1/9) / (1 - 1/9) = 10/8. The
     // stored M meets [2^256 / upper, 2^256 / lower] over the whole enclosure of ln 10 * 2^128.
-    std::optional<Word> const atanhNinth = detail::atanh_series_lower(detail::scaled_quotient(1, 9).below);
+    std::optional<Word> const atanhNinth = detail::atanh_series_lower(
+        detail::scaled_quotient<detail::KernelFractionBits>(detail::UInt128::from_u64(1), detail::UInt128::from_u64(9))
+            .below);
     REQUIRE(atanhNinth.has_value());
     Word const ln10Lower = *detail::add_checked_or_none(*detail::mul_small_checked_or_none(detail::Ln2Lower, 3U),
                                                         *detail::add_checked_or_none(*atanhNinth, *atanhNinth));
@@ -220,9 +265,10 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
     constexpr std::array<int, 9> placesTried { -2, -1, 0, 1, 2, 4, 9, 17, 18 };
     std::size_t compared = 0;
     std::size_t undecided = 0;
-    for (Reference const& row: references)
+    for (std::size_t rowAt = 0; rowAt < references.size(); ++rowAt)
     {
-        INFO("row " << row.numerator << "/" << row.denominator);
+        Reference const& row = references[rowAt];
+        INFO("row " << rowAt);
         std::optional<detail::Enclosure> const enclosure =
             enclosure_of(row.function, Rational { row.numerator, row.denominator });
         REQUIRE(enclosure.has_value());
@@ -243,11 +289,6 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
                 if (!decided.has_value() && referenceDecided.has_value())
                 {
                     CHECK(decided.error() == formula::ArithmeticError::Overflow);
-                    // Only the exponentials of 43 to 44, at the places whose kept integers 128 bits hold.
-                    CHECK(places >= 17);
-                    CHECK(row.function == Transcendental::Exponential);
-                    CHECK(Rational { 43 } <= Rational { row.numerator, row.denominator });
-                    CHECK(Rational { row.numerator, row.denominator } <= Rational { 44 });
                     ++undecided;
                 }
                 else
@@ -255,11 +296,11 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
                 ++compared;
             }
     }
-    // 39 rows, 9 places, 7 modes: a loop over nothing fails here.
-    REQUIRE(compared == 2457);
-    // Counted: the exponentials of 43, 43.7 and 44 at 17 and 18 places, whose kept integers 128 bits
-    // hold and whose 37th significant digit the kernel's enclosure cannot settle.
-    CHECK(undecided == 38);
+    // 51 rows, 9 places, 7 modes: a loop over nothing fails here.
+    REQUIRE(compared == 3213);
+    // None: an exponential's 192 fraction bits and a logarithm's 128 decide every row the reference's 40
+    // digits decide. At 128 fraction bits the exponentials of 43 to 44 at 17 and 18 places were not.
+    CHECK(undecided == 0);
     // Three of them written out, so that a reader sees the digits.
     CHECK(kernel_rounding(Transcendental::NaturalLogarithm, Rational { 2 }, 18, RoundingMode::Floor)
           == Rational::from_decimal(693'147'180'559'945'309, -18));
@@ -269,10 +310,11 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
           == Rational::from_decimal(2'718'281'828'459'045'235, -18));
 }
 
-TEST_CASE("transcendental kernel: an enclosure is at most 2^-118 wide", "[transcendental]")
+TEST_CASE("transcendental kernel: an enclosure is at most 2^-120 wide for a logarithm and 2^-183 of the value for an exponential",
+          "[transcendental]")
 {
     // Absolute for the logarithms, whose ends share the denominator 2^128: at most 2^8 units apart (2^-120).
-    // Relative for the exponential: upper - lower at most lower / 2^118.
+    // Relative for the exponential: upper - lower at most lower / 2^183, since its lower numerator is at least 2^192.
     Word const unit = *detail::shift_left_checked_or_none(Word::from_u64(1), 128);
     for (Reference const& row: references)
     {
@@ -284,7 +326,7 @@ TEST_CASE("transcendental kernel: an enclosure is at most 2^-118 wide", "[transc
         REQUIRE(nearer.denominator == farther.denominator);
         Word const width = *detail::sub_checked_or_none(farther.numerator, nearer.numerator);
         if (row.function == Transcendental::Exponential)
-            CHECK(*detail::shift_left_checked_or_none(width, 118) <= nearer.numerator);
+            CHECK(*detail::shift_left_checked_or_none(width, 183) <= nearer.numerator);
         else
         {
             CHECK(nearer.denominator == unit);
@@ -313,11 +355,37 @@ TEST_CASE("transcendental kernel: an enclosure that straddles a tie is Overflow 
           == Rational::from_decimal(1, -18));
 }
 
+TEST_CASE("transcendental kernel: a scaled quotient of 128-bit operands carries the bit its remainder shifts out",
+          "[transcendental]")
+{
+    // The divisor 2^128 - 1 leaves a remainder above 2^127, whose doubling passes 2^128: the shifted-out bit
+    // must still count. Checked against the general long division of the 384-bit word, a different route.
+    detail::UInt128 const divisor { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } };
+    detail::UInt128 const dividend { std::uint64_t { 1 } << 63, 5 };
+    for (std::size_t const fractionBits: { std::size_t { 128 }, std::size_t { 192 } })
+    {
+        INFO("fraction bits " << fractionBits);
+        detail::ScaledQuotient const scaled = fractionBits == 128 ? detail::scaled_quotient<128>(dividend, divisor)
+                                                                  : detail::scaled_quotient<192>(dividend, divisor);
+        detail::WideDivision<detail::KernelLimbs> const reference = detail::divmod(
+            *detail::shift_left_checked_or_none(Word::from_u128(dividend), fractionBits), Word::from_u128(divisor));
+        CHECK(scaled.below == reference.quotient);
+        CHECK(scaled.exact == reference.remainder.is_zero());
+        CHECK_FALSE(scaled.exact);
+    }
+    // An exact one: 3 * 2^100 / 2^100 is 3, to the last fraction bit.
+    detail::UInt128 const twoTo100 { std::uint64_t { 1 } << 36, 0 };
+    detail::ScaledQuotient const three = detail::scaled_quotient<192>(
+        detail::UInt128 { std::uint64_t { 3 } << 36, 0 }, twoTo100);
+    CHECK(three.exact);
+    CHECK(three.below == *detail::shift_left_checked_or_none(Word::from_u64(3), 192));
+}
+
 TEST_CASE("transcendental kernel: the kernel answers at compile time", "[transcendental]")
 {
     // The one deliberate compile-time check of the kernel. A whole rounding -- the enclosure and
     // decide_rounding -- in one constant evaluation, measured at about
-    // 239 000 steps on cl 19.51.36257, against a default budget of about 1 049 000. Every other check that runs the kernel
+    // 242 300 steps on cl 19.51.36257, against a default budget of about 1 049 000. Every other check that runs the kernel
     // runs at run time.
     STATIC_REQUIRE(kernel_rounding(Transcendental::DecimalLogarithm, Rational { 2 }, 3, RoundingMode::HalfEven)
                    == Rational { 301, 1000 });

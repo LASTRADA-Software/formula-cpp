@@ -13,8 +13,7 @@
 ///   that rounding's decimal places and `from_decimal`'s exponent span, the
 ///   `_r` literal's mantissa, and narrowing a value to the 64-bit fields of
 ///   `Band`, `Breakpoint` and a `Unit`'s magnitude (a rounded root's unit
-///   scale, a trace's unit quotient), or to the transcendental kernel's
-///   64-bit words (`narrow_to_int64`). MSVC has no __builtin_*_overflow, and
+///   scale, a trace's unit quotient). MSVC has no __builtin_*_overflow, and
 ///   its <intrin.h> equivalents are not constexpr, so these checks are
 ///   written in portable C++ and used on every compiler. Optimisers
 ///   recognise these idioms.
