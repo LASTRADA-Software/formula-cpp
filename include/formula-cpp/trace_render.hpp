@@ -2061,8 +2061,8 @@ namespace detail
             // strictly ascending by value (`RequireValidBreakpointTable`), so
             // two different rows never hold one value. A lookup's segment and
             // a missed lookup's range compare by value
-            // (`same_declared_bound`) because a table's rows can be typed as
-            // different pairs of one number.
+            // (`same_declared_bound`), which costs nothing there and does not
+            // depend on how a row was typed.
             if (neighbours.low == neighbours.high)
                 return " [on " + lowText + "]";
             if (recorded.tieBroken)

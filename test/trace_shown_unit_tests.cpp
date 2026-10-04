@@ -565,8 +565,8 @@ TEST_CASE("a precision limit's first pass reads in the unit of the level it rest
     CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
                          formula::constant<unit::Celsius>(Rational { 20 }), formula::constant<unit::Celsius>(Rational { 1 })),
                      determinations)
-              .find("2. level (pass 1 of 2) = #1 = 20 \xc2\xb0" "C\n")
-          != std::string::npos);
+              .starts_with("1. 20 \xc2\xb0" "C\n"
+                           "2. level (pass 1 of 2) = #1 = 20 \xc2\xb0" "C\n"));
 }
 
 TEST_CASE("a Celsius reading scaled by a pure number, and its absolute value, read in kelvin",
