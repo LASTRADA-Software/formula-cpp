@@ -61,7 +61,10 @@ change is recorded here.
   5463/20 K`. Only a dimensionless unit at scale 1 still writes no unit clause. A constant in such a unit renders in
   the coherent unit (`3/1000 kg`, where it wrote a bare `3`), and `numeric(x, in <unit>)` names the unit by its size
   too. In LaTeX the size is grouped and the unit set upright with raised powers:
-  `\operatorname{round}_{2\,(1/1000\,\mathrm{kg})}`, `2000\,\mathrm{kg}^{-1}`.
+  `\operatorname{round}_{2\,(1/1000\,\mathrm{kg})}`, `2000\,\mathrm{kg}^{-1}`. Every other number a formula declares
+  in such a unit renders in the coherent unit too, as its trace writes it: a per-element constant's values
+  (`values(3/1000 kg, 1/200 kg)`), a lookup's bands, rows and the values it gives, a binning's classes, a snap's
+  permitted values, a domain's points and an envelope's limits.
 
 ## [0.3.0] - 2026-10-01
 

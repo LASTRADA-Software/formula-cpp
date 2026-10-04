@@ -265,8 +265,11 @@ the dish's mass in its declared grams: ≈4.2 g
 constant (the moisture trace's line 5, `25.5 g`), a table's bound or row, a
 permitted value, a limit. Rounding it would print a number nobody wrote. The
 dish's typed 1/3 has no exact decimal, and even the rounding style writes it
-`1/3` (line 3 above). A constant in a dimensioned unit with no symbol is
-written in the coherent unit, exact: `3/1000 kg`.
+`1/3` (line 3 above). Every number a formula declares in a dimensioned
+unit with no symbol is written in the coherent unit, exact, as its trace
+writes it: a constant `3/1000 kg`, a per-element constant
+`values(3/1000 kg, 1/200 kg)`, a table's band `1/4 to under 1/2 kg`, a limit
+`at least 3/4 kg`.
 
 **Nor is either side of a comparison that a trace line states beside its
 verdict.** Two specimens' moisture contents, checked against a limit of at

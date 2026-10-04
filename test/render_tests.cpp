@@ -2526,3 +2526,79 @@ TEST_CASE("render: a calculation's typed numbers follow RenderOptions, never rou
                                                        formula::DecimalPadding::Padded) };
     CHECK(formula::render(withFee, formula::DefaultVocabulary {}, exactPadded) == "total = subtotal + 5 EUR");
 }
+
+namespace
+{
+/// Invented bounds and rows in the unnamed gram, 250, 500 and 750 of it:
+/// written in that scale, they would be numbers a thousand times those of the
+/// kilograms written after them.
+inline constexpr BandTable<2> UnlabelledGramBands { band(250, 1, 500, 1), band(500, 1, 750, 1) };
+inline constexpr BreakpointTable<2> UnlabelledGramRows { breakpoint(250), breakpoint(500) };
+constexpr formula::Envelope<2> unlabelledGramEnvelope {
+    formula::LimitRow { formula::limit(rat(250)), formula::limit(rat(500)) },
+    formula::LimitRow { formula::limit(rat(750)), formula::unbounded },
+};
+/// A unit with no symbol whose offset makes moving 1/(2^63 - 1) of it into the
+/// coherent unit overflow: times a magnitude of 1/(2^63 - 25), plus an offset
+/// of 1/(2^63 - 165).
+inline constexpr formula::Unit WideOffsetGram { .dimension = formula::dim::Mass,
+                                                .magnitudeNumerator = 1,
+                                                .magnitudeDenominator = INT64_MAX - 24,
+                                                .offsetNumerator = 1,
+                                                .offsetDenominator = INT64_MAX - 164 };
+} // namespace
+
+TEST_CASE("render: every number a formula declares in a unit with no symbol is in the coherent unit",
+          "[render][shown-unit]")
+{
+    // A per-element constant's values, as a constant's: 3 and 5 of the
+    // unnamed gram.
+    constexpr auto unlabelledValues = formula::series_constant<UnlabelledGram>(rat(3), rat(5));
+    CHECK(formula::render(unlabelledValues) == "values(3/1000 kg, 1/200 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledValues)
+          == "\\operatorname{values}(3/1000\\,\\mathrm{kg},\\allowbreak 1/200\\,\\mathrm{kg})");
+    // A value the coherent unit cannot hold says so, with no unit after it,
+    // as a constant does.
+    CHECK(formula::render(formula::series_constant<WideOffsetGram>(formula::Rational { 1, INT64_MAX }))
+          == "values((not shown: overflow in exact arithmetic))");
+
+    // A lookup's bands, and the rows it gives.
+    constexpr auto unlabelledBanded = banded_lookup<UnlabelledGram, UnlabelledGramBands, unit::Percent>(
+        var<UnlabelledWeight>, { rat(10), rat(20) });
+    CHECK(formula::render(unlabelledBanded) == "lookup(w, 1/4 to under 1/2 kg gives 10 %, 1/2 to under 3/4 kg gives 20 %)");
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledBanded)
+          == "\\operatorname{lookup}(w,\\allowbreak \\mathrm{1/4\\ to\\ under\\ 1/2\\ kg\\ gives\\ 10\\ \\%},"
+             "\\allowbreak \\mathrm{1/2\\ to\\ under\\ 3/4\\ kg\\ gives\\ 20\\ \\%})");
+    CHECK(formula::render(exact_lookup<ShapeKeys, UnlabelledGram>(MouldShape::Cylinder, { rat(250), rat(500), rat(750) }))
+          == "lookup(key Cylinder, key Cube gives 1/4 kg, key Cylinder gives 1/2 kg, key Prism gives 3/4 kg)");
+
+    // An interpolating lookup's rows, and the values it states at them.
+    CHECK(formula::render(interpolating_lookup<UnlabelledGram, UnlabelledGramRows, UnlabelledGram>(var<UnlabelledWeight>,
+                                                                                                   { rat(3), rat(5) }))
+          == "interpolate(w, at 1/4 kg gives 3/1000 kg, at 1/2 kg gives 1/200 kg)");
+
+    // A snap's permitted values, a declared domain's points and a binning's
+    // classes.
+    CHECK(formula::render(formula::snapped<UnlabelledGram, UnlabelledGramRows, formula::SnapTie::TowardLower>(
+              var<UnlabelledWeight>))
+          == "snap(w, to 1/4, 1/2 kg)");
+    CHECK(formula::render(formula::domain<UnlabelledGram, UnlabelledGramRows>) == "domain(1/4, 1/2 kg)");
+    CHECK(formula::render(formula::binned<UnlabelledGram, UnlabelledGramBands>(formula::observations<UnlabelledWeight, 3>))
+          == "bin(w(i), 1/4 to under 1/2 kg, 1/2 to under 3/4 kg)");
+
+    // An envelope's limits.
+    constexpr auto unlabelledLimits = formula::conformity<UnlabelledGram>(
+        formula::series<UnlabelledWeight, 2>, unlabelledGramEnvelope, formula::Verdict { "reject the specimen" });
+    CHECK(formula::render(unlabelledLimits) == "conform(w(i), from 1/4 to 1/2 kg, at least 3/4 kg)");
+
+    // A unit with a symbol is never converted: the same tables in grams.
+    CHECK(formula::render(formula::series_constant<unit::Gram>(rat(3), rat(5))) == "values(3 g, 5 g)");
+    CHECK(formula::render<Dialect::LaTeX>(formula::series_constant<unit::Gram>(rat(3), rat(5)))
+          == "\\operatorname{values}(3\\,\\mathrm{g},\\allowbreak 5\\,\\mathrm{g})");
+    CHECK(formula::render(banded_lookup<unit::Gram, UnlabelledGramBands, unit::Gram>(var<UnlabelledWeight>,
+                                                                                    { rat(3), rat(5) }))
+          == "lookup(w, 250 to under 500 g gives 3 g, 500 to under 750 g gives 5 g)");
+    CHECK(formula::render(formula::conformity<unit::Gram>(
+              formula::series<UnlabelledWeight, 2>, unlabelledGramEnvelope, formula::Verdict { "reject the specimen" }))
+          == "conform(w(i), from 250 to 500 g, at least 750 g)");
+}

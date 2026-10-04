@@ -595,48 +595,13 @@ namespace detail
     }
 
     /// The text written after a value shown in `shown_unit_of(@p declared,
-    /// @p dimension)`: the coherent unit's spelling, the declared unit's
-    /// escaped symbol, or nothing for a dimensionless value in a unit with
-    /// no symbol, which is at scale 1.
+    /// @p dimension)`, as a trace line writes it: `shown_unit_spelling`
+    /// (`render.hpp`), with each symbol and name escaped as author text. A
+    /// bound a table declared is shown in that unit by `shown_bound_text`
+    /// (`render.hpp`), which `render()` writes its tables with too.
     [[nodiscard]] inline std::string shown_unit_text(Unit const& declared, Dimension dimension)
     {
-        return spells_coherent_unit(declared, dimension) ? coherent_unit_text(dimension) : unit_symbol_text(declared);
-    }
-
-    /// A bound declared in @p declaredIn as a numerator/denominator pair -- a
-    /// band's, a curve's row or a permitted value -- spelled exact
-    /// (`declared_number_text`) in the unit a value declared in @p declaredIn
-    /// is shown in (`shown_unit_of`), without that unit's text: the caller
-    /// writes `shown_unit_text(declaredIn, declaredIn.dimension)` after the
-    /// bounds it lists. A bound of a unit with no symbol is moved into the
-    /// coherent unit, as the value it is compared with is, so that no number
-    /// on the line is in a scale the line does not name.
-    ///
-    /// Only that move can fail, and the bound then reads `(not shown: ...)`
-    /// rather than as a number in the wrong scale. A 64-bit pair times a
-    /// well-formed unit's 64-bit magnitude always fits a `Rational`, so the
-    /// move fails only for a pair that names no rational, a zero denominator;
-    /// for a malformed unit, one whose magnitude is zero (`DomainError`) or
-    /// whose magnitude or offset has a zero denominator (`DivisionByZero`);
-    /// and for a unit with an offset, whose sum can overflow: a bound of
-    /// 1/(2^63 - 1) in a unit of magnitude 1/(2^63 - 25) and offset
-    /// 1/(2^63 - 165) does. A bound of a unit with a symbol is never
-    /// converted, and never fails.
-    [[nodiscard]] inline std::string shown_bound_text(std::int64_t declaredNumerator,
-                                                      std::int64_t declaredDenominator,
-                                                      Unit const& declaredIn,
-                                                      NumberStyle numberStyle)
-    {
-        if (!spells_coherent_unit(declaredIn, declaredIn.dimension))
-            return declared_number_text(declaredNumerator, declaredDenominator, declaredIn, numberStyle);
-        std::expected<Rational, ArithmeticError> const declared = Rational::make(declaredNumerator, declaredDenominator);
-        if (!declared)
-            return not_shown_text(declared.error());
-        Unit const coherentUnit = coherent(declaredIn.dimension);
-        std::expected<Rational, ArithmeticError> const inCoherent = checked_convert(*declared, declaredIn, coherentUnit);
-        if (!inCoherent)
-            return not_shown_text(inCoherent.error());
-        return styled_number_text(*inCoherent, numberStyle.exact_only(), coherentUnit);
+        return shown_unit_spelling(declared, dimension, escaped_author_text);
     }
 
     /// Whether two bounds declared as numerator/denominator pairs are one
@@ -2152,35 +2117,21 @@ namespace detail
 
     /// @p limitRow, whose limits are numbers in @p recorded's unit, as the
     /// range it permits (`limit_row_text`), in the unit @p recorded's value
-    /// is shown in (`shown_unit_of`), so that a value and the row it was
-    /// judged against are never shown in two scales. A limit the shown unit
-    /// cannot hold is reported, `(not shown: ...)`, never restated.
+    /// is shown in (`shown_limit_row`, `render.hpp`, which `render()` writes
+    /// an envelope with too), so that a value and the row it was judged
+    /// against are never shown in two scales. A limit the shown unit cannot
+    /// hold is reported, `(not shown: ...)`, never restated.
     [[nodiscard]] inline std::string conformity_row_text(ShownStep const& recorded,
                                                          LimitRow const& limitRow,
                                                          NumberStyle numberStyle)
     {
-        if (!spells_coherent_unit(recorded.unit, recorded.dimension))
-            return limit_row_text(limitRow, unit_symbol_text(recorded.unit), recorded.unit, numberStyle);
-        Unit const shownUnit = shown_unit_of(recorded.unit, recorded.dimension);
-        auto const inShownUnit = [&](Limit const& side) -> std::expected<Limit, ArithmeticError> {
-            std::optional<Rational> const sideValue = side.value();
-            if (!sideValue.has_value())
-                return side;
-            std::expected<Rational, ArithmeticError> const sideInShownUnit =
-                checked_convert(*sideValue, recorded.unit, shownUnit);
-            if (!sideInShownUnit)
-                return std::unexpected { sideInShownUnit.error() };
-            return formula::limit(*sideInShownUnit);
-        };
-        std::expected<Limit, ArithmeticError> const lowerShown = inShownUnit(limitRow.lower);
-        if (!lowerShown)
-            return not_shown_text(lowerShown.error());
-        std::expected<Limit, ArithmeticError> const upperShown = inShownUnit(limitRow.upper);
-        if (!upperShown)
-            return not_shown_text(upperShown.error());
-        return limit_row_text(LimitRow { .lower = *lowerShown, .upper = *upperShown },
+        std::expected<LimitRow, ArithmeticError> const shownRow =
+            shown_limit_row(limitRow, recorded.unit, recorded.dimension);
+        if (!shownRow)
+            return not_shown_text(shownRow.error());
+        return limit_row_text(*shownRow,
                               shown_unit_text(recorded.unit, recorded.dimension),
-                              shownUnit,
+                              shown_unit_of(recorded.unit, recorded.dimension),
                               numberStyle);
     }
 
