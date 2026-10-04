@@ -45,6 +45,30 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::
 {
 };
 
+// Units with no symbol, which a rounding clause names by their size in the coherent unit.
+inline constexpr formula::Unit UnlabelledGram { .dimension = formula::dim::Mass,
+                                                .magnitudeNumerator = 1,
+                                                .magnitudeDenominator = 1000 };
+inline constexpr formula::Unit UnlabelledCelsius { .dimension = formula::dim::Temperature,
+                                                   .offsetNumerator = 27315,
+                                                   .offsetDenominator = 100 };
+inline constexpr formula::Unit UnlabelledPerGram { .dimension = formula::dim::Scalar / formula::dim::Mass,
+                                                   .magnitudeNumerator = 1000 };
+struct UnlabelledWeight: formula::Quantity<UnlabelledWeight, "w", "a mass in an unnamed unit", UnlabelledGram>
+{
+};
+struct UnlabelledReading: formula::Quantity<UnlabelledReading, "t", "a reading on an unnamed scale", UnlabelledCelsius>
+{
+};
+struct UnlabelledLoading: formula::Quantity<UnlabelledLoading, "q", "a count per unnamed gram", UnlabelledPerGram>
+{
+};
+// A mass unit of magnitude 1 with no symbol: the kilogram's size under no name.
+inline constexpr formula::Unit UnlabelledKilogram { .dimension = formula::dim::Mass };
+struct UnlabelledHeft: formula::Quantity<UnlabelledHeft, "h", "a mass in an unnamed unit of one kilogram", UnlabelledKilogram>
+{
+};
+
 /// A gram squared, for a variance of masses in grams.
 inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
                                              .magnitudeNumerator = 1,
@@ -469,6 +493,39 @@ TEST_CASE("render: a significant-digits rounding node renders as round(..., to N
     CHECK(formula::render<Dialect::Plain>(rounded) == "round(d, to 2 sf of mm)");
     CHECK(formula::render<Dialect::Markdown>(rounded) == "round(`d`, to 2 sf of mm)");
     CHECK(formula::render<Dialect::LaTeX>(rounded) == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{mm}}(d)");
+}
+
+TEST_CASE("render: a rounding in a unit with no symbol names that unit by its size", "[render][rounding]")
+{
+    constexpr auto toHundredths =
+        formula::rounded<UnlabelledGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+            var<UnlabelledWeight>);
+    CHECK(formula::render<Dialect::Plain>(toHundredths) == "round(w, to 2 dp of 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(toHundredths) == "\\operatorname{round}_{2\\,\\mathrm{1/1000\\ kg}}(w)");
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded_to_digits<UnlabelledGram, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledWeight>))
+          == "round(w, to 3 sf of 1/1000 kg)");
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<UnlabelledCelsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledReading>))
+          == "round(t, to 1 dp of 1 K from 5463/20 K)");
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<UnlabelledPerGram, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledLoading>))
+          == "round(q, to 0 dp of 1000 kg^-1)");
+    // A dimensioned unit of magnitude 1 with no symbol is still named by its
+    // size, never bare and never "of kg" alone: the reader cannot tell it from
+    // the coherent unit otherwise.
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<UnlabelledKilogram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledHeft>))
+          == "round(h, to 2 dp of 1 kg)");
+    // A dimensionless unit at scale 1 still writes no clause.
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                  formula::number(formula::Rational { 1, 3 })))
+          == "round(1/3, to 2 dp)");
 }
 
 TEST_CASE("render: a significant-digits rounding node inside a power and inside a product keeps no extra bracket",

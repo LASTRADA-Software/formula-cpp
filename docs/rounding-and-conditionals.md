@@ -201,7 +201,11 @@ generated page must not depend on which inputs happened to be passed in.
 
 A rounding node renders as `round(<operand>, to <places> dp of <unit>)`, or
 `sf` in place of `dp` for significant digits; `numeric_value_of` (below)
-renders as `numeric(<operand>, in <unit>)`. The operand comes first and the
+renders as `numeric(<operand>, in <unit>)`. A unit with no symbol is named
+by its size in the coherent unit, `round(m, to 2 dp of 1/1000 kg)`, and one
+with an offset by its size and its zero, `to 1 dp of 1 K from 5463/20 K`, so
+that the places say what they count in; only a dimensionless unit at scale 1
+writes no unit clause, `round(x, to 2 dp)`. The operand comes first and the
 granularity second, comma-separated, deliberately -- not because it looks
 tidier, but because the alternative shapes both have a real failure mode a
 review actually caught. A trailing suffix with nothing separating it from

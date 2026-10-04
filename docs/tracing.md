@@ -381,7 +381,8 @@ above, a ratio of two volumes, reads `3/5`. A value declared in a unit of the
 author's own that has no symbol reads in the coherent unit too, converted,
 since its number alone could not say what scale it is on. A dimensionless
 unit with a scale must have a symbol, so a bare number is always a value at
-scale 1.
+scale 1. A rounding in a unit with no symbol names that unit by its size in
+the coherent unit: `round(#1, to 2 dp of 1/1000 kg) = 157/50000 kg`.
 
 A computed step borrows its unit off the steps it read in these cases:
 

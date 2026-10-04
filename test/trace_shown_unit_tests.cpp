@@ -88,6 +88,14 @@ struct Share: formula::Quantity<Share, "s", "invented share", unit::Percent>
 {
 };
 
+// A Celsius scale with no symbol: an offset unit the rounding clause must name by its size and its zero.
+inline constexpr formula::Unit UnnamedCelsius { .dimension = formula::dim::Temperature,
+                                                .offsetNumerator = 27315,
+                                                .offsetDenominator = 100 };
+struct UnnamedReading: formula::Quantity<UnnamedReading, "T_u", "a reading on an unnamed scale", UnnamedCelsius>
+{
+};
+
 template <typename Expression, typename Bound>
 formula::Trace<> recorded_trace(Expression const& formulaExpression, Bound const& inputs)
 {
@@ -317,6 +325,50 @@ TEST_CASE("a value in a unit with no symbol is shown in the coherent unit, with 
     // nothing on the line names.
     auto const inputs = formula::environment(formula::Measured<UnnamedMass> { Rational { 3 } });
     CHECK(trace_text(var<UnnamedMass> * Rational { 2 }, inputs).starts_with("1. m_u = 3/1000 kg\n"));
+}
+
+TEST_CASE("a rounding in a unit with no symbol names that unit by its size", "[trace-render][shown-unit][rounding]")
+{
+    // 3.141 of the unnamed gram to 2 places is 3.14 of it: 157/50000 kg. The
+    // places count in the unnamed gram, and the line says so in the coherent
+    // unit the value is written in.
+    auto const masses = formula::environment(formula::Measured<UnnamedMass> { Rational { 3141, 1000 } });
+    CHECK(trace_text(formula::rounded<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                         var<UnnamedMass>),
+                     masses)
+          == "1. m_u = 3141/1000000 kg\n"
+             "2. round(#1, to 2 dp of 1/1000 kg) = 157/50000 kg [nearest, ties to even]\n");
+    CHECK(trace_text(formula::rounded_to_digits<UnnamedGram, formula::SignificantDigits { 2 }, formula::RoundingMode::HalfEven>(
+                         var<UnnamedMass>),
+                     masses)
+              .find("2. round(#1, to 2 sf of 1/1000 kg) = 31/10000 kg")
+          != std::string::npos);
+    // 20.5 on the unnamed Celsius scale, rounded to 0 places of it: 21, which
+    // is 294.15 K. The places count from that scale's zero, 273.15 K.
+    auto const readings = formula::environment(formula::Measured<UnnamedReading> { Rational { 41, 2 } });
+    CHECK(trace_text(formula::rounded<UnnamedCelsius, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+                         var<UnnamedReading>),
+                     readings)
+          == "1. T_u = 5873/20 K\n"
+             "2. round(#1, to 0 dp of 1 K from 5463/20 K) = 5883/20 K [nearest, ties away from zero]\n");
+}
+
+TEST_CASE("a constant and a numeric value in a unit with no symbol say what scale their number is on",
+          "[trace][units]")
+{
+    // A constant typed as 3 of a unit of 1/1000 kg with no symbol: render()
+    // writes it in the coherent unit, as a trace does, never as a bare 3.
+    auto const typedMass = formula::constant<UnnamedGram>(formula::Rational { 3 });
+    CHECK(formula::render(typedMass) == "3/1000 kg");
+    // Two tokens, so a power of it brackets as one of a constant with a symbol does.
+    CHECK(formula::render(formula::pow<2>(typedMass)) == "(3/1000 kg)^2");
+
+    // numeric(x, in <unit>) names the unit its bare number is taken in by its
+    // size, in render() and in the trace line alike.
+    auto const bareMass = formula::numeric_value_of<UnnamedGram, "the table is in unnamed grams">(typedMass);
+    CHECK(formula::render(bareMass) == "numeric(3/1000 kg, in 1/1000 kg)");
+    std::string const traced = trace_text(bareMass, formula::environment());
+    CHECK(traced.find("numeric(#1, in 1/1000 kg)") != std::string::npos);
 }
 
 TEST_CASE("a dimensionless value is still a bare number", "[trace-render][shown-unit]")
@@ -710,6 +762,10 @@ TEST_CASE("every value a trace shows is in the unit written after it", "[trace-r
     check_each_value_is_in_the_unit_written_after_it(recorded_trace(var<UnnamedMass> * Rational { 2 } - var<TareMass>, inputs));
     // A pure number over a mass: kg^-1 after a fraction.
     check_each_value_is_in_the_unit_written_after_it(recorded_trace(Rational { 2 } / var<SampleMass>, inputs));
+    // A rounding in a unit with no symbol.
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::rounded<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(var<UnnamedMass>),
+        inputs));
 }
 
 TEST_CASE("every value of a rejection, a bill, the statistics, a precision limit and an opaque call is in the unit written after it",

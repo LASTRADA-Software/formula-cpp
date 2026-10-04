@@ -586,105 +586,12 @@ namespace detail
                                              : std::to_string(recorded.lookupKey));
     }
 
-    /// A value no line can spell, and why: `(not shown: <reason>)`. The one
-    /// spelling of it, for a value its unit cannot show and for a value its
-    /// style cannot spell in that unit alike.
-    [[nodiscard]] inline std::string not_shown_text(ArithmeticError whyNot)
-    {
-        return "(not shown: " + std::string { describe(whyNot) } + ")";
-    }
-
-    /// The coherent unit of @p dimension, spelt from its base units:
-    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
-    /// one. Written after every dimensioned value whose unit has no symbol, so
-    /// that a slope in metres per second does not read as a pure number.
-    ///
-    /// A named base dimension is spelt by its name -- the name is also the
-    /// symbol of its coherent unit -- ahead of the SI units, in the dimension's
-    /// own order: on its side of the slash, or among the negated factors when
-    /// nothing stands above it. `EUR`, `EUR s^2/(m^2 kg)` for euros per joule,
-    /// `EUR^-1 s^-1`, `JPY^-1`, `EUR/JPY`, `EUR^(1/2)`. First, because a
-    /// tariff is read as money per energy, not as seconds squared of money per
-    /// metre. Each name goes through `escaped_author_text`: `base_dimension()`
-    /// admits only letters and digits, but a hand-filled `namedBases` can hold
-    /// anything.
-    ///
-    /// A dimension with no positive exponent is written with negative
-    /// exponents and no slash: `kg^-1`, `m^-1 s^-1`, `kg^(-1/2)`. After a
-    /// number in the fraction style, `20000/413 1/kg` would read as one
-    /// fraction divided again; `20000/413 kg^-1` cannot.
+    /// The coherent unit of @p dimension spelt from its base units, as a
+    /// trace line writes it: `coherent_unit_spelling` (`render.hpp`), with
+    /// each named base dimension's name escaped as author text.
     [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
     {
-        struct BaseUnit
-        {
-            std::string_view symbol;
-            Exponent exponent;
-        };
-        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
-                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
-                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
-                                              BaseUnit { "cd", dimension.luminosity } };
-        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
-            std::string factorText { symbolText };
-            if (denominatorPart != 1)
-                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
-            else if (numeratorPart != 1)
-                factorText += "^" + std::to_string(numeratorPart);
-            return factorText;
-        };
-        std::string above;
-        std::string below;
-        std::string inverse;
-        std::size_t belowCount = 0;
-        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
-            if (baseExponent.numerator > 0)
-                above += (above.empty() ? "" : " ")
-                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
-            else if (baseExponent.numerator < 0)
-            {
-                below += (below.empty() ? "" : " ")
-                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
-                inverse += (inverse.empty() ? "" : " ")
-                           + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
-                ++belowCount;
-            }
-        };
-        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
-            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
-        for (BaseUnit const& base: bases)
-            place(base.symbol, base.exponent);
-        if (below.empty())
-            return above;
-        if (above.empty())
-            return inverse;
-        return above + "/" + (belowCount > 1 ? "(" + below + ")" : below);
-    }
-
-    /// Whether a value of @p dimension in @p declared is shown in the coherent
-    /// unit, spelt by `coherent_unit_text`, rather than in @p declared: when
-    /// @p declared has no symbol and @p dimension is not dimensionless. A
-    /// unit with no symbol cannot say what scale its number is on, so the
-    /// number is moved into the one scale its spelling names. The one rule
-    /// for every place a number is written with its unit: a step's value, a
-    /// squared deviation, a conformity row, a derivation's header, and a
-    /// bound a table, a curve or a permitted set declared
-    /// (`shown_bound_text`), so that every number on a line is in the unit
-    /// written after it.
-    /// A dimensionless unit with no symbol is always at scale 1 here:
-    /// one with a scale is refused where it is written
-    /// (`RequireNamedScaledScalar`, `unit.hpp`), so its bare number is the
-    /// value.
-    [[nodiscard]] inline bool spells_coherent_unit(Unit const& declared, Dimension dimension)
-    {
-        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
-    }
-
-    /// The unit a value of @p dimension declared in @p declared is shown in:
-    /// the coherent unit where `spells_coherent_unit` says so, @p declared
-    /// otherwise.
-    [[nodiscard]] inline Unit shown_unit_of(Unit const& declared, Dimension dimension)
-    {
-        return spells_coherent_unit(declared, dimension) ? coherent(dimension) : declared;
+        return coherent_unit_spelling(dimension, escaped_author_text);
     }
 
     /// The text written after a value shown in `shown_unit_of(@p declared,
@@ -1093,8 +1000,9 @@ namespace detail
 
     /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit whose
     /// symbol is @p unitSymbolText, in `render()`'s words (`rounding_call`), for every step that rounds to
-    /// one number of decimal places; an element-wise rounding has its own spelling. No unit clause for a
-    /// unit with no symbol.
+    /// one number of decimal places; an element-wise rounding has its own spelling. The unit is
+    /// `rounding_unit_text`'s (`render.hpp`), so that a unit with no symbol is named by its size, in the
+    /// coherent unit the value after `=` is written in.
     [[nodiscard]] inline std::string rounding_call_text(std::string const& inner,
                                                         int granularity,
                                                         std::string const& unitSymbolText)
@@ -1175,17 +1083,20 @@ namespace detail
             case StepKind::VariantSelected:
                 return sole_operand(shownStep);
             case StepKind::Round:
-                return rounding_call_text(sole_operand(shownStep), shownStep.granularity, unit_symbol_text(shownStep.unit));
+                return rounding_call_text(sole_operand(shownStep),
+                                          shownStep.granularity,
+                                          rounding_unit_text(shownStep.unit, escaped_author_text));
             case StepKind::RoundSignificant:
                 return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " sf"
-                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                       + unit_clause(" of ", rounding_unit_text(shownStep.unit, escaped_author_text)) + ")";
             // The unit only: the granularity belongs with whose rule it is,
             // in the suffix -- see `rounding_rule_suffix`.
             case StepKind::RoundingRuleApplied:
-                return "round(" + sole_operand(shownStep) + unit_clause(", in ", unit_symbol_text(shownStep.unit)) + ")";
+                return "round(" + sole_operand(shownStep)
+                       + unit_clause(", in ", rounding_unit_text(shownStep.unit, escaped_author_text)) + ")";
             case StepKind::NumericValue:
-                return "numeric(" + sole_operand(shownStep) + unit_clause(", in ", unit_symbol_text(shownStep.sourceUnit))
-                       + ")";
+                return "numeric(" + sole_operand(shownStep)
+                       + unit_clause(", in ", rounding_unit_text(shownStep.sourceUnit, escaped_author_text)) + ")";
             case StepKind::Conditional:
                 return conditional_expression(shownStep);
             case StepKind::Constraint:
@@ -1258,7 +1169,7 @@ namespace detail
             // for `Round`.
             case StepKind::ElementwiseRound:
                 return "round(" + sole_operand(shownStep) + ", to " + granularities_text(shownStep.elementGranularities)
-                       + " dp" + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                       + " dp" + unit_clause(" of ", rounding_unit_text(shownStep.unit, escaped_author_text)) + ")";
             // A declared domain's line is its points, as a per-element
             // constant's is its values -- see `series_step_line`.
             case StepKind::SeriesDomain:
@@ -1287,8 +1198,9 @@ namespace detail
             // `render()`'s spelling, `round(sqrt(...), to ...)`: one shownStep, and
             // the root inside it, because the root itself was never a value.
             case StepKind::RoundedRoot:
-                return rounding_call_text(
-                    "sqrt(" + sole_operand(shownStep) + ")", shownStep.granularity, unit_symbol_text(shownStep.unit));
+                return rounding_call_text("sqrt(" + sole_operand(shownStep) + ")",
+                                          shownStep.granularity,
+                                          rounding_unit_text(shownStep.unit, escaped_author_text));
             case StepKind::RoundedNaturalLogarithm:
                 return rounded_transcendental_expression(Transcendental::NaturalLogarithm, shownStep);
             case StepKind::RoundedDecimalLogarithm:
@@ -1356,7 +1268,7 @@ namespace detail
                 return rounding_call_text(shownStep.operands.empty() ? std::string { "an opaque output" }
                                                                      : "output of " + sole_operand(shownStep),
                                           shownStep.granularity,
-                                          unit_symbol_text(shownStep.unit));
+                                          rounding_unit_text(shownStep.unit, escaped_author_text));
             // A retry's steps name its result as `render()` does, `w(k)` for
             // an attempt's value and `w(k-1)` for the one before; the
             // attempt's and the retry's own lines are `retry_attempt_line` and
@@ -3021,7 +2933,7 @@ namespace detail
     {
         std::string lineText = rounding_call_text(opaque_output_label(recorded, opaqueLine),
                                                   recorded.granularity,
-                                                  unit_symbol_text(recorded.unit))
+                                                  rounding_unit_text(recorded.unit, escaped_author_text))
                                + " = ";
         bool const callFailed = opaqueLine.call != nullptr && opaqueLine.call->failure != OpaqueFailure::None;
         if (recorded.error.has_value() && callFailed)

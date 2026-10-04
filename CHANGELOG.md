@@ -55,6 +55,12 @@ change is recorded here.
   `m^-1 s^-1`, `JPY^-1`, where it was `1/kg`, `1/s`, `1/(m s)`, `1/JPY`. After a number in the fraction style,
   `20000/413 1/kg` read as a fraction divided again. A unit with a numerator keeps its slash: `m/s`, `EUR/JPY`.
   A trace text pinned in a test changes where it showed such a unit.
+- A rounding in a unit with no symbol names that unit by its size in the coherent unit, in `render()` and in a
+  trace: `round(#1, to 2 dp of 1/1000 kg) = 157/50000 kg`, where it wrote `round(#1, to 2 dp)`, which read as places
+  of the kilogram written after it. A unit with an offset is named by its size and its zero, `to 1 dp of 1 K from
+  5463/20 K`. Only a dimensionless unit at scale 1 still writes no unit clause. A constant in such a unit renders in
+  the coherent unit (`3/1000 kg`, where it wrote a bare `3`), and `numeric(x, in <unit>)` names the unit by its size
+  too.
 
 ## [0.3.0] - 2026-10-01
 
