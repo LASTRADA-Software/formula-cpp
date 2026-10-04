@@ -101,13 +101,22 @@ class WideUnsigned
     /// This value as 128 bits, or nothing when it needs more.
     [[nodiscard]] constexpr std::optional<UInt128> to_u128() const noexcept
     {
+        // Every limb is read before anything is decided, with no early return
+        // in between. An early return left g++ 14 at -O3 a tail that reads only
+        // the low four limbs, which it split out of each width and then merged
+        // across widths; the merged copy, typed for the widest, made
+        // -Warray-bounds report a read past a narrower value that never
+        // happens.
+        std::uint32_t aboveLow = 0;
         for (std::size_t limbAt = 4; limbAt < Limbs; ++limbAt)
-            if (_limbs[limbAt] != 0U)
-                return std::nullopt;
-        auto const limbOrZero = [this](std::size_t limbIndex) -> std::uint64_t {
-            return limbIndex < Limbs ? static_cast<std::uint64_t>(_limbs[limbIndex]) : std::uint64_t { 0 };
-        };
-        return UInt128 { (limbOrZero(3) << 32U) | limbOrZero(2), (limbOrZero(1) << 32U) | limbOrZero(0) };
+            aboveLow |= _limbs[limbAt];
+        // The low four limbs, zero past the top of a narrower value.
+        std::array<std::uint64_t, 4> low {};
+        for (std::size_t limbAt = 0; limbAt < low.size() && limbAt < Limbs; ++limbAt)
+            low[limbAt] = _limbs[limbAt];
+        if (aboveLow != 0U)
+            return std::nullopt;
+        return UInt128 { (low[3] << 32U) | low[2], (low[1] << 32U) | low[0] };
     }
 
     /// Whether this is zero.
