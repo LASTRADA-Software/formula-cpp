@@ -209,10 +209,10 @@ twenty-seven distinct denominators: overflow in exact arithmetic
 
 **When a fit overflows depends on the data far more than on the number of
 points.** Measured, and the same, on cl 19.51, clang-cl 22.1, g++ 14.2 and
-clang++ 20.1: integers, readings at one decimal place,
-thirds mixed with sevenths, and readings at three decimal places of a few
-thousand never overflow for 2 to 128 points; a different denominator on
-every point overflows from 28, and the example's, in millimetres, from 27.
+clang++ 20.1: readings at one decimal place, and readings at three decimal
+places of a few thousand, never overflow for 2 to 128 points; a different
+denominator on every point overflows from 28, and the example's, in
+millimetres, overflows at 27.
 So there is no safe number of points to state. The
 [numeric headroom](numeric-headroom.md) page carries the fit's census over
 every size, regenerated with every build. **A fit that overflows has a

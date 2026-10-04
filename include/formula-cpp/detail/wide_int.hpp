@@ -104,7 +104,7 @@ class WideUnsigned
         // Every limb is read before anything is decided, with no early return
         // in between. An early return left g++ 14 at -O3 a tail that reads only
         // the low four limbs, which it split out of each width and then merged
-        // across widths; the merged copy, typed for the widest, made
+        // across widths; the merged copy, typed for a wider one, made
         // -Warray-bounds report a read past a narrower value that never
         // happens.
         std::uint32_t aboveLow = 0;

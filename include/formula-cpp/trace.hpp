@@ -1182,7 +1182,9 @@ struct Step
     std::uint64_t lookupKey {};
 
     /// Whether `lookupKey` above is to be read as a signed value. Meaningful
-    /// only when `kind` is `ExactLookup`, exactly as `lookupKey` itself is.
+    /// only when `kind` is `ExactLookup`. `lookupKey` also carries a
+    /// `SampleSizeLookup`'s count, which is always read unsigned and leaves
+    /// this false.
     bool lookupKeyIsSigned {};
 
     /// For `SampleSizeLookup`: bits 64 to 127 of the count, whose low 64 bits

@@ -24,7 +24,7 @@ change is recorded here.
   the coherent unit, followed by its spelling from the base units (`427/125000000 kg^2`, `60000000 kg/(m s^2)`), and
   so is a value in a unit that has no symbol. A dimensionless value is still a bare number. A trace text pinned in
   a test changes wherever it showed a dimensioned value bare. `Step::unit` of a scaled, summed, negated,
-  conditional or precision-limit step now holds the unit it borrowed, so code that reads steps sees the unit the
+  absolute-value, conditional or precision-limit step now holds the unit it borrowed, so code that reads steps sees the unit the
   trace text names.
 - A snap's permitted values, a binning's classes, a lookup's bands and rows and a curve's rows, declared in a unit
   that has no symbol, are written in the coherent unit with its spelling, as the value beside them is, rather than
