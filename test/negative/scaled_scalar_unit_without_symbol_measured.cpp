@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: a dimensionless unit with a scale must have a symbol
 //
-// A quantity declared in hundredths with no symbol: one half would be shown as
-// 50, a number in a scale no line names. Refused where the quantity is read,
-// once.
-#include <formula-cpp/expression.hpp>
+// A measurement of a quantity declared in hundredths with no symbol, named
+// through Measured alone and never read by a formula: refused where the
+// quantity's description is asked for, once.
+#include <formula-cpp/measured.hpp>
 
 inline constexpr formula::Unit Hundredth { .dimension = formula::dim::Scalar,
                                            .magnitudeNumerator = 1,
@@ -14,9 +14,9 @@ struct Fraction: formula::Quantity<Fraction, "w", "an invented fraction", Hundre
 {
 };
 
-inline constexpr auto fraction = formula::var<Fraction>;
-
 int main()
 {
-    return fraction.dimension == formula::dim::Scalar ? 0 : 1;
+    formula::Measured<Fraction> const half { formula::Rational { 50 } };
+    (void) half;
+    return 0;
 }

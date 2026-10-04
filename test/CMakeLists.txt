@@ -339,9 +339,11 @@ formula_add_negative_test(unit_currency_mismatch
     "formula: these two units measure different dimensions" EXPECT_COUNT 1)
 
 # A dimensionless unit with a scale and no symbol: refused where a quantity
-# declared in it is read, where a constant is stated in it, and where a table
-# is keyed in it -- once each.
+# declared in it is read or measured, where a constant is stated in it, and
+# where a table is keyed in it -- once each.
 formula_add_negative_test(scaled_scalar_unit_without_symbol_var
+    "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1)
+formula_add_negative_test(scaled_scalar_unit_without_symbol_measured
     "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1)
 formula_add_negative_test(scaled_scalar_unit_without_symbol_constant
     "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1)

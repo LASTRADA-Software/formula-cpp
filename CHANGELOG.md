@@ -45,12 +45,12 @@ change is recorded here.
   count above 2^64 - 1 names the whole count. Code that reads `lookupKey` for such a step reads both.
 - `Rational`'s converting constructor takes every built-in integer type of at most 64 bits except `bool`, exactly,
   `std::uint64_t` now among them; a wider built-in integer is refused. A constructor from `Int128` is added.
-- **A dimensionless unit with a scale or an offset and no symbol is refused at compile time**, wherever it is
+- **Breaking: a dimensionless unit with a scale or an offset and no symbol no longer compiles**, wherever it is
   written: as a quantity's unit, a constant's, a rounding's, or a table's key or result. A trace showed a value in
   such a unit as a bare number in a scale nothing named (one half in hundredths read `50`), and no spelling of the
-  unit could name it. This breaks code that declares one: give the unit a symbol (`%`, `ppm`, or the author's own),
-  or declare the quantity in scale 1. The refusal reads `formula: a dimensionless unit with a scale must have a
-  symbol`. A dimensioned unit with no symbol is still accepted, and shown in the coherent unit.
+  unit could name it. Give the unit a symbol (`%`, `ppm`, or the author's own), or declare the quantity in scale 1.
+  The refusal reads `formula: a dimensionless unit with a scale must have a symbol`. A dimensioned unit with no
+  symbol is still accepted, and shown in the coherent unit.
 
 ## [0.3.0] - 2026-10-01
 

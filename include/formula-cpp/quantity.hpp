@@ -236,8 +236,9 @@ namespace detail
     };
 } // namespace detail
 
-/// Fails to compile, in our own words, when `T` declares no metadata, or
-/// declares metadata whose `dimension` contradicts its own `unit`.
+/// Fails to compile, in our own words, when `T` declares no metadata,
+/// declares metadata whose `dimension` contradicts its own `unit`, or declares
+/// it in a dimensionless unit with a scale and no symbol.
 ///
 /// The counterpart to `Describe` being silent: somewhere has to say what to do
 /// about it, and a bare "no member named 'symbol'" does not. Same shape as
@@ -264,7 +265,7 @@ struct RequireDescribed
                   "from Describe<T>::unit.dimension instead of stating it independently");
     static_assert(detail::RequireDescribedUnitNamesItsScale<T>::value);
 
-    /// Always `true` once reached -- both `static_assert`s above already failed
+    /// Always `true` once reached -- the `static_assert`s above already failed
     /// compilation otherwise. Present so `::value` is the spelling that
     /// instantiates the class template; see the class comment for why that
     /// spelling matters.
