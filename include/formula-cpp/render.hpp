@@ -1214,10 +1214,13 @@ namespace detail
     /// The separator between a rendered lookup's fields.
     ///
     /// **LaTeX adds `\allowbreak`, and that is a correctness fix rather than
-    /// typographic polish.** Each row is one atomic `\mathrm{...}`, and TeX
-    /// gives a math comma no break penalty at all -- so without this there is
-    /// **no legal break point anywhere in a rendered lookup, at any row
-    /// count**. A table does not wrap; it runs off the line, and a wide enough
+    /// typographic polish.** Each row is one atomic `\mathrm{...}`, or, when
+    /// it holds a coherent unit, a run of atoms joined by thin spaces,
+    /// slashes and powers (`\mathrm{...}\,\mathrm{kg}^{-1}`), none of which
+    /// is a break point in math either; and TeX gives a math comma no break
+    /// penalty at all -- so without this there is **no legal break point
+    /// anywhere in a rendered lookup, at any row count**. A table does not
+    /// wrap; it runs off the line, and a wide enough
     /// one runs off the paper. A reader of a truncated formula is told nothing
     /// is missing, which is the same class of defect as the Markdown link
     /// syntax that dropped an operand from a published page -- see this file's
