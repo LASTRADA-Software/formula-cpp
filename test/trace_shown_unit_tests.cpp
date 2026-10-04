@@ -643,6 +643,17 @@ TEST_CASE("two different rows that cannot be shown are not read as one row", "[t
                            formula::Breakpoint { .numerator = 2, .denominator = 0 } };
     CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
               .ends_with("[between (not shown: division by zero) and (not shown: division by zero) kg]\n"));
+
+    // A well-formed unit with no symbol can still fail to move a bound into
+    // the coherent unit, through its offset: 1/(2^63 - 1) times a magnitude
+    // of 1/(2^63 - 25), plus an offset of 1/(2^63 - 165), overflows.
+    constexpr formula::Unit WideOffsetGram { .dimension = formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = INT64_MAX - 24,
+                                             .offsetNumerator = 1,
+                                             .offsetDenominator = INT64_MAX - 164 };
+    CHECK(formula::detail::shown_bound_text(1, INT64_MAX, WideOffsetGram, formula::NumberStyle::fraction())
+          == "(not shown: overflow in exact arithmetic)");
 }
 
 TEST_CASE("a curve over a domain in a unit with no symbol states its rows in the coherent unit",

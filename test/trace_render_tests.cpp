@@ -2810,6 +2810,13 @@ TEST_CASE("a critical-value step records the count and whose failure it carries,
     CHECK(hit.kind == formula::StepKind::SampleSizeLookup);
     CHECK(hit.lookupFailure == formula::LookupFailure::None);
     CHECK(hit.lookupKey == 8);
+    // A hand-built step, as a `Step` is a public aggregate, whose count is
+    // past 64 bits: the line names the whole count, both of its words.
+    auto wideCountTrace = hitTrace;
+    wideCountTrace.steps.back().lookupKeyHigh = 1;
+    wideCountTrace.steps.back().lookupKey = 0;
+    CHECK(formula::render_trace(wideCountTrace, { .maxSteps = 10 })
+              .ends_with(" [critical value at n = 18446744073709551616]\n"));
     // The declared sizes live in the trace's side table, keyed by the step's
     // index, and the step itself carries nothing for them.
     REQUIRE(hitTrace.sampleSizeRecords.size() == 1);

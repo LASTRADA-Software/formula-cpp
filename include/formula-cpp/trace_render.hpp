@@ -692,11 +692,14 @@ namespace detail
     ///
     /// Only that move can fail, and the bound then reads `(not shown: ...)`
     /// rather than as a number in the wrong scale. A 64-bit pair times a
-    /// unit's 64-bit magnitude always fits a `Rational`, so the move fails for
-    /// a pair that names no rational, a zero denominator; for a unit whose
-    /// magnitude is zero; and, in principle, for a unit with an offset, whose
-    /// sum can still overflow -- never for a scale alone. A bound of a unit
-    /// with a symbol is never converted, and never fails.
+    /// well-formed unit's 64-bit magnitude always fits a `Rational`, so the
+    /// move fails only for a pair that names no rational, a zero denominator;
+    /// for a malformed unit, one whose magnitude is zero (`DomainError`) or
+    /// whose magnitude or offset has a zero denominator (`DivisionByZero`);
+    /// and for a unit with an offset, whose sum can overflow: a bound of
+    /// 1/(2^63 - 1) in a unit of magnitude 1/(2^63 - 25) and offset
+    /// 1/(2^63 - 165) does. A bound of a unit with a symbol is never
+    /// converted, and never fails.
     [[nodiscard]] inline std::string shown_bound_text(std::int64_t declaredNumerator,
                                                       std::int64_t declaredDenominator,
                                                       Unit const& declaredIn,
@@ -955,7 +958,12 @@ namespace detail
                 // A critical value's row is its size, and the count is that
                 // size -- the one thing the line's `critical(#1)` does not say.
                 if (recorded.kind == StepKind::SampleSizeLookup && recorded.value.has_value() && !recorded.operands.empty())
-                    return " [critical value at n = " + std::to_string(recorded.lookupKey) + "]";
+                {
+                    DecimalSpelling const countDigits =
+                        u128_decimal(UInt128 { recorded.lookupKeyHigh, recorded.lookupKey });
+                    return " [critical value at n = "
+                           + std::string { countDigits.characters, static_cast<std::size_t>(countDigits.length) } + "]";
+                }
                 if (recorded.selectedBand.has_value())
                     return " [" + selected_band_text(*recorded.selectedBand, recorded.sourceUnit, numberStyle) + "]";
                 if (recorded.selectedSegment.has_value())
@@ -3494,7 +3502,7 @@ namespace detail
     /// (`shown_unit_of`) -- spelled in @p numberStyle as a trace line spells
     /// a value (`checked_shown_text`), or `(not shown: ...)` where the style
     /// cannot spell it in that unit or the move into the coherent unit
-    /// overflows; why its calculation failed; or `(no value)`. Exact only
+    /// fails; why its calculation failed; or `(no value)`. Exact only
     /// when @p typed, the block's value being a number typed rather than
     /// computed (`derivation_value_is_typed`), so that the header, the
     /// block's root and every line reading the value agree on whether it is
@@ -3515,8 +3523,10 @@ namespace detail
         // unit, which can overflow for a value its own unit holds well, a
         // great many kilowatt-hours counted in joules. One with no symbol
         // moves into the coherent unit and says so, as a trace line's value
-        // does (`shown_unit_of`); that move is the one that can fail, and
-        // only for a value whose coherent form overflows.
+        // does (`shown_unit_of`); that move is the one that can fail: for a
+        // value whose coherent form overflows, and for a malformed unit, one
+        // whose magnitude is zero (`DomainError`) or whose magnitude or offset
+        // has a zero denominator (`DivisionByZero`).
         Unit const shownUnit = shown_unit_of(shown.unit, shown.unit.dimension);
         std::expected<Rational, ArithmeticError> const inShownUnit =
             spells_coherent_unit(shown.unit, shown.unit.dimension) ? checked_convert(*shown.value, shown.unit, shownUnit)
