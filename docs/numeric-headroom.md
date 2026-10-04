@@ -448,7 +448,8 @@ change that quietly spends more headroom fails there. Measured: without
 `checked_mul`'s cross-reduction, the curve pin and the spread's numerator
 pin fail, and so does the cross-reduction control; with a sum scaled by the
 product of the denominators instead of their least common multiple, the
-twenty masses' variance no longer evaluates.
+twenty masses' headroom pin fails (at 64 bits the variance did not evaluate
+at all).
 
 To run the census yourself, build and run `formula-cpp-census-tests`; the
 census builds of the examples and the gallery print their line when they

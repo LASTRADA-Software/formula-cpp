@@ -11,7 +11,8 @@ change is recorded here.
 - **`formula::Int128`** (`int128.hpp`), a signed 128-bit integer with one API on every compiler: the compiler's own
   128-bit integer computes where it has one (GCC, Clang), portable `constexpr` code everywhere else (cl, clang-cl).
   It converts to no built-in integer implicitly or explicitly; `to_int64()` and `to_uint64()` say when a value does
-  not fit. `std::format` writes it in decimal.
+  not fit. `std::format` writes it in decimal, and `std::numeric_limits<formula::Int128>` states its limits as a
+  built-in signed integer's are.
 
 ### Changed
 
@@ -22,12 +23,12 @@ change is recorded here.
   scaling or negation: the difference of two Celsius readings reads in `K`. Any other dimensioned value is shown in
   the coherent unit, followed by its spelling from the base units (`427/125000000 kg^2`, `60000000 kg/(m s^2)`), and
   so is a value in a unit that has no symbol. A dimensionless value is still a bare number. A trace text pinned in
-  a test changes wherever it showed a dimensioned value bare.
+  a test changes wherever it showed a dimensioned value bare. `Step::unit` of a scaled, summed, negated,
+  conditional or precision-limit step now holds the unit it borrowed, so code that reads steps sees the unit the
+  trace text names.
 - A snap's permitted values, a binning's classes, a lookup's bands and rows and a curve's rows, declared in a unit
   that has no symbol, are written in the coherent unit with its spelling, as the value beside them is, rather than
-  as numbers in a scale the line does not name. A derivation's header shows a value in a unit with a symbol as it
-  is held, so a value that is too large for the coherent unit, such as 10^35 kWh in joules, no longer reads
-  `(not shown: overflow in exact arithmetic)`.
+  as numbers in a scale the line does not name.
 - **`Rational` stores its numerator and denominator in `formula::Int128`**, so `Rational::Int` is `Int128` and a
   `Rational` is 32 bytes. Realistic laboratory statistics that overflowed 64 bits now answer: the sample variance of
   masses read to 6 decimal places of a gram, rejection by standard deviations at that resolution, and a cylinder's
@@ -38,9 +39,8 @@ change is recorded here.
 - `NumberTextCapacity` is 128, so that a 39-digit numerator over a 39-digit denominator fits a `NumberText`.
 - `band(Rational, Rational)` and `breakpoint(Rational)` refuse a bound or key that does not fit their 64-bit fields:
   in a constant expression it fails to compile, naming `formula_band_bound_out_of_range` or
-  `formula_breakpoint_key_out_of_range`.
-- Reached at run time, the same refusal by `band(Rational, Rational)` or `breakpoint(Rational)` ends the program: a
-  `Band` or a `Breakpoint` is a template argument, built at compile time, and has no way to carry a failure.
+  `formula_breakpoint_key_out_of_range`; reached at run time, it ends the program, because a `Band` or a
+  `Breakpoint` is a template argument, built at compile time, and has no way to carry a failure.
 - `Step` gains `lookupKeyHigh`, bits 64 to 127 of the count a sample-size lookup selected with, so that a miss on a
   count above 2^64 - 1 names the whole count. Code that reads `lookupKey` for such a step reads both.
 - `Rational`'s converting constructor takes every built-in integer type of at most 64 bits except `bool`, exactly,

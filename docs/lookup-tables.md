@@ -87,6 +87,12 @@ plain integers is, and so is a `std::array` of them — which is what makes it
 possible to validate a whole table with `static_assert` rather than only when
 it happens to be loaded at run time.
 
+A bound whose numerator or denominator does not fit those 64 bits is refused,
+never truncated: in a constant expression the table fails to compile, naming
+`formula_band_bound_out_of_range`, and reached at run time the program ends,
+because a `Band` is built to be a template argument and has no way to carry a
+failure.
+
 The node renders as one field per row, in the table's own declared order:
 
 ```
@@ -520,7 +526,11 @@ inline constexpr formula::BreakpointTable<3> SizeCurve {
 };
 ```
 
-so it renders as the points it is, with `at` rather than any interval wording:
+`breakpoint(key)` keeps its key as an `int64` numerator and denominator, as
+`band` keeps its bounds, and refuses a key that does not fit them the same way:
+it fails to compile in a constant expression, naming
+`formula_breakpoint_key_out_of_range`, and ends the program at run time. The
+table renders as the points it is, with `at` rather than any interval wording:
 
 ```
 interpolating: interpolate(d, at 127 mm gives 913/10 %, at 173 mm gives 1051/10 %, at 211 mm gives 1127/10 %)
