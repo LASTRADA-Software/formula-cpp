@@ -209,18 +209,40 @@ namespace detail
         return PrecedenceOf<N>::value;
     }
 
+    /// Whether a value of @p dimension in @p declared is shown in the coherent
+    /// unit, spelt by `coherent_unit_spelling`, rather than in @p declared:
+    /// when @p declared has no symbol and @p dimension is not dimensionless. A
+    /// unit with no symbol cannot say what scale its number is on, so the
+    /// number is moved into the one scale its spelling names. The one rule
+    /// for every place a number is written with its unit: in a trace, a
+    /// step's value, a squared deviation, a conformity row, a derivation's
+    /// header, and a bound a table, a curve or a permitted set declared
+    /// (`shown_bound_text`); in `render()`, a constant
+    /// (`render_node(ConstantNode)`). So every number is in the unit written
+    /// after it.
+    /// A dimensionless unit with no symbol is always at scale 1 here:
+    /// one with a scale is refused where it is written
+    /// (`RequireNamedScaledScalar`, `unit.hpp`), so its bare number is the
+    /// value.
+    [[nodiscard]] constexpr bool spells_coherent_unit(Unit const& declared, Dimension dimension)
+    {
+        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
+    }
+
     /// A constant's rendered text is not always an atom in two data-dependent
     /// ways the type does not carry: a negative number opens with a `-` that
     /// reads like a unary minus, and a unit with a symbol renders as *two*
     /// tokens ("150 mm") rather than one -- so `pow<2>` of it would otherwise
     /// read as `150 mm^2`, i.e. `150 * mm^2`, when the tree means `(150 mm)^2`.
     /// A dimensioned unit with no symbol writes a unit too, the coherent one
-    /// (`3/1000 kg`). Both cases must bracket exactly where a `UnaryNode` would.
+    /// (`3/1000 kg`, `spells_coherent_unit`). Both cases must bracket exactly
+    /// where a `UnaryNode` would.
     template <Unit U>
     [[nodiscard]] constexpr Precedence precedence_of(ConstantNode<U> const& node) noexcept
     {
         constexpr Unit declaredUnit = U;
-        bool const writesUnit = !view(declaredUnit.symbolText).empty() || !(declaredUnit.dimension == dim::Scalar);
+        bool const writesUnit =
+            !view(declaredUnit.symbolText).empty() || spells_coherent_unit(declaredUnit, declaredUnit.dimension);
         return node.number.sign() < 0 || writesUnit ? Precedence::Unary : Precedence::Atom;
     }
 
@@ -490,6 +512,55 @@ namespace detail
         return std::string { authored };
     }
 
+    /// The power a base unit's factor is raised to, as plain text and a trace
+    /// write it: `^-1`, `^(1/2)`, `^(-1/2)`, and nothing for a power of 1.
+    [[nodiscard]] inline std::string plain_unit_power(std::int32_t numeratorPart, std::int32_t denominatorPart)
+    {
+        if (denominatorPart != 1)
+            return "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
+        if (numeratorPart != 1)
+            return "^" + std::to_string(numeratorPart);
+        return {};
+    }
+
+    /// The same power as LaTeX sets it, a superscript: `^{-1}`, `^{1/2}`,
+    /// `^{-1/2}`, and nothing for a power of 1.
+    [[nodiscard]] inline std::string latex_unit_power(std::int32_t numeratorPart, std::int32_t denominatorPart)
+    {
+        if (denominatorPart != 1)
+            return "^{" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + "}";
+        if (numeratorPart != 1)
+            return "^{" + std::to_string(numeratorPart) + "}";
+        return {};
+    }
+
+    /// How a unit this library spells itself -- a coherent unit, or a unit
+    /// with no symbol named by its size -- is set in one notation. Plain text
+    /// and a trace write `1000 kg^-1` and `1 K from 5463/20 K`
+    /// (`PlainUnitNotation`). LaTeX sets each symbol upright, a power as a
+    /// superscript, and a thin space between factors:
+    /// `1000\,\mathrm{kg}^{-1}` (`LatexUnitNotation`), where escaping the
+    /// whole plain text would have written the caret as a character.
+    struct UnitNotation
+    {
+        /// A base unit's symbol, or a named base dimension's name, as a factor.
+        AuthorTextSpelling symbol;
+        /// The power after a factor: `plain_unit_power` or `latex_unit_power`.
+        std::string (*power)(std::int32_t numeratorPart, std::int32_t denominatorPart);
+        /// What stands between two factors, and between a number and its unit.
+        std::string_view between;
+        /// What stands between a unit's size and its zero (`rounding_unit_text`).
+        std::string_view from;
+    };
+
+    /// Plain text and a trace: `kg/(m s^2)`, `1 K from 5463/20 K`.
+    inline constexpr UnitNotation PlainUnitNotation { verbatim_text, plain_unit_power, " ", " from " };
+
+    /// LaTeX: `\mathrm{kg}/(\mathrm{m}\,\mathrm{s}^{2})`,
+    /// `1\,\mathrm{K}\text{ from }5463/20\,\mathrm{K}`. Each symbol and name is
+    /// escaped as `latex_unit` escapes a unit's symbol.
+    inline constexpr UnitNotation LatexUnitNotation { latex_unit, latex_unit_power, "\\,", "\\text{ from }" };
+
     /// The coherent unit of @p dimension, spelt from its base units:
     /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
     /// one. Written after every dimensioned value whose unit has no symbol, so
@@ -509,7 +580,13 @@ namespace detail
     /// exponents and no slash: `kg^-1`, `m^-1 s^-1`, `kg^(-1/2)`. After a
     /// number in the fraction style, `20000/413 1/kg` would read as one
     /// fraction divided again; `20000/413 kg^-1` cannot.
-    [[nodiscard]] inline std::string coherent_unit_spelling(Dimension dimension, AuthorTextSpelling spellName)
+    ///
+    /// Each factor, its power and the space between two are set in
+    /// @p notation: as above by default, and in LaTeX
+    /// `\mathrm{kg}/(\mathrm{m}\,\mathrm{s}^{2})` (`LatexUnitNotation`).
+    [[nodiscard]] inline std::string coherent_unit_spelling(Dimension dimension,
+                                                            AuthorTextSpelling spellName,
+                                                            UnitNotation const& notation = PlainUnitNotation)
     {
         struct BaseUnit
         {
@@ -520,27 +597,23 @@ namespace detail
                                               BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
                                               BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
                                               BaseUnit { "cd", dimension.luminosity } };
-        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
-            std::string factorText { symbolText };
-            if (denominatorPart != 1)
-                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
-            else if (numeratorPart != 1)
-                factorText += "^" + std::to_string(numeratorPart);
-            return factorText;
+        auto const unitPower = [&](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
+            return notation.symbol(symbolText) + notation.power(numeratorPart, denominatorPart);
         };
+        std::string const between { notation.between };
         std::string above;
         std::string below;
         std::string inverse;
         std::size_t belowCount = 0;
         auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
             if (baseExponent.numerator > 0)
-                above += (above.empty() ? "" : " ")
+                above += (above.empty() ? "" : between)
                          + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
             else if (baseExponent.numerator < 0)
             {
-                below += (below.empty() ? "" : " ")
+                below += (below.empty() ? "" : between)
                          + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
-                inverse += (inverse.empty() ? "" : " ")
+                inverse += (inverse.empty() ? "" : between)
                            + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
                 ++belowCount;
             }
@@ -569,26 +642,32 @@ namespace detail
     ///   value after a trace's `=` is written in the same coherent unit, so
     ///   the line says what the places count in.
     /// - The same with an offset: its size and its zero, both in the coherent
-    ///   unit: `1 K from 27315/100 K`. The places count steps of the size from
+    ///   unit: `1 K from 5463/20 K`. The places count steps of the size from
     ///   that zero, which is how the rounding computes them.
     ///
     /// Nothing for a magnitude or offset that names no rational (a zero
     /// denominator): a malformed unit, refused by every conversion, whose
     /// rounding never reaches a value to show.
-    [[nodiscard]] inline std::string rounding_unit_text(Unit const& roundedIn, AuthorTextSpelling spellAuthorText)
+    ///
+    /// Set in @p notation: as above by default, and in LaTeX
+    /// `1/1000\,\mathrm{kg}` (`LatexUnitNotation`), a symbol as `latex_unit`
+    /// sets it.
+    [[nodiscard]] inline std::string rounding_unit_text(Unit const& roundedIn,
+                                                        AuthorTextSpelling spellAuthorText,
+                                                        UnitNotation const& notation = PlainUnitNotation)
     {
         std::string_view const symbolText = view(roundedIn.symbolText);
         if (!symbolText.empty())
-            return spellAuthorText(symbolText);
+            return notation.symbol(spellAuthorText(symbolText));
         if (roundedIn.dimension == dim::Scalar)
             return {};
         std::expected<Rational, ArithmeticError> const unitSize =
             Rational::make(roundedIn.magnitudeNumerator, roundedIn.magnitudeDenominator);
         if (!unitSize.has_value())
             return {};
-        std::string const coherentText = coherent_unit_spelling(roundedIn.dimension, spellAuthorText);
+        std::string const coherentText = coherent_unit_spelling(roundedIn.dimension, spellAuthorText, notation);
         NumberText const sizeText = fraction_text(*unitSize);
-        std::string spelled = std::string { sizeText.view() } + " " + coherentText;
+        std::string spelled = std::string { sizeText.view() } + std::string { notation.between } + coherentText;
         if (roundedIn.offsetNumerator == 0)
             return spelled;
         std::expected<Rational, ArithmeticError> const unitZero =
@@ -596,26 +675,25 @@ namespace detail
         if (!unitZero.has_value())
             return {};
         NumberText const zeroText = fraction_text(*unitZero);
-        return spelled + " from " + std::string { zeroText.view() } + " " + coherentText;
+        return spelled + std::string { notation.from } + std::string { zeroText.view() } + std::string { notation.between }
+               + coherentText;
     }
 
-    /// Whether a value of @p dimension in @p declared is shown in the coherent
-    /// unit, spelt by `coherent_unit_text`, rather than in @p declared: when
-    /// @p declared has no symbol and @p dimension is not dimensionless. A
-    /// unit with no symbol cannot say what scale its number is on, so the
-    /// number is moved into the one scale its spelling names. The one rule
-    /// for every place a number is written with its unit: a step's value, a
-    /// squared deviation, a conformity row, a derivation's header, and a
-    /// bound a table, a curve or a permitted set declared
-    /// (`shown_bound_text`), so that every number on a line is in the unit
-    /// written after it.
-    /// A dimensionless unit with no symbol is always at scale 1 here:
-    /// one with a scale is refused where it is written
-    /// (`RequireNamedScaledScalar`, `unit.hpp`), so its bare number is the
-    /// value.
-    [[nodiscard]] constexpr bool spells_coherent_unit(Unit const& declared, Dimension dimension)
+    /// The unit clause of a rounding or a numeric value in render()'s dialect
+    /// @p D: `rounding_unit_text`, with each symbol written as its author
+    /// wrote it. In LaTeX a size is grouped, `(1/1000\,\mathrm{kg})`, so that
+    /// `2\,(1/1000\,\mathrm{kg})` cannot read as the mixed number 2 1/1000; a
+    /// symbol stands alone, `\mathrm{mm}`, as it always has.
+    template <Dialect D>
+    [[nodiscard]] std::string rounding_unit_in(Unit const& roundedIn)
     {
-        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
+        if constexpr (D == Dialect::LaTeX)
+        {
+            std::string const spelled = rounding_unit_text(roundedIn, verbatim_text, LatexUnitNotation);
+            return spelled.empty() || !view(roundedIn.symbolText).empty() ? spelled : "(" + spelled + ")";
+        }
+        else
+            return rounding_unit_text(roundedIn, verbatim_text);
     }
 
     /// The unit a value of @p dimension declared in @p declared is shown in:
@@ -1158,15 +1236,18 @@ template <Dialect D, Unit U, Vocabulary V>
         constexpr Unit coherentUnit = coherent(declaredUnit.dimension);
         std::expected<Rational, ArithmeticError> const inCoherent =
             checked_convert(node.number, declaredUnit, coherentUnit);
-        std::string const numberText =
-            inCoherent.has_value()
-                ? detail::styled_number_text(*inCoherent, typed_number_style(vocabulary).exact_only(), coherentUnit)
-                : detail::not_shown_text(inCoherent.error());
-        std::string const coherentText = detail::coherent_unit_spelling(declaredUnit.dimension, detail::verbatim_text);
+        // A number that cannot be shown has no unit after it, as in a trace.
+        if (!inCoherent.has_value())
+            return detail::not_shown_text(inCoherent.error());
+        std::string const numberText = detail::typed_number_text(*inCoherent, coherentUnit, vocabulary);
         if constexpr (D == Dialect::LaTeX)
-            return numberText + detail::unit_clause("\\,", detail::latex_unit(coherentText));
+            return numberText
+                   + detail::unit_clause("\\,",
+                                         detail::coherent_unit_spelling(
+                                             declaredUnit.dimension, detail::verbatim_text, detail::LatexUnitNotation));
         else
-            return detail::number_with_unit(numberText, coherentText);
+            return detail::number_with_unit(numberText,
+                                            detail::coherent_unit_spelling(declaredUnit.dimension, detail::verbatim_text));
     }
     else if constexpr (D == Dialect::LaTeX)
         return detail::typed_number_text(node.number, declaredUnit, vocabulary)
@@ -1252,7 +1333,7 @@ template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocab
 {
     std::string const inner = render<D>(node.operand, vocabulary);
     constexpr Unit roundedIn = U;
-    std::string const unitSymbol = detail::rounding_unit_text(roundedIn, detail::verbatim_text);
+    std::string const unitText = detail::rounding_unit_in<D>(roundedIn);
     // Places already refused (`countMatches`) are not a table to list; the
     // text is never seen, since the program does not compile.
     std::string placesText = "(refused)";
@@ -1260,10 +1341,9 @@ template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocab
         placesText = detail::granularities_text<Places>();
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}("
-               + inner + ")";
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", unitText) + "}(" + inner + ")";
     else
-        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitText) + ")";
 }
 
 /// A running total renders as a call naming its end: `cumulative(m_r(i), from
@@ -1433,22 +1513,22 @@ namespace detail
             return std::string { transcendental_name(function) } + "(" + argumentText + ")";
     }
 
-    /// @p inner rounded to @p places decimal places of the unit whose symbol is @p unitSymbol, in dialect
-    /// @p D: `round(<inner>, to <places> dp of <unit>)`, and in LaTeX
-    /// `\operatorname{round}_{<places>\,<unit>}(<inner>)`, the unit set upright and escaped (`latex_unit`).
-    /// The unit is `rounding_unit_text`'s: a unit with no symbol is named by its size, and only a
-    /// dimensionless unit at scale 1 has no clause. The one spelling of every node that rounds to one
+    /// @p inner rounded to @p places decimal places of the unit @p unitText names, in dialect @p D:
+    /// `round(<inner>, to <places> dp of <unit>)`, and in LaTeX
+    /// `\operatorname{round}_{<places>\,<unit>}(<inner>)`. @p unitText is `rounding_unit_in<D>`'s, already in
+    /// @p D's notation: a unit with no symbol is named by its size, and only a dimensionless unit at scale 1
+    /// has no clause. The one spelling of every node that rounds to one
     /// number of decimal places -- `RoundNode`, `RoundedRootNode`, `RoundedTranscendentalNode`,
     /// `RoundedOpaqueOutputNode` -- and of a trace's line for one (`trace_render.hpp`). A rounding of
     /// each element to its own places (`ElementwiseRoundNode`) has its own spelling.
     template <Dialect D>
-    [[nodiscard]] std::string rounding_call(std::string const& inner, DecimalPlaces places, std::string const& unitSymbol)
+    [[nodiscard]] std::string rounding_call(std::string const& inner, DecimalPlaces places, std::string const& unitText)
     {
         std::string const placesText = std::to_string(places.value);
         if constexpr (D == Dialect::LaTeX)
-            return "\\operatorname{round}_{" + placesText + unit_clause("\\,", latex_unit(unitSymbol)) + "}(" + inner + ")";
+            return "\\operatorname{round}_{" + placesText + unit_clause("\\,", unitText) + "}(" + inner + ")";
         else
-            return "round(" + inner + ", to " + placesText + " dp" + unit_clause(" of ", unitSymbol) + ")";
+            return "round(" + inner + ", to " + placesText + " dp" + unit_clause(" of ", unitText) + ")";
     }
 } // namespace detail
 
@@ -1512,8 +1592,7 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Opera
 [[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node, V const& vocabulary)
 {
     constexpr Unit declaredUnit = U;
-    return detail::rounding_call<D>(
-        render<D>(node.operand, vocabulary), Places, detail::rounding_unit_text(declaredUnit, detail::verbatim_text));
+    return detail::rounding_call<D>(render<D>(node.operand, vocabulary), Places, detail::rounding_unit_in<D>(declaredUnit));
 }
 
 /// A significant-digits rounding node, spelled the same way as `RoundNode`
@@ -1526,14 +1605,14 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
 {
     std::string const inner = render<D>(node.operand, vocabulary);
     constexpr Unit declaredUnit = U;
-    std::string const unitSymbol = detail::rounding_unit_text(declaredUnit, detail::verbatim_text);
+    std::string const unitText = detail::rounding_unit_in<D>(declaredUnit);
     std::string const digitsText = std::to_string(Digits.value);
 
     if constexpr (D == Dialect::LaTeX)
         return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf}"
-               + detail::unit_clause(",\\,", detail::latex_unit(unitSymbol)) + "}(" + inner + ")";
+               + detail::unit_clause(",\\,", unitText) + "}(" + inner + ")";
     else
-        return "round(" + inner + ", to " + digitsText + " sf" + detail::unit_clause(" of ", unitSymbol) + ")";
+        return "round(" + inner + ", to " + digitsText + " sf" + detail::unit_clause(" of ", unitText) + ")";
 }
 
 /// A rounded square root renders as what it computes, a rounding of a root:
@@ -1550,11 +1629,11 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radic
 {
     std::string const inner = render<D>(node.radicand, vocabulary);
     constexpr Unit declaredUnit = U;
-    std::string const unitSymbol = detail::rounding_unit_text(declaredUnit, detail::verbatim_text);
+    std::string const unitText = detail::rounding_unit_in<D>(declaredUnit);
     if constexpr (D == Dialect::LaTeX)
-        return detail::rounding_call<D>("\\sqrt{" + inner + "}", Places, unitSymbol);
+        return detail::rounding_call<D>("\\sqrt{" + inner + "}", Places, unitText);
     else
-        return detail::rounding_call<D>("sqrt(" + inner + ")", Places, unitSymbol);
+        return detail::rounding_call<D>("sqrt(" + inner + ")", Places, unitText);
 }
 
 /// A rounded logarithm or exponential renders as what it computes, a rounding of the call:
@@ -1588,12 +1667,12 @@ template <Dialect D, Unit U, detail::FixedString Justification, Node Operand, Vo
 {
     std::string const inner = render<D>(node.operand, vocabulary);
     constexpr Unit declaredUnit = U;
-    std::string const unitSymbol = detail::rounding_unit_text(declaredUnit, detail::verbatim_text);
+    std::string const unitText = detail::rounding_unit_in<D>(declaredUnit);
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\{" + inner + detail::unit_clause("/", detail::latex_unit(unitSymbol)) + "\\}";
+        return "\\{" + inner + detail::unit_clause("/", unitText) + "\\}";
     else
-        return "numeric(" + inner + detail::unit_clause(", in ", unitSymbol) + ")";
+        return "numeric(" + inner + detail::unit_clause(", in ", unitText) + ")";
 }
 
 /// Pi renders as `\pi` in LaTeX, and as `pi` in every other dialect.
@@ -2135,9 +2214,8 @@ template <Dialect D,
     RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node, V const& vocabulary)
 {
     constexpr Unit declaredUnit = U;
-    return detail::rounding_call<D>(render<D>(detail::unrounded(node), vocabulary),
-                                    Places,
-                                    detail::rounding_unit_text(declaredUnit, detail::verbatim_text));
+    return detail::rounding_call<D>(
+        render<D>(detail::unrounded(node), vocabulary), Places, detail::rounding_unit_in<D>(declaredUnit));
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it

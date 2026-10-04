@@ -68,6 +68,11 @@ inline constexpr formula::Unit UnlabelledKilogram { .dimension = formula::dim::M
 struct UnlabelledHeft: formula::Quantity<UnlabelledHeft, "h", "a mass in an unnamed unit of one kilogram", UnlabelledKilogram>
 {
 };
+// A mass unit of a whole thousand kilograms with no symbol.
+inline constexpr formula::Unit UnlabelledTonne { .dimension = formula::dim::Mass, .magnitudeNumerator = 1000 };
+struct UnlabelledLoad: formula::Quantity<UnlabelledLoad, "L", "a mass in an unnamed unit of a thousand kilograms", UnlabelledTonne>
+{
+};
 
 /// A gram squared, for a variance of masses in grams.
 inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
@@ -501,7 +506,9 @@ TEST_CASE("render: a rounding in a unit with no symbol names that unit by its si
         formula::rounded<UnlabelledGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
             var<UnlabelledWeight>);
     CHECK(formula::render<Dialect::Plain>(toHundredths) == "round(w, to 2 dp of 1/1000 kg)");
-    CHECK(formula::render<Dialect::LaTeX>(toHundredths) == "\\operatorname{round}_{2\\,\\mathrm{1/1000\\ kg}}(w)");
+    // In LaTeX the size is grouped, so that it cannot read as the mixed
+    // number 2 1/1000, and the unit is set upright with its powers raised.
+    CHECK(formula::render<Dialect::LaTeX>(toHundredths) == "\\operatorname{round}_{2\\,(1/1000\\,\\mathrm{kg})}(w)");
     CHECK(formula::render<Dialect::Plain>(
               formula::rounded_to_digits<UnlabelledGram, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfEven>(
                   var<UnlabelledWeight>))
@@ -510,10 +517,33 @@ TEST_CASE("render: a rounding in a unit with no symbol names that unit by its si
               formula::rounded<UnlabelledCelsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
                   var<UnlabelledReading>))
           == "round(t, to 1 dp of 1 K from 5463/20 K)");
+    CHECK(formula::render<Dialect::LaTeX>(
+              formula::rounded<UnlabelledCelsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledReading>))
+          == "\\operatorname{round}_{1\\,(1\\,\\mathrm{K}\\text{ from }5463/20\\,\\mathrm{K})}(t)");
+    constexpr auto perGramToUnits =
+        formula::rounded<UnlabelledPerGram, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+            var<UnlabelledLoading>);
+    CHECK(formula::render<Dialect::Plain>(perGramToUnits) == "round(q, to 0 dp of 1000 kg^-1)");
+    CHECK(formula::render<Dialect::LaTeX>(perGramToUnits) == "\\operatorname{round}_{0\\,(1000\\,\\mathrm{kg}^{-1})}(q)");
+    // A unit of a whole number of kilograms is named by that number.
     CHECK(formula::render<Dialect::Plain>(
-              formula::rounded<UnlabelledPerGram, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
-                  var<UnlabelledLoading>))
-          == "round(q, to 0 dp of 1000 kg^-1)");
+              formula::rounded<UnlabelledTonne, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledLoad>))
+          == "round(L, to 2 dp of 1000 kg)");
+    // A rounded root and a rounding of each element name the unit the same way.
+    constexpr auto rootToHundredths =
+        formula::rounded_sqrt<UnlabelledGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+            var<UnlabelledWeight> * var<UnlabelledWeight>);
+    CHECK(formula::render<Dialect::Plain>(rootToHundredths) == "round(sqrt(w * w), to 2 dp of 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(rootToHundredths)
+          == "\\operatorname{round}_{2\\,(1/1000\\,\\mathrm{kg})}(\\sqrt{w \\cdot w})");
+    constexpr formula::PlacesTable<2> elementPlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 2 } };
+    constexpr auto eachToPlaces =
+        formula::rounded_elementwise<UnlabelledGram, elementPlaces, formula::RoundingMode::HalfEven>(
+            formula::series<UnlabelledWeight, 2>);
+    CHECK(formula::render<Dialect::Plain>(eachToPlaces) == "round(w(i), to 0/2 dp of 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(eachToPlaces) == "\\operatorname{round}_{0/2\\,(1/1000\\,\\mathrm{kg})}({w}_{i})");
     // A dimensioned unit of magnitude 1 with no symbol is still named by its
     // size, never bare and never "of kg" alone: the reader cannot tell it from
     // the coherent unit otherwise.
@@ -526,6 +556,16 @@ TEST_CASE("render: a rounding in a unit with no symbol names that unit by its si
               formula::rounded<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
                   formula::number(formula::Rational { 1, 3 })))
           == "round(1/3, to 2 dp)");
+
+    // A numeric value and a constant in such a unit, in LaTeX: the size
+    // grouped after the quotient's slash, and the coherent unit set upright.
+    constexpr auto bareWeight = formula::numeric_value_of<UnlabelledGram, "the table is in unnamed grams">(var<UnlabelledWeight>);
+    CHECK(formula::render<Dialect::Plain>(bareWeight) == "numeric(w, in 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(bareWeight) == "\\{w/(1/1000\\,\\mathrm{kg})\\}");
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<UnlabelledGram>(formula::Rational { 3 })) == "3/1000\\,\\mathrm{kg}");
+    CHECK(formula::render<Dialect::Plain>(formula::constant<UnlabelledPerGram>(formula::Rational { 2 })) == "2000 kg^-1");
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<UnlabelledPerGram>(formula::Rational { 2 }))
+          == "2000\\,\\mathrm{kg}^{-1}");
 }
 
 TEST_CASE("render: a significant-digits rounding node inside a power and inside a product keeps no extra bracket",

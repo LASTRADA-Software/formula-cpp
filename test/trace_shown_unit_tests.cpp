@@ -351,6 +351,26 @@ TEST_CASE("a rounding in a unit with no symbol names that unit by its size", "[t
                      readings)
           == "1. T_u = 5873/20 K\n"
              "2. round(#1, to 0 dp of 1 K from 5463/20 K) = 5883/20 K [nearest, ties away from zero]\n");
+
+    // A rounded root, a rounded output of an opaque operation and a method's
+    // rounding rule name the unit the same way.
+    CHECK(trace_text(formula::rounded_sqrt<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                         var<UnnamedMass> * var<UnnamedMass>),
+                     masses)
+              .find("round(sqrt(#3), to 2 dp of 1/1000 kg) = 157/50000 kg")
+          != std::string::npos);
+    CHECK(trace_text(formula::rounded_output<"span", UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                         lowestAndSpan),
+                     determinations)
+              .find(", to 2 dp of 1/1000 kg) = 7/2000 kg")
+          != std::string::npos);
+    auto const doubled = formula::method(
+        formula::variants(formula::variant<UnnamedTotal>(var<UnnamedMass> * Rational { 2 })),
+        formula::rounding_rule<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(),
+        formula::constraints());
+    formula::Trace<> ruleTrace {};
+    (void) formula::evaluate_method<UnnamedTotal>(doubled, masses, formula::RecordingSink<> { ruleTrace });
+    CHECK(formula::render_trace(ruleTrace, { .maxSteps = 20 }).find(", in 1/1000 kg) = 157/25000 kg") != std::string::npos);
 }
 
 TEST_CASE("a constant and a numeric value in a unit with no symbol say what scale their number is on",
