@@ -835,7 +835,8 @@ TEST_CASE("the norm-shaped cases keep the headroom they were measured with, less
     // numerators grow to 29 bits, and the control below reads 42; with
     // checked_add scaling a sum by the product of the denominators rather
     // than their least common multiple, the twenty masses' variance failed
-    // to evaluate.
+    // to evaluate at 64 bits; at 128 bits it evaluates, and the headroom
+    // check below is what fails.
     Used const twenty = census_of([] { REQUIRE(dispersion_of(twentyMasses)); });
     CHECK(twenty.headroom() >= 82 - 4);
     Used const curve = census_of([] { REQUIRE(grading_curve_read()); });

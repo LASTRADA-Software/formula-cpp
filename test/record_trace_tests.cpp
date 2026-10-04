@@ -347,7 +347,9 @@ TEST_CASE("a step costs what it cost before records were traced", "[record-trace
     // number -- still fit in padding `Step` already had; each origin and each
     // lineage comparison lives once, in the trace's side tables. A checked
     // standard library's containers are larger, and so is every step there, so
-    // only an unchecked 64-bit build pins the number.
+    // only an unchecked 64-bit build pins the number. The optional value's 40
+    // bytes depend on no container, so they are pinned on every build.
+    static_assert(sizeof(std::optional<formula::Rational>) == 40);
 #if (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0) || defined(_GLIBCXX_DEBUG)
     SUCCEED("a checked standard library's containers change every step's size, so nothing is pinned here");
 #else
