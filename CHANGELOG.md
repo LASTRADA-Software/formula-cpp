@@ -51,6 +51,9 @@ change is recorded here.
   fits the declared places: e^45 to 18 places, e^88 to whole units. The exponential is computed with 192 fraction
   bits, so a result as wide as a `Rational` is still decided: e^43 to 18 places, `Overflow` before though the result
   fits, now answers.
+- The numeric headroom page's least-squares table gives the most bits the exact curve fit's wide integers used, as
+  the overflow census measures it, in place of figures no test checked; the opaque-operation guide's widths of an
+  exact fit's outputs are pinned by a test.
 
 ## [0.3.0] - 2026-10-01
 

@@ -330,24 +330,23 @@ is checked against it at 27 and 28 points on a different denominator for
 every point, and at 128 on the readings at 3 decimal places. The last two
 rows fit the same shapes the way `rounded_output` does: the slope reported to
 4 decimal places of N/s, computed by `LinearLeastSquares::compute_exact` in
-256-bit integers and rounded exactly; the node is checked against that at 57,
-58 and 128 points. For those two rows the last column counts `Rational`'s
-128-bit integers only,
-the rounded result and its conversion among them, and not the fit's 256-bit
-intermediates, which the census does not see: they reach 68 bits on the
-readings at 3 decimal places, and up to 249 of the 256 on a different
-denominator for every point, at the sizes that still answer. So a large
-figure there says nothing of how close the fit came to its 256 bits.
+wide integers and rounded exactly; the node is checked against that at 57,
+58 and 128 points. For those two rows the fourth column counts `Rational`'s
+128-bit integers only, the rounded result and its conversion among them. The
+fit itself computes in wider integers, and the last column gives the most
+bits any of them used at the sizes that still answer: how near the fit came
+to its width, which the column's heading states. The first three rows
+compute in `Rational` and form no wide integer.
 
 <!-- census:least-squares -->
 
-| data (invented) | sizes that overflow | first to overflow | least headroom otherwise |
-|---|---|---|---|
-| readings at 1 dp (realistic) | 0 of 127 | none | 93 |
-| readings at 3 dp near 2410 N, a load cell's (realistic) | 0 of 127 | none | 54 |
-| a different denominator on every point (stress control) | 101 of 127 | 28 points | 6 |
-| the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic) | 0 of 127 | none | 105 |
-| the slope rounded to 4 dp by rounded_output: a different denominator on every point (stress control) | 71 of 127 | 58 points | 112 |
+| data (invented) | sizes that overflow | first to overflow | least headroom otherwise | widest fit intermediate (of 256 bits) |
+|---|---|---|---|---|
+| readings at 1 dp (realistic) | 0 of 127 | none | 93 | -- |
+| readings at 3 dp near 2410 N, a load cell's (realistic) | 0 of 127 | none | 54 | -- |
+| a different denominator on every point (stress control) | 101 of 127 | 28 points | 6 | -- |
+| the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic) | 0 of 127 | none | 105 | 68 |
+| the slope rounded to 4 dp by rounded_output: a different denominator on every point (stress control) | 71 of 127 | 58 points | 112 | 249 |
 
 <!-- /census:least-squares -->
 
