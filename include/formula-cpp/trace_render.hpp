@@ -600,12 +600,13 @@ namespace detail
     /// that a slope in metres per second does not read as a pure number.
     ///
     /// A named base dimension is spelt by its name -- the name is also the
-    /// symbol of its coherent unit -- ahead of the SI units on its side of the
-    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
-    /// per joule, `JPY^-1`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
-    /// read as money per energy, not as seconds squared of money per metre.
-    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
-    /// only letters and digits, but a hand-filled `namedBases` can hold
+    /// symbol of its coherent unit -- ahead of the SI units, in the dimension's
+    /// own order: on its side of the slash, or among the negated factors when
+    /// nothing stands above it. `EUR`, `EUR s^2/(m^2 kg)` for euros per joule,
+    /// `EUR^-1 s^-1`, `JPY^-1`, `EUR/JPY`, `EUR^(1/2)`. First, because a
+    /// tariff is read as money per energy, not as seconds squared of money per
+    /// metre. Each name goes through `escaped_author_text`: `base_dimension()`
+    /// admits only letters and digits, but a hand-filled `namedBases` can hold
     /// anything.
     ///
     /// A dimension with no positive exponent is written with negative

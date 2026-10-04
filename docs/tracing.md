@@ -372,15 +372,16 @@ order"`.) `kg^2` and `kg^2/m^3` are no symbols anyone declared. `coherent()`
 (`evaluate.hpp`) hands a computed step a `Unit` with no symbol at all, and the
 renderer spells such a unit from the SI base units -- `m`, `kg`, `s`, `A`, `K`,
 `mol`, `cd` -- with the name of each named base dimension ahead of them:
-`kg/(m s^2)` for a pressure, `s^-1` for a frequency -- a unit with nothing
-above the slash is written with negative exponents, so that `20000/413 kg^-1`
-cannot read as a fraction divided again -- `EUR` for a price per kilowatt-hour
-times an energy. A computed mass reads `kg`, a computed length `m`. Only a
-dimensionless value is a bare number: `#1 / #2` above, a ratio of two volumes,
-reads `3/5`. A value declared in a unit of the author's own that has no symbol
-reads in the coherent unit too, converted, since its number alone could not
-say what scale it is on. A dimensionless unit with a scale must have a symbol,
-so a bare number is always a value at scale 1.
+`kg/(m s^2)` for a pressure, `s^-1` for a frequency, `EUR` for a price per
+kilowatt-hour times an energy. A unit with nothing above the slash is written
+with negative exponents. So `20000/413 kg^-1` cannot read as a fraction
+divided again, as `20000/413 1/kg` would. A computed mass reads `kg`, a
+computed length `m`. Only a dimensionless value is a bare number: `#1 / #2`
+above, a ratio of two volumes, reads `3/5`. A value declared in a unit of the
+author's own that has no symbol reads in the coherent unit too, converted,
+since its number alone could not say what scale it is on. A dimensionless
+unit with a scale must have a symbol, so a bare number is always a value at
+scale 1.
 
 A computed step borrows its unit off the steps it read in these cases:
 

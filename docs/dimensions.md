@@ -459,8 +459,9 @@ unit, and the trace spells that unit out after its number (see
 [Tracing and audit trails](tracing.md#reading-a-derivation)) -- as it does for
 an opaque operation's output that no input's unit fits
 ([Opaque operations and bounded retry](opaque-and-retry.md)). A named base is
-written by its name, ahead of the SI units on its side of the slash:
-`EUR s^2/(m^2 kg)` for euros per joule, then `JPY^-1`, `EUR/JPY`, `EUR^(1/2)`.
+written by its name, ahead of the SI units: on its side of the slash, or
+among the negated factors when nothing stands above it. So `EUR s^2/(m^2 kg)`
+for euros per joule, `EUR^-1 s^-1`, `JPY^-1`, `EUR/JPY`, `EUR^(1/2)`.
 The money comes first because a tariff is read as money per energy.
 
 ## Limits
