@@ -3828,9 +3828,11 @@ class RecordingSink
     /// Records the pass-1 step, claiming the level expression's step as its
     /// operand, and binds the level for the limit expression that follows.
     ///
-    /// Its value is in @p levelUnit, the unit of the quantity the limit's
-    /// placeholders name, so that the level reads as the results do; its
-    /// dimension is the level expression's.
+    /// It reads in the unit of the step it restates when that unit has a
+    /// symbol and holds exactly its value (`detail::restated_unit_or`), as
+    /// pass 2 does; otherwise in @p levelUnit, the unit of the quantity the
+    /// limit's placeholders name, so that the level reads as the results do.
+    /// Its dimension is the level expression's.
     void precision_level_produced(PrecisionKind precisionKind, Unit levelUnit, Evaluated<Rep> const& produced)
     {
         // Told without `precision_level_entered`, or after a second sink
@@ -3857,6 +3859,12 @@ class RecordingSink
             levelStep.error = produced.error();
         else if (produced->has_value())
             levelStep.value = **produced;
+        // Pass 1 restates the level expression's value, so it reads in the
+        // unit of the step it restates, as pass 2 and a conditional do: a
+        // level constant in grams reads in grams on both lines. The unit the
+        // types give stays the answer when nothing can be borrowed.
+        levelStep.unit = detail::restated_unit_or(_trace->steps, levelStep.operands, levelStep.dimension,
+                                                  levelStep.value, levelUnit);
 
         std::size_t const levelIndex = _trace->steps.size();
         std::size_t const recordIndex = _trace->precisionRecords.size();

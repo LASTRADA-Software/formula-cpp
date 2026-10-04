@@ -540,6 +540,35 @@ TEST_CASE("a conditional reads in its chosen branch's unit, offset or not", "[tr
              "4. if #1 > #2 then #3 = 25 \xc2\xb0" "C\n");
 }
 
+TEST_CASE("a precision limit's first pass reads in the unit of the level it restates", "[trace-render][shown-unit][precision]")
+{
+    // The level is a constant in grams and the limit names no quantity, so
+    // nothing in the types says grams: pass 1 reads off the step it restates,
+    // 40 g, never 1/25 kg.
+    CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                         formula::constant<unit::Gram>(Rational { 40 }), formula::constant<unit::Gram>(Rational { 1 })),
+                     determinations)
+              .starts_with("1. 40 g\n"
+                           "2. level (pass 1 of 2) = #1 = 40 g\n"));
+    // A level constant in a unit with no symbol cannot lend its unit
+    // (`restated_unit_or` borrows only a unit with a symbol): pass 1 stays in
+    // the unit the types give, the coherent kilogram, as before.
+    CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                         formula::constant<UnnamedGram>(Rational { 40000 }), formula::constant<unit::Gram>(Rational { 1 })),
+                     determinations)
+              .find("2. level (pass 1 of 2) = #1 = 40 kg\n")
+          != std::string::npos);
+    // A level constant in degrees Celsius is a point on an offset scale, which
+    // `borrowable_for_a_point` lets a restating step show: pass 1 reads in
+    // degrees Celsius, as the constant's own line does, never as a kelvin
+    // difference.
+    CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                         formula::constant<unit::Celsius>(Rational { 20 }), formula::constant<unit::Celsius>(Rational { 1 })),
+                     determinations)
+              .find("2. level (pass 1 of 2) = #1 = 20 \xc2\xb0" "C\n")
+          != std::string::npos);
+}
+
 TEST_CASE("a Celsius reading scaled by a pure number, and its absolute value, read in kelvin",
           "[trace-render][shown-unit]")
 {
@@ -842,6 +871,11 @@ TEST_CASE("every value of a rejection, a bill, the statistics, a precision limit
         formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Kilogram>(Rational { 1, 3 }),
                                                                         formula::constant<unit::Kilogram>(Rational { 1, 7 }))
             * var<HeavyMass>,
+        pair));
+    // A precision limit over a level constant in grams.
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Gram>(Rational { 40 }),
+                                                                        formula::constant<unit::Gram>(Rational { 1 })),
         pair));
 
     // An opaque call, its outputs, and a sum over one of them.

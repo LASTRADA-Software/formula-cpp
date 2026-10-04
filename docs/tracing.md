@@ -395,7 +395,9 @@ A computed step borrows its unit off the steps it read in these cases:
   their two precisions.
 - A negation and an absolute value read in their operand's unit, and a
   conditional in its chosen branch's: `if #1 > #2 then #3 = 60 MPa`. A
-  precision limit reads in its second pass's.
+  precision limit reads in its second pass's, and its first pass in the unit
+  of the level it restates: a level constant in grams reads in grams on both
+  lines.
 - A value that is a point on its operand's scale -- a mean, a pass's mean, a
   rejected determination -- reads in that operand's unit when it has a
   symbol, offset or not: a mean of Celsius readings is a Celsius reading.
