@@ -133,8 +133,9 @@ absent input, computes no integer, so there is nothing for the census to tally. 
 evaluates one formula at run time, and that evaluation returns a value a
 person entered without computing it, so its row reports no integer either.
 
-The figures are deterministic: the census program prints the same on cl
-19.51 and gcc 13.3, and the clang and gcc presets hold it to the same pins.
+The figures are deterministic: the census program's own tables print the
+same on cl 19.51, clang-cl 22.1, g++ 14.2 and clang++ 20.1, each of which
+regenerates this page and compares it, and holds the census to the same pins.
 The examples table below is cl's. clang and gcc evaluate a `const` local's
 constant initialiser at compile time, where cl runs it, so under them a
 program can report fewer integers and leave more headroom. The test holds

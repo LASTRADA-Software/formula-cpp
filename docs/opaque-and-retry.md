@@ -208,7 +208,8 @@ twenty-seven distinct denominators: overflow in exact arithmetic
 ```
 
 **When a fit overflows depends on the data far more than on the number of
-points.** Measured on cl 19.51: integers, readings at one decimal place,
+points.** Measured, and the same, on cl 19.51, clang-cl 22.1, g++ 14.2 and
+clang++ 20.1: integers, readings at one decimal place,
 thirds mixed with sevenths, and readings at three decimal places of a few
 thousand never overflow for 2 to 128 points; a different denominator on
 every point overflows from 28, and the example's, in millimetres, from 27.
