@@ -35,9 +35,9 @@ using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre
 using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Kilometre>;
 using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", unit::One>;
 
-// The formula and its citation, declared together, exactly as in
-// examples/citations.cpp -- documented() attaches the citation, and attaching
-// it changes nothing this file evaluates or traces.
+// The same formula and citation as examples/citations.cpp, declared together
+// -- documented() attaches the citation, and attaching it changes nothing this
+// file evaluates or traces.
 constexpr auto gradient = formula::documented(var<Rise> / var<Run>,
                                               { .title = "Road gradient",
                                                 .reference = "Example Standard 1:2020",
@@ -73,7 +73,7 @@ int main()
     // wrapper around it.
     bool const tracedCorrectly = explained.trace.steps.size() == 4;
     // The run's step states it as it was entered, in kilometres, while the
-    // division beneath it worked in metres.
+    // division that consumes it, step 3, worked on 3000 m.
     bool const inputShownAsEntered = rendered.contains("2. L = 3 km\n");
 
     bool const allChecksPassed = evaluatedCorrectly && tracedCorrectly && inputShownAsEntered;

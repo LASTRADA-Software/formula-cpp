@@ -30,7 +30,7 @@ using formula::var;
 using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
 using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
 using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", unit::One>;
-using GradientPerCent = formula::Quantity<struct GradientPerCentTag, "s_pc", "road gradient, per cent", unit::One>;
+using GradientPerCent = formula::Quantity<struct GradientPerCentTag, "s_pc", "road gradient, per cent", unit::Percent>;
 
 // The formula and its citation, declared together: documented() attaches the
 // citation to the division, and forwards that division's dimension unchanged.
@@ -46,10 +46,10 @@ constexpr auto gradient = formula::documented(var<Rise> / var<Run>,
 constexpr auto sparse = formula::documented(var<Rise>, { .title = "A height" });
 
 // A documented formula used inside another, documented in turn: the gradient
-// times 100, a gradient per cent, carrying a citation of its own.
-constexpr auto perCent =
-    formula::documented(gradient * formula::Rational { 100 },
-                        { .title = "Road gradient, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
+// stated per cent, carrying a citation of its own. It needs no factor of 100:
+// evaluated into a quantity in per cent, the unit does the scaling.
+constexpr auto perCent = formula::documented(
+    gradient, { .title = "Road gradient, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
 
 } // namespace
 
