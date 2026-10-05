@@ -32,6 +32,7 @@ add_executable(formula-cpp-tests
     expression_tests.cpp
     rational_tests.cpp
     rational_literal_tests.cpp
+    decimal_parsing_tests.cpp
     render_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp

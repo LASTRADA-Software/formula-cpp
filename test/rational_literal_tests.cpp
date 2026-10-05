@@ -48,5 +48,11 @@ TEST_CASE("_r: the edges of what is exact", "[rational][literal]")
 {
     STATIC_REQUIRE(00.5_r == Rational { 1, 2 });     // a leading zero is fine once there is a point
     STATIC_REQUIRE(0e3_r == Rational {});
-    STATIC_REQUIRE(1e-18_r == Rational { 1, 1'000'000'000'000'000'000 }); // the largest exact denominator
+    STATIC_REQUIRE(1e-18_r == Rational { 1, 1'000'000'000'000'000'000 });
+}
+
+TEST_CASE("_r: a literal wider than 64 bits", "[rational][literal]")
+{
+    STATIC_REQUIRE(12'345'678'901'234'567'890_r == 1'234'567'890_r * 10'000'000'000_r + 1'234'567'890_r);
+    STATIC_REQUIRE(0.000'000'000'000'000'000'1_r == *Rational::from_decimal(1, -19));
 }

@@ -25,6 +25,7 @@
 #include <expected>
 #include <limits>
 #include <optional>
+#include <string_view>
 #include <type_traits>
 
 namespace formula
@@ -125,11 +126,19 @@ class Rational
     }
 
     /// `mantissa * 10^exponent`, exactly. The preferred way to write a decimal:
-    /// `from_decimal(45, -2)` is 9/20, not the nearest double to 0.45.
+    /// `from_decimal(45, -2)` is 9/20, not the nearest double to 0.45. The
+    /// scale reaches from 10^-38 to 10^38; a negative exponent first folds the
+    /// mantissa's trailing zeros, so `from_decimal(10, -39)` is 1/10^38.
+    /// `Overflow` for a value no `Rational` holds.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_decimal(Int mantissa, int exponent) noexcept
     {
         if (mantissa == 0)
             return Rational {};
+        while (exponent < 0 && mantissa % 10 == 0)
+        {
+            mantissa /= 10;
+            ++exponent;
+        }
         if (exponent >= 0)
         {
             std::optional<Int> const scaledMantissa = detail::mul_pow10(mantissa, exponent);
@@ -137,11 +146,18 @@ class Rational
                 return std::unexpected { ArithmeticError::Overflow };
             return Rational { *scaledMantissa };
         }
-        std::optional<Int> const powerOfTen = detail::pow10(-exponent);
+        if (exponent < -38) // before negating: -INT_MIN would overflow int
+            return std::unexpected { ArithmeticError::Overflow };
+        std::optional<Int> const powerOfTen = detail::pow10_wide(-exponent);
         if (!powerOfTen)
             return std::unexpected { ArithmeticError::Overflow };
         return make(mantissa, *powerOfTen);
     }
+
+    /// The value `parse_decimal_text` reads from @p spelling: `"2.400"` is
+    /// 12/5. `DomainError` for text that is not a decimal, `Overflow` for a
+    /// value no `Rational` holds.
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_decimal_text(std::string_view spelling) noexcept;
 
     /// The exact value of the double, which is a dyadic rational. Usually not
     /// what a norm means: 0.45 as a double is not 9/20. Prefer from_decimal, or
@@ -531,6 +547,162 @@ constexpr Rational& operator/=(Rational& leftOperand, Rational rightOperand)
 /// state which number it was.
 inline constexpr Rational Pi { 245'850'922, 78'256'779 };
 
+/// A decimal read from text: its exact value, and the places it was typed to.
+struct ParsedDecimal
+{
+    /// The exact value: `"2.400"` is 12/5.
+    Rational value;
+    /// The digits after the point, minus the exponent, never below 0: `"2.400"` is 3, `"2.4"` is 1, `"1.5e3"` is 0.
+    std::int32_t places;
+
+    /// Equal when both the value and the places are.
+    constexpr bool operator==(ParsedDecimal const&) const noexcept = default;
+};
+
+namespace detail
+{
+    /// Which spelling `parse_decimal` reads: run-time text, or a `_r` literal's spelling.
+    enum class DecimalSyntax : std::uint8_t
+    {
+        /// An optional sign, digits with at most one point, an optional exponent; leading zeros are fine.
+        Text,
+        /// What C++ hands a literal operator: no sign, digit separators (`'`), and no leading zero that C++ reads
+        /// as octal, hexadecimal or binary.
+        Literal,
+    };
+
+    /// The exact value of a decimal spelling, and its places as typed. `DomainError` for a spelling that is not a
+    /// decimal in @p syntax, `Overflow` for a value no `Rational` holds. The mantissa accumulates in 128 bits;
+    /// fractional zeros are deferred, so trailing ones cost nothing.
+    [[nodiscard]] constexpr std::expected<ParsedDecimal, ArithmeticError> parse_decimal(std::string_view spelling,
+                                                                                    DecimalSyntax syntax) noexcept
+    {
+        bool const literal = syntax == DecimalSyntax::Literal;
+        std::size_t at = 0;
+        bool negative = false;
+        if (!literal && at < spelling.size() && (spelling[at] == '+' || spelling[at] == '-'))
+        {
+            negative = spelling[at] == '-';
+            ++at;
+        }
+        if (literal && spelling.size() > 1 && spelling[0] == '0'
+            && spelling.find_first_of(".eE") == std::string_view::npos)
+            return std::unexpected { ArithmeticError::DomainError }; // 017, 0x1F, 0b101
+        Rational::Int mantissa { 0 };
+        std::int64_t decimalScale = 0;   // decimal exponent the digits carry
+        std::int64_t pendingZeros = 0;   // fractional zeros not yet multiplied in
+        std::int64_t fractionDigits = 0; // digits after the point, as typed
+        bool inFraction = false;
+        bool sawDigit = false;
+        for (; at < spelling.size() && spelling[at] != 'e' && spelling[at] != 'E'; ++at)
+        {
+            char const symbolAt = spelling[at];
+            if (literal && symbolAt == '\'')
+                continue;
+            if (symbolAt == '.')
+            {
+                if (inFraction)
+                    return std::unexpected { ArithmeticError::DomainError };
+                inFraction = true;
+                continue;
+            }
+            if (symbolAt < '0' || symbolAt > '9') // also how a literal such as 0x1E, past the leading guard, is refused
+                return std::unexpected { ArithmeticError::DomainError };
+            sawDigit = true;
+            int const digitValue = symbolAt - '0';
+            if (inFraction)
+                ++fractionDigits;
+            if (inFraction && digitValue == 0)
+            {
+                ++pendingZeros;
+                continue;
+            }
+            for (std::int64_t zero = 0; zero <= pendingZeros; ++zero) // the zeros, then this digit's place
+            {
+                std::optional<Rational::Int> const shifted = mul_checked_or_none(mantissa, Rational::Int { 10 });
+                if (!shifted)
+                    return std::unexpected { ArithmeticError::Overflow };
+                std::optional<Rational::Int> const placed =
+                    add_checked_or_none(*shifted, Rational::Int { zero == pendingZeros ? digitValue : 0 });
+                if (!placed)
+                    return std::unexpected { ArithmeticError::Overflow };
+                mantissa = *placed;
+            }
+            if (inFraction)
+                decimalScale -= pendingZeros + 1;
+            pendingZeros = 0;
+        }
+        if (!sawDigit)
+            return std::unexpected { ArithmeticError::DomainError };
+        std::int64_t exponentValue = 0;
+        if (at < spelling.size()) // at an e or E
+        {
+            ++at;
+            bool exponentNegative = false;
+            if (at < spelling.size() && (spelling[at] == '+' || spelling[at] == '-'))
+            {
+                exponentNegative = spelling[at] == '-';
+                ++at;
+            }
+            bool sawExponentDigit = false;
+            for (; at < spelling.size(); ++at)
+            {
+                if (literal && spelling[at] == '\'')
+                    continue;
+                if (spelling[at] < '0' || spelling[at] > '9')
+                    return std::unexpected { ArithmeticError::DomainError };
+                sawExponentDigit = true;
+                if (exponentValue <= 1'000) // bounded while read: anything above is refused below
+                    exponentValue = exponentValue * 10 + (spelling[at] - '0');
+            }
+            if (!sawExponentDigit)
+                return std::unexpected { ArithmeticError::DomainError };
+            if (exponentNegative)
+                exponentValue = -exponentValue;
+        }
+        std::int64_t const placesTyped = fractionDigits - exponentValue;
+        if (placesTyped > std::numeric_limits<std::int32_t>::max())
+            return std::unexpected { ArithmeticError::Overflow };
+        std::int32_t const places = placesTyped < 0 ? 0 : static_cast<std::int32_t>(placesTyped);
+        if (mantissa == 0)
+            return ParsedDecimal { Rational {}, places };
+        if (exponentValue > 1'000 || exponentValue < -1'000) // as `_r` has always refused
+            return std::unexpected { ArithmeticError::Overflow };
+        std::int64_t const totalScale = decimalScale + exponentValue;
+        if (totalScale > 1'000 || totalScale < -1'000) // keeps the narrowing to int safe; from_decimal decides the rest
+            return std::unexpected { ArithmeticError::Overflow };
+        std::expected<Rational, ArithmeticError> const made =
+            Rational::from_decimal(mantissa, static_cast<int>(totalScale));
+        if (!made)
+            return std::unexpected { made.error() };
+        if (!negative)
+            return ParsedDecimal { *made, places };
+        // The mantissa is never negative, so its negation always fits.
+        std::expected<Rational, ArithmeticError> const negated = checked_negate(*made);
+        if (!negated)
+            return std::unexpected { negated.error() };
+        return ParsedDecimal { *negated, places };
+    }
+} // namespace detail
+
+/// Parses decimal text that arrives at run time -- a CSV import, a form field, a configuration value -- into its
+/// exact value and the places it was typed to: `"2.400"` is 12/5 at 3 places, `"2.4"` 12/5 at 1. An optional sign,
+/// digits with at most one point, an optional exponent (`e` or `E`, an optional sign, digits). `DomainError` for
+/// anything else -- whitespace, a decimal comma, separators, `inf`, `nan` -- and `Overflow` for a value no `Rational`
+/// holds. The same parser reads `_r` literals.
+[[nodiscard]] constexpr std::expected<ParsedDecimal, ArithmeticError> parse_decimal_text(std::string_view spelling) noexcept
+{
+    return detail::parse_decimal(spelling, detail::DecimalSyntax::Text);
+}
+
+constexpr std::expected<Rational, ArithmeticError> Rational::from_decimal_text(std::string_view spelling) noexcept
+{
+    std::expected<ParsedDecimal, ArithmeticError> const parsed = parse_decimal_text(spelling);
+    if (!parsed)
+        return std::unexpected { parsed.error() };
+    return parsed->value;
+}
+
 namespace detail
 {
     /// A `_r` literal whose exact value `Rational` cannot hold: too many
@@ -552,73 +724,18 @@ namespace detail
     }
 
     /// The exact value of a decimal literal's spelling: digits, an optional
-    /// fraction, an optional exponent, and digit separators.
+    /// fraction, an optional exponent, and digit separators. Read by
+    /// `parse_decimal`, the parser `parse_decimal_text` uses, in its literal
+    /// syntax; each refusal becomes its compile-time sentinel.
     consteval Rational rational_from_spelling(char const* spelling)
     {
-        std::size_t at = 0;
-        // Also true for an exponent: that is how `0x1E` gets past the leading guard, to be refused at its `x`.
-        bool const hasPoint = [&] {
-            for (std::size_t probe = 0; spelling[probe] != '\0'; ++probe)
-                if (spelling[probe] == '.' || spelling[probe] == 'e' || spelling[probe] == 'E')
-                    return true;
-            return false;
-        }();
-        if (spelling[0] == '0' && spelling[1] != '\0' && !hasPoint)
-            formula_rational_literal_not_a_decimal(); // 017, 0x1F, 0b101
-        Int mantissa = 0;
-        int decimalScale = 0;  // decimal exponent the digits carry
-        int pendingZeros = 0;  // fractional zeros not yet multiplied in
-        bool inFraction = false;
-        for (; spelling[at] != '\0' && spelling[at] != 'e' && spelling[at] != 'E'; ++at)
-        {
-            char const symbolAt = spelling[at];
-            if (symbolAt == '\'')
-                continue;
-            if (symbolAt == '.')
-            {
-                inFraction = true;
-                continue;
-            }
-            if (symbolAt < '0' || symbolAt > '9') // the only refusal of a hexadecimal spelling holding e or E, such as 0x1E
-                formula_rational_literal_not_a_decimal();
-            int const digitValue = symbolAt - '0';
-            if (inFraction && digitValue == 0)
-            {
-                ++pendingZeros;
-                continue;
-            }
-            for (int zero = 0; zero <= pendingZeros; ++zero) // the zeros, then this digit's place
-            {
-                int const placed = zero == pendingZeros ? digitValue : 0;
-                if (mantissa > (IntMax - placed) / 10)
-                    formula_rational_literal_out_of_range();
-                mantissa = mantissa * 10 + placed;
-            }
-            if (inFraction)
-                decimalScale -= pendingZeros + 1;
-            pendingZeros = 0;
-        }
-        if (spelling[at] == 'e' || spelling[at] == 'E')
-        {
-            ++at;
-            bool const negative = spelling[at] == '-';
-            if (spelling[at] == '-' || spelling[at] == '+')
-                ++at;
-            int written = 0;
-            for (; spelling[at] != '\0'; ++at)
-            {
-                if (spelling[at] == '\'')
-                    continue;
-                written = written * 10 + (spelling[at] - '0');
-                if (written > 1'000)
-                    formula_rational_literal_out_of_range();
-            }
-            decimalScale += negative ? -written : written;
-        }
-        std::expected<Rational, ArithmeticError> const made = Rational::from_decimal(mantissa, decimalScale);
-        if (!made)
+        std::expected<ParsedDecimal, ArithmeticError> const parsed =
+            parse_decimal(std::string_view { spelling }, DecimalSyntax::Literal);
+        if (!parsed && parsed.error() == ArithmeticError::DomainError)
+            formula_rational_literal_not_a_decimal();
+        if (!parsed)
             formula_rational_literal_out_of_range();
-        return *made;
+        return parsed->value;
     }
 } // namespace detail
 
@@ -626,8 +743,9 @@ inline namespace literals
 {
     /// An exact decimal: `27.3_r` is 273/10, never the `double` nearest it.
     /// An exponent scales exactly (`1.5e-3_r` is 3/2000); `-27.3_r` is
-    /// `Rational`'s own negation. A spelling `Rational` cannot hold, or one
-    /// that is not a decimal (`0x1F_r`, and `017_r`, which C++ reads as
+    /// `Rational`'s own negation. A spelling no `Rational` holds (more than
+    /// 128 bits, or an exponent beyond 10^±38 once trailing zeros fold), or
+    /// one that is not a decimal (`0x1F_r`, and `017_r`, which C++ reads as
     /// octal), fails to compile, naming `formula_rational_literal_out_of_range`
     /// or `formula_rational_literal_not_a_decimal`.
     consteval Rational operator""_r(char const* spelling)
