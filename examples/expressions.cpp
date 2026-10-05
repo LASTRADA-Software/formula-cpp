@@ -50,11 +50,11 @@ using MassInKilogram = formula::Quantity<struct MassInKilogramTag, "m", "specime
 
 // ---- 5: a formula whose result a person may override ----
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", unit::One>;
 
-constexpr auto waterCementRatio = formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);
+constexpr auto gradient = formula::yields<Gradient>(var<Rise> / var<Run>);
 
 } // namespace
 
@@ -90,16 +90,19 @@ int main()
     std::println("a diameter plus an area does not compile: see the comment above main() and docs/expressions.md");
 
     // ---- 5. A manually entered result replaces the computed one ----
-    auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
-                                            formula::Measured<CementVolume> { 300 },
-                                            formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
-    auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
-    if (!ratio)
+    //
+    // The rise and run give 90 m / 3000 m = 0.03, but the gradient a surveyor
+    // entered by hand, 0.05, is the one reported, and it says it was entered.
+    auto const climb = formula::environment(formula::Measured<Rise> { 90 },
+                                            formula::Measured<Run> { 3000 },
+                                            formula::entered(formula::Measured<Gradient> { 0.05_r }));
+    auto const slope = formula::checked_evaluate(gradient, climb);
+    if (!slope)
     {
-        std::println("water/cement ratio: {}", ratio.error());
+        std::println("road gradient: {}", slope.error());
         return 1;
     }
-    std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
+    std::println("{} = {} ({})", formula::symbol_of<Gradient>(), *slope, slope->source());
 
     // Every number printed above is checked here; nothing is printed that this
     // bool does not also cover. number_of is empty for a result that is not a
@@ -110,7 +113,7 @@ int main()
                                        && area->source() == formula::ValueSource::Derived;
     bool const massConvertsExactly = formula::number_of(massConverted) == 2.5_r;
     bool const absenceStaysEmpty = emptyArea->is_empty();
-    bool const overrideWinsOutright = ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
+    bool const overrideWinsOutright = slope->is_overridden() && formula::number_of(slope) == 0.05_r;
 
     bool const allChecksPassed = circularAreaIsCorrect && massConvertsExactly && absenceStaysEmpty && overrideWinsOutright;
     std::println("all checks passed: {}", allChecksPassed ? "yes" : "no");
