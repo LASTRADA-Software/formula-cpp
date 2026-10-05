@@ -37,8 +37,8 @@ change is recorded here.
   places. The quantity's `unit` carries those places: `checked_round_to_declared` rounds to them, and
   `number_text`, `std::format` and traces pad to them and round an approximation to them, while an exact decimal is
   still written in full. `same_unit(leftUnit, rightUnit)` says whether two units are the same unit -- the same
-  dimension, factor, offset, symbol and key (`view_ascii`) -- whatever their declared decimals and bounds, which `==`,
-  comparing every member, does not answer.
+  dimension, factor and offset as declared, symbol and key (`view_ascii`) -- whatever their declared decimals and
+  bounds, which `==`, comparing every member, does not answer. A factor of 2/2000 is not the same as 1/1000 there.
 - `formula::parse_decimal_text` reads decimal text that arrives at run time -- a CSV import, a form field, a
   configuration value -- into a `ParsedDecimal`: its exact value and the places it was typed to, so `"2.400"` is 12/5
   at 3 places and `"2.4"` is 12/5 at 1. `Rational::from_decimal_text` gives the value alone. Text that is not a

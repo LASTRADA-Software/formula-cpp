@@ -229,9 +229,9 @@ for both.
 
 `FineCurrent::unit == Milliampere` is false, since `==` compares every member
 of a unit, its decimals among them. Whether two quantities share a unit is what
-`formula::same_unit` answers: the same scale, symbol and ASCII key, whatever
-their decimals and bounds. `same_unit(FineCurrent::unit, Milliampere)` and
-`same_unit(FineCurrent::unit, CoarseCurrent::unit)` are both true.
+`formula::same_unit` answers: the same scale as declared, symbol and ASCII key,
+whatever their decimals and bounds. `same_unit(FineCurrent::unit, Milliampere)`
+and `same_unit(FineCurrent::unit, CoarseCurrent::unit)` are both true.
 
 ## `Describe<T>`, and foreign types
 
@@ -335,10 +335,9 @@ if (!diluted)
 ```
 
 A callback that returns a bare `Rational` does not compile with either: it
-cannot fail, so it belongs to `transform` or `combine`, and its message, which
-begins
-`formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>`,
-says so (`checked_combine`'s names itself, and `combine`). A callback that
+cannot fail, so it belongs to `transform` or `combine`. The message begins
+`formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>`
+and says so (`checked_combine`'s names itself, and `combine`). A callback that
 cannot be called with the value at all is refused too, with
 `formula: a checked_transform callback must be callable with a Rational`, or
 `formula: a checked_combine callback must be callable with two Rationals`.
@@ -448,13 +447,12 @@ The conversion, the rounding and the two bounds checks each have a throwing
 twin, for callers who would only rethrow the error: `formula::convert_to<R>`,
 `formula::round_to_declared`, `formula::within_bounds` and `formula::within`,
 which take the same arguments and return the value itself, and throw
-`ArithmeticException`
-where the `checked_` form returns an error. Absence behaves as above -- an
-absent measurement converts and rounds to an absent one and is `NotMeasured`
-for its bounds -- and a conversion across dimensions does not compile in
-either spelling. The worked example keeps the `checked_` forms, and checks
-each result before it reads it, as shown [above](#measurements-that-may-be-absent)
-for the conversion.
+`ArithmeticException` where the `checked_` form returns an error. Absence
+behaves as above -- an absent measurement converts and rounds to an absent one
+and is `NotMeasured` for its bounds -- and a conversion across dimensions does
+not compile in either spelling. The worked example keeps the `checked_` forms,
+and checks each result before it reads it, as shown
+[above](#measurements-that-may-be-absent) for the conversion.
 
 ## Limits
 

@@ -177,6 +177,9 @@ TEST_CASE("same_unit: what a unit is, not its decimals or bounds", "[unit][same_
     STATIC_REQUIRE(formula::same_unit(Base, OtherDecimals));
     STATIC_REQUIRE(!formula::same_unit(Base, formula::unit::Metre));                 // magnitude
     STATIC_REQUIRE(!formula::same_unit(formula::unit::Kelvin, formula::unit::Celsius)); // offset
+    constexpr formula::Unit Unreduced { .dimension = formula::dim::Length, .magnitudeNumerator = 2,
+                                        .magnitudeDenominator = 2000, .symbolText = formula::symbol("mm") };
+    STATIC_REQUIRE(!formula::same_unit(Base, Unreduced)); // the factor as declared, not reduced
     constexpr formula::Unit OtherSymbol { .dimension = formula::dim::Length, .magnitudeNumerator = 1,
                                           .magnitudeDenominator = 1000, .symbolText = formula::symbol("MM") };
     STATIC_REQUIRE(!formula::same_unit(Base, OtherSymbol));

@@ -172,10 +172,11 @@ namespace detail
     }
 } // namespace detail
 
-/// Whether two units are the same unit: the same scale (dimension, factor, offset), the same display symbol and the
-/// same key (`view_ascii`). Their declared decimals and bounds may differ -- a quantity read to a tenth of a
-/// milliampere and one read to whole milliamperes are both in milliamperes -- which is what `==`, comparing every
-/// member, does not answer. Use this, or `view_ascii`, to key a table by unit.
+/// Whether two units are the same unit: the same scale (dimension, factor, offset, compared as the integer pairs
+/// declared, not reduced -- a factor of 2/2000 is not 1/1000 here), the same display symbol and the same key
+/// (`view_ascii`). Their declared decimals and bounds may differ -- a quantity read to a tenth of a milliampere and
+/// one read to whole milliamperes are both in milliamperes -- which is what `==`, comparing every member, does not
+/// answer. Use this, or `view_ascii`, to key a table by unit.
 [[nodiscard]] constexpr bool same_unit(Unit const& leftUnit, Unit const& rightUnit) noexcept
 {
     return detail::same_scale(leftUnit, rightUnit) && view(leftUnit.symbolText) == view(rightUnit.symbolText)
@@ -211,7 +212,8 @@ struct SignificantRounding
 
 /// Named units. The `decimals` values are ordinary engineering defaults, not
 /// requirements from any standard; a caller that needs a different precision
-/// states it at the point of use.
+/// states it at the point of use, or declares it on the quantity (`Quantity`'s
+/// `Places` parameter).
 ///
 /// **Symbols are emitted verbatim in plain text and in Markdown.**
 /// `render.hpp` appends `view(unit.symbolText)` to the number without escaping

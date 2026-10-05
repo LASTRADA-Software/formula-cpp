@@ -5,9 +5,8 @@ and a unit descriptor built on top of it, `formula::Unit`. This page explains
 why a dimension is a type rather than a runtime tag, how to compose one, why
 its exponents are rational rather than integer, what a `Unit` carries, how a
 unit is keyed for serialising and compared, how conversion between units stays
-exact, where the declared-precision and
-bounds machinery sits, and how an application declares a base dimension the
-SI does not have, such as money.
+exact, where the declared-precision and bounds machinery sits, and how an
+application declares a base dimension the SI does not have, such as money.
 
 The worked example is `examples/dimensions_and_units.cpp`. **Program output**
 on this page is copied verbatim from that program's output, and
@@ -18,12 +17,11 @@ source, and `docs.dimensions-snippets` fails unless each code block appears
 there as a run of consecutive lines, compared without their indentation
 (`cmake/CheckGuideSnippets.cmake`). A code block deliberately not from the
 example carries a `<!-- snippet: not from the example -->` comment directly
-above it; two on this page do, the block declaring a unit with an ASCII
-key and the block showing that `formula::exponent(1, 0)` does not compile. A
-couple of numeric facts that
-the example does not itself print are given as plain rationals instead, each
-naming the `static_assert` in the test suite that pins it -- never formatted
-as if a program had printed them.
+above it; two on this page do, the block declaring a unit with an ASCII key
+and the block showing that `formula::exponent(1, 0)` does not compile. A couple
+of numeric facts that the example does not itself print are given as plain
+rationals instead, each naming the `static_assert` in the test suite that pins
+it -- never formatted as if a program had printed them.
 
 ## Why dimensions are types
 
@@ -191,10 +189,9 @@ number, and every conversion here is by exact rational magnitude; a `Degree`
 would have to be either inexact or unconvertible, and neither is a choice to
 make silently.
 
-Their `decimals` values are ordinary engineering
-defaults, not a requirement taken from any standard -- a caller that needs a
-different precision states it at the point of use, or declares it on the
-quantity (see
+Their `decimals` values are ordinary engineering defaults, not a requirement
+taken from any standard -- a caller that needs a different precision states it
+at the point of use, or declares it on the quantity (see
 [Quantities and measurements](quantities.md#a-quantitys-own-decimal-places)).
 
 ### A stable ASCII key
@@ -247,9 +244,12 @@ The key is never displayed: `render()`, traces, `number_text` and
 `==` compares every member of two units, `asciiText`, `decimals` and `bounds`
 among them: a unit declared to one decimal place is not `==` to the same unit
 declared to none. `formula::same_unit(leftUnit, rightUnit)` asks whether two
-units are the same unit: the same dimension, factor and offset, the same
-`symbolText` and the same key (`view_ascii`), whatever their decimals and
-bounds. A key declared equal to the symbol is the same key as none declared.
+units are the same unit: the same dimension, the same factor and offset as
+declared, the same `symbolText` and the same key (`view_ascii`), whatever their
+decimals and bounds. The factor and offset are compared as the integer pairs
+written, not reduced: a unit declared with a factor of 2/2000 is not the same
+unit as one declared with 1/1000, though it converts identically. A key
+declared equal to the symbol is the same key as none declared.
 Use `same_unit`, or `view_ascii`, to key a table by unit, and to ask whether two
 quantities that declare their own decimal places (see
 [Quantities and measurements](quantities.md#a-quantitys-own-decimal-places))
