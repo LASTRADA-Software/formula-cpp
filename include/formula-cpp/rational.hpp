@@ -126,10 +126,11 @@ class Rational
     }
 
     /// `mantissa * 10^exponent`, exactly. The preferred way to write a decimal:
-    /// `from_decimal(45, -2)` is 9/20, not the nearest double to 0.45. The
-    /// scale reaches from 10^-38 to 10^38; a negative exponent first folds the
-    /// mantissa's trailing zeros, so `from_decimal(10, -39)` is 1/10^38.
-    /// `Overflow` for a value no `Rational` holds.
+    /// `from_decimal(45, -2)` is 9/20, not the nearest double to 0.45. A
+    /// negative exponent first folds the mantissa's trailing zeros, so
+    /// `from_decimal(10, -39)` is 1/10^38. `Overflow` when the exponent, after
+    /// that folding, lies outside -38 to 38, or when the scaled value does not
+    /// fit: `from_decimal(25, -39)` is refused, though 1/(4 * 10^37) would fit.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_decimal(Int mantissa, int exponent) noexcept
     {
         if (mantissa == 0)
@@ -652,7 +653,9 @@ namespace detail
                 if (spelling[at] < '0' || spelling[at] > '9')
                     return std::unexpected { ArithmeticError::DomainError };
                 sawExponentDigit = true;
-                if (exponentValue <= 1'000) // bounded while read: anything above is refused below
+                // Bounded while read, so it cannot overflow: past what places can state, it stops growing, and
+                // that is refused below.
+                if (exponentValue <= std::numeric_limits<std::int32_t>::max())
                     exponentValue = exponentValue * 10 + (spelling[at] - '0');
             }
             if (!sawExponentDigit)

@@ -45,6 +45,8 @@ TEST_CASE("parse_decimal_text: the value and the places as typed", "[rational][t
     STATIC_REQUIRE(parses_as("5.", Rational { 5 }, 0));
     STATIC_REQUIRE(parses_as("007", Rational { 7 }, 0));
     STATIC_REQUIRE(parses_as("0e99999", Rational {}, 0));
+    STATIC_REQUIRE(parses_as("0e-12345", Rational {}, 12345)); // a zero's places count every exponent digit
+    STATIC_REQUIRE(parses_as("0.000e5", Rational {}, 0));
 }
 
 TEST_CASE("parse_decimal_text: text that is not a decimal is DomainError", "[rational][text]")
@@ -66,6 +68,7 @@ TEST_CASE("parse_decimal_text: a value no Rational holds is Overflow", "[rationa
     STATIC_REQUIRE(refused_as("1e39", ArithmeticError::Overflow));
     STATIC_REQUIRE(refused_as("1e-39", ArithmeticError::Overflow));
     STATIC_REQUIRE(refused_as("1e1001", ArithmeticError::Overflow));
+    STATIC_REQUIRE(refused_as("0e-99999999999", ArithmeticError::Overflow)); // places no std::int32_t states
     // A thousand fractional zeros before a digit: refused, not a wrong value and not a hang.
     std::string const deepFraction = "0." + std::string(1000, '0') + "1";
     REQUIRE(refused_as(deepFraction, ArithmeticError::Overflow));

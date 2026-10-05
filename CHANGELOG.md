@@ -23,7 +23,7 @@ change is recorded here.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.
-- `_r` literals take a 128-bit mantissa, so every integer a `Rational` holds can be written as one
+- `_r` literals take a 128-bit mantissa, so every integer up to 2^127 - 1 in magnitude can be written as one
   (`12'345'678'901'234'567'890_r` compiles), and `Rational::from_decimal` and `_r` scale by powers of ten from
   10^-38 to 10^38 rather than stopping at 10^18. `from_decimal` folds a mantissa's trailing zeros into a negative
   exponent first, so `from_decimal(10, -39)` is 1/10^38. Only refusals turn into answers: every value that answered

@@ -181,8 +181,8 @@ Anything else is `ArithmeticError::DomainError`: the empty text, whitespace
 anywhere (trim before parsing), a decimal comma (`"2,4"`), any digit separator
 (`"1'000"`, `"1_000"`), a second point, hexadecimal, `inf`, `nan`, and an
 exponent with no digits (`"1e"`). A value no `Rational` holds is
-`ArithmeticError::Overflow`: more than 128 bits of digits, or a scale beyond
-10^-38 to 10^38. Trailing zeros after the point cost nothing, however many.
+`ArithmeticError::Overflow`: digits whose magnitude is above 2^127 − 1, or a
+scale beyond 10^-38 to 10^38 once trailing zeros fold. Trailing zeros after the point cost nothing, however many.
 
 ## Exact or nothing
 
@@ -308,9 +308,9 @@ the answer.
 
 `Rational`'s numerator and denominator are `formula::Int128`, signed 128-bit
 integers: each holds up to 2^127 − 1, and a numerator down to −2^127 -- up to
-39 decimal digits. That is the integer width only. `DecimalPlaces` and the
-decimal-place form of `round` stay limited to ±18 places, as `from_decimal`'s
-exponent and the `_r` literal's 18 places are; an out-of-range
+39 decimal digits. `from_decimal`'s exponent, the `_r` literal and
+`parse_decimal_text` reach 10^-38 to 10^38. `DecimalPlaces` and the
+decimal-place form of `round` stay limited to ±18 places; an out-of-range
 `DecimalPlaces` reports `Overflow`, while an out-of-range `SignificantDigits`
 (fewer than 1) reports `DomainError` -- both mean "argument outside the
 domain of the operation", but a caller switching on the code should expect

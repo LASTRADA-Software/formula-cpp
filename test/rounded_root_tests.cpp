@@ -182,6 +182,18 @@ TEST_CASE("rounded_sqrt reports overflow rather than a wrapped result", "[rounde
     STATIC_REQUIRE(outcome.error() == formula::ArithmeticError::Overflow);
 }
 
+TEST_CASE("rounded_sqrt takes places from -18 to 18, as checked_round does", "[rounded_root]")
+{
+    using formula::detail::rounded_square_root;
+    // The root of 2 is irrational, so this is the digit-by-digit path, not checked_round's.
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 18 }, RoundingMode::Floor).value()
+                   == *Rational::from_decimal(1'414'213'562'373'095'048, -18));
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 19 }, RoundingMode::Floor).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { -19 }, RoundingMode::Floor).error()
+                   == formula::ArithmeticError::Overflow);
+}
+
 TEST_CASE("rounded_sqrt reports overflow at the exact 2^128 edge of the whole part", "[rounded_root]")
 {
     // v * 10^4 for N/1000, with N = 34028236692093846346337460743176821145
