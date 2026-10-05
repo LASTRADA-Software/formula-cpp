@@ -144,6 +144,7 @@ struct BinnedNode: SeriesNodeBase
                                      detail::RequireBinnedKeyMatches<KeyUnit, Obs>,
                                      std::true_type>::value);
     static_assert(detail::RequireNamedScaledScalar<KeyUnit>::value);
+    static_assert(detail::RequireAsciiKey<KeyUnit>::value);
 
     /// The observations counted. No `{}` initialiser, deliberately: see
     /// `Corrections` (`lookup.hpp`).

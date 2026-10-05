@@ -24,6 +24,31 @@
 namespace formula
 {
 
+namespace detail
+{
+    /// Whether every byte of @p spelling is printable ASCII, 0x20 to 0x7E. The empty text is.
+    [[nodiscard]] constexpr bool is_printable_ascii(std::string_view spelling) noexcept
+    {
+        for (char const byteAt: spelling)
+            if (static_cast<unsigned char>(byteAt) < 0x20U || static_cast<unsigned char>(byteAt) > 0x7EU)
+                return false;
+        return true;
+    }
+} // namespace detail
+
+/// Builds an ASCII key from run-time text: `checked_symbol`'s refusals, and `SymbolError::NotAscii` for any byte
+/// outside printable ASCII.
+[[nodiscard]] constexpr std::expected<Symbol, SymbolError> checked_ascii_symbol(std::string_view spelling) noexcept
+{
+    // checked_symbol first: a NUL is below 0x20, and must be reported as EmbeddedNull, not NotAscii.
+    std::expected<Symbol, SymbolError> const built = checked_symbol(spelling);
+    if (!built)
+        return std::unexpected { built.error() };
+    if (!detail::is_printable_ascii(spelling))
+        return std::unexpected { SymbolError::NotAscii };
+    return *built;
+}
+
 /// Optional validity range, in the unit's own scale, as exact rationals.
 struct Bounds
 {
@@ -78,6 +103,10 @@ struct Unit
     std::int64_t offsetDenominator = 1;
     /// How the unit is written: `mm`, `°C`, and so on.
     Symbol symbolText {};
+    /// A stable ASCII key for serialising the unit -- a JSON annotation, a database column, a client's choice -- that
+    /// stays the same when `symbolText` is restyled. Empty when the symbol is its own key; required when the symbol
+    /// is not printable ASCII (see `RequireAsciiKey`). Never displayed: read it with `view_ascii`.
+    Symbol asciiText {};
     /// The declared display precision -- see `declared_decimals`.
     std::int32_t decimals = 3;
     /// The declared validity range, if any -- see `checked_within_bounds`.
@@ -86,6 +115,24 @@ struct Unit
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(Unit const&) const noexcept = default;
 };
+
+/// The unit's serialising key: `asciiText` when one is declared, otherwise `symbolText`. Stable across restyling of
+/// the display symbol. A unit that a template takes is guaranteed printable ASCII here (`RequireAsciiKey`); for a unit
+/// built at run time, ask `has_ascii_key` first.
+[[nodiscard]] constexpr std::string_view view_ascii(Unit const& unitValue) noexcept
+{
+    std::string_view const declaredKey = view(unitValue.asciiText);
+    return declaredKey.empty() ? view(unitValue.symbolText) : declaredKey;
+}
+
+/// Deleted: the view would point into a destroyed temporary, as for `view(Symbol&&)`.
+std::string_view view_ascii(Unit&&) = delete;
+
+/// Whether @p unitValue has a printable-ASCII key: its declared `asciiText`, or, when none is declared, its symbol.
+[[nodiscard]] constexpr bool has_ascii_key(Unit const& unitValue) noexcept
+{
+    return detail::is_printable_ascii(view_ascii(unitValue));
+}
 
 /// A rounding to decimal places, named once and used wherever a method rounds
 /// the same way: which unit the places are of, how many, and which way to go.
@@ -153,6 +200,7 @@ namespace unit
                                      .magnitudeNumerator = 1,
                                      .magnitudeDenominator = 1000,
                                      .symbolText = symbol("\xe2\x80\xb0"),
+                                     .asciiText = symbol("permille"),
                                      .decimals = 1 };
     /// One part in a million. No decimals: a figure in parts per million is
     /// already at the resolution the number carries, and a fraction of one part
@@ -203,6 +251,7 @@ namespace unit
                                        .magnitudeNumerator = 1,
                                        .magnitudeDenominator = 1000000,
                                        .symbolText = symbol("\xc2\xb5" "m"),
+                                       .asciiText = symbol("um"),
                                        .decimals = 0 };
     /// One thousand metres.
     inline constexpr Unit Kilometre { .dimension = dim::Length,
@@ -314,6 +363,7 @@ namespace unit
                                     .offsetNumerator = 27315,
                                     .offsetDenominator = 100,
                                     .symbolText = symbol("\xc2\xb0" "C"),
+                                    .asciiText = symbol("degC"),
                                     .decimals = 1 };
     /// The other affine unit. A degree is exactly 5/9 of a kelvin, and zero
     /// degrees Fahrenheit is exactly 459.67 * 5/9 = 45967/180 kelvin, so no
@@ -328,6 +378,7 @@ namespace unit
                                        .offsetNumerator = 45967,
                                        .offsetDenominator = 180,
                                        .symbolText = symbol("\xc2\xb0" "F"),
+                                       .asciiText = symbol("degF"),
                                        .decimals = 1 };
 
     /// The coherent SI unit of force. One decimal rather than `Pascal`'s
@@ -573,6 +624,21 @@ namespace detail
                       "formula: a dimensionless unit with a scale must have a symbol (for example \"%\"), or the "
                       "quantity must be declared in scale 1; the unit appears in this diagnostic as the template "
                       "argument of RequireNamedScaledScalar");
+
+        /// Always `true` once reached -- the `static_assert` above already failed compilation otherwise.
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when @p U's symbol is not printable ASCII and it declares no ASCII key (`has_ascii_key`).
+    /// Asserted wherever `RequireNamedScaledScalar` is, so every unit a quantity, constant, rounding or table uses
+    /// can be serialised by `view_ascii`. Write `::value`, as there.
+    template <Unit U>
+    struct RequireAsciiKey
+    {
+        static_assert(has_ascii_key(U),
+                      "formula: a unit whose symbol is not ASCII must declare an ASCII key (asciiText), for "
+                      "example .asciiText = formula::symbol(\"ug/L\") for ug/L written with a micro sign; the unit "
+                      "appears in this diagnostic as the template argument of RequireAsciiKey");
 
         /// Always `true` once reached -- the `static_assert` above already failed compilation otherwise.
         static constexpr bool value = true;

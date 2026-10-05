@@ -170,6 +170,7 @@ struct SnapNode: NodeBase
     static_assert(std::conditional_t<(Permitted.size() > 0), RequireValidBreakpointTable<Permitted>, std::true_type>::value);
     static_assert(std::conditional_t<setIsValid, detail::RequireSnapKeyMatches<KeyUnit, Operand>, std::true_type>::value);
     static_assert(detail::RequireNamedScaledScalar<KeyUnit>::value);
+    static_assert(detail::RequireAsciiKey<KeyUnit>::value);
 
     /// The expression whose value is snapped. No `{}` initialiser,
     /// deliberately: see `Corrections` (`lookup.hpp`).

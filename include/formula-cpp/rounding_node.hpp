@@ -50,6 +50,7 @@ struct RoundNode: NodeBase
 {
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The expression being rounded.
     ///
@@ -77,6 +78,7 @@ struct RoundSignificantNode: NodeBase
 {
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The expression being rounded.
     ///

@@ -353,6 +353,15 @@ formula_add_negative_test(scaled_scalar_unit_without_symbol_constant
 formula_add_negative_test(scaled_scalar_unit_without_symbol_snap
     "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1
     REJECT "key unit does not measure" "breakpoints do not strictly ascend")
+formula_add_negative_test(unit_without_ascii_key_var
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1)
+formula_add_negative_test(unit_without_ascii_key_measured
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1)
+formula_add_negative_test(unit_without_ascii_key_constant
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1)
+formula_add_negative_test(unit_without_ascii_key_snap
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1
+    REJECT "key unit does not measure" "breakpoints do not strictly ascend")
 
 # A conversion between measured quantities of different dimensions is refused where
 # it is written, with or without a value, and once.

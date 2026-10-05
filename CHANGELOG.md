@@ -16,6 +16,14 @@ change is recorded here.
   for byte, and returns `std::expected<Symbol, SymbolError>`: `SymbolError::TooLong` for text that does not fit,
   `SymbolError::EmbeddedNull` for text holding a NUL byte. It never truncates and never aborts. `describe()` spells a
   `SymbolError` for an error message, and `std::format` writes it in the same words.
+- **A stable ASCII key per unit.** `Unit` gains `asciiText`, a key for serialising the unit -- a JSON annotation, a
+  database column, a client's choice -- that stays the same when its display symbol is restyled.
+  `view_ascii(unit)` returns it, or the symbol when no key is declared; `has_ascii_key(unit)` says whether that text
+  is printable ASCII; `checked_ascii_symbol()` builds a key from run-time text, refusing what `checked_symbol()`
+  refuses and any byte outside printable ASCII with `SymbolError::NotAscii`. The built-in units whose symbols are not
+  ASCII declare keys: `PerMille` `permille`, `Micrometre` `um`, `Celsius` `degC`, `Fahrenheit` `degF`. A trace's
+  derived quotient unit carries a key when either of its units declares one (`um/s` for `µm/s`). The key is never
+  displayed: renderings, traces, `number_text` and `std::format` still write the symbol.
 
 ### Changed
 
@@ -25,6 +33,11 @@ change is recorded here.
   name holds 31 bytes, enough for compound laboratory units such as `µmol/(L·min·kg)` (18 bytes of UTF-8). `Symbol`
   is 16 bytes larger, and `Dimension` and `Unit`, which hold symbols, are larger with it; the longest text
   `number_text` spells grows from 97 to 113 bytes, still within `NumberTextCapacity`.
+- **Breaking:** a unit whose symbol is not ASCII must declare an ASCII key, `.asciiText = formula::symbol("ug/L")`
+  for a symbol written `µg/L`, where a template takes it -- as a quantity's unit, a constant's, a rounding's, or a
+  table's key or result. Without one it no longer compiles, with
+  `formula: a unit whose symbol is not ASCII must declare an ASCII key`; a key that is itself not ASCII is refused
+  the same way. `Unit` is larger by the new `Symbol` member.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.

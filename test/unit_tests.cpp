@@ -1172,3 +1172,59 @@ TEST_CASE("a dimensionless unit with a scale and no symbol is the one a declarat
     STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::Percent>::value);
     STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::One>::value);
 }
+
+// ---- the ASCII key ----
+
+TEST_CASE("view_ascii: a unit's key, or its symbol when that is ASCII", "[unit][ascii]")
+{
+    STATIC_REQUIRE(formula::view_ascii(unit::Millimetre) == "mm");
+    STATIC_REQUIRE(formula::view_ascii(unit::PerMille) == "permille");
+    STATIC_REQUIRE(formula::view_ascii(unit::Micrometre) == "um");
+    STATIC_REQUIRE(formula::view_ascii(unit::Celsius) == "degC");
+    STATIC_REQUIRE(formula::view_ascii(unit::Fahrenheit) == "degF");
+    // Bound to a name first: `view_ascii` of a temporary is deleted, as `view` of one is.
+    constexpr Unit coherentMass = formula::coherent(dim::Mass);
+    STATIC_REQUIRE(formula::view_ascii(coherentMass).empty());
+    // The display symbol is unchanged.
+    STATIC_REQUIRE(formula::view(unit::Micrometre.symbolText) == "\xc2\xb5m");
+}
+
+TEST_CASE("has_ascii_key: false for a non-ASCII symbol without a key, and for a non-ASCII key", "[unit][ascii]")
+{
+    constexpr Unit MicrogramPerLitreUnkeyed { .dimension = dim::Mass / dim::Volume,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 1'000'000,
+                                              .symbolText = formula::symbol("\xc2\xb5g/L") };
+    STATIC_REQUIRE(!formula::has_ascii_key(MicrogramPerLitreUnkeyed));
+
+    constexpr Unit MicrogramPerLitre { .dimension = dim::Mass / dim::Volume,
+                                       .magnitudeNumerator = 1,
+                                       .magnitudeDenominator = 1'000'000,
+                                       .symbolText = formula::symbol("\xc2\xb5g/L"),
+                                       .asciiText = formula::symbol("ug/L") };
+    STATIC_REQUIRE(formula::has_ascii_key(MicrogramPerLitre));
+    STATIC_REQUIRE(formula::view_ascii(MicrogramPerLitre) == "ug/L");
+
+    // An ASCII symbol with a key that is not ASCII is refused like a missing key: the key is what a serialiser trusts.
+    constexpr Unit BadKey { .dimension = dim::Length,
+                            .magnitudeNumerator = 1,
+                            .magnitudeDenominator = 1'000'000,
+                            .symbolText = formula::symbol("um"),
+                            .asciiText = formula::symbol("\xc2\xb5m") };
+    STATIC_REQUIRE(!formula::has_ascii_key(BadKey));
+    STATIC_REQUIRE(formula::has_ascii_key(unit::Millimetre));
+}
+
+TEST_CASE("checked_ascii_symbol: printable ASCII only", "[unit][ascii]")
+{
+    // Bound to a name first: `view` of the temporary would be the deleted `view(Symbol&&)`.
+    constexpr std::expected<formula::Symbol, formula::SymbolError> asciiKey = formula::checked_ascii_symbol("ug/L");
+    STATIC_REQUIRE(asciiKey.has_value());
+    STATIC_REQUIRE(formula::view(*asciiKey) == "ug/L");
+    STATIC_REQUIRE(formula::checked_ascii_symbol("\xc2\xb5g/L").error() == formula::SymbolError::NotAscii);
+    STATIC_REQUIRE(formula::checked_ascii_symbol("tab\there").error() == formula::SymbolError::NotAscii);
+    STATIC_REQUIRE(formula::checked_ascii_symbol("abcdefghijklmnopqrstuvwxyz012345").error()
+                   == formula::SymbolError::TooLong);
+    STATIC_REQUIRE(formula::checked_ascii_symbol(std::string_view { "u\0g", 3 }).error()
+                   == formula::SymbolError::EmbeddedNull);
+}

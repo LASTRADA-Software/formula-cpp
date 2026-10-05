@@ -234,11 +234,23 @@ namespace detail
     struct RequireDescribedUnitNamesItsScale<T, true>: RequireNamedScaledScalar<Describe<T>::unit>
     {
     };
+
+    /// `RequireAsciiKey` of a described type's unit, asked only once the type is described, as above.
+    template <typename T, bool IsDescribed = Described<T>>
+    struct RequireDescribedUnitHasAsciiKey: std::true_type
+    {
+    };
+
+    template <typename T>
+    struct RequireDescribedUnitHasAsciiKey<T, true>: RequireAsciiKey<Describe<T>::unit>
+    {
+    };
 } // namespace detail
 
 /// Fails to compile, in our own words, when `T` declares no metadata,
-/// declares metadata whose `dimension` contradicts its own `unit`, or declares
-/// it in a dimensionless unit with a scale and no symbol.
+/// declares metadata whose `dimension` contradicts its own `unit`, declares
+/// it in a dimensionless unit with a scale and no symbol, or declares it in a
+/// unit whose symbol is not ASCII and that has no ASCII key.
 ///
 /// The counterpart to `Describe` being silent: somewhere has to say what to do
 /// about it, and a bare "no member named 'symbol'" does not. Same shape as
@@ -264,6 +276,7 @@ struct RequireDescribed
                   "disagrees mislabels every value read through it -- derive Describe<T>::dimension "
                   "from Describe<T>::unit.dimension instead of stating it independently");
     static_assert(detail::RequireDescribedUnitNamesItsScale<T>::value);
+    static_assert(detail::RequireDescribedUnitHasAsciiKey<T>::value);
 
     /// Always `true` once reached -- the `static_assert`s above already failed
     /// compilation otherwise. Present so `::value` is the spelling that

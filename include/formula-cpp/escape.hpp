@@ -88,6 +88,7 @@ struct NumericValueNode: NodeBase
                   "NUL bytes defeats the only safeguard this escape hatch has");
     static_assert(detail::RequireEscapeUnitMatches<U, Operand>::value);
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The expression whose numeric value is taken.
     ///

@@ -131,6 +131,7 @@ A `formula::Unit` is a small aggregate, and every field earns its place:
 | `magnitudeNumerator` / `magnitudeDenominator` | the exact multiplicative factor to the coherent unit -- the coherent SI unit, times one of each named base dimension -- as an integer ratio |
 | `offsetNumerator` / `offsetDenominator` | the exact additive offset, for an affine scale such as degrees Celsius or degrees Fahrenheit |
 | `symbolText` | a fixed-capacity display symbol (a `Symbol`, not a `std::string_view`); required for a dimensionless unit with a scale |
+| `asciiText` | a stable ASCII key for serialising the unit, read with `view_ascii`; empty when the symbol is its own key, required when the symbol is not ASCII |
 | `decimals` | the declared display precision |
 | `bounds` | an optional valid range, in the unit's own scale |
 
@@ -191,6 +192,51 @@ make silently.
 Their `decimals` values are ordinary engineering
 defaults, not a requirement taken from any standard -- a caller that needs a
 different precision states it at the point of use.
+
+### A stable ASCII key
+
+A unit's symbol is for display, and may be restyled: `µ` or `u`, a middle dot,
+a superscript. Code that serialises a unit -- a JSON annotation, a database
+column naming a unit, a client's choice of unit -- needs a name that stays the
+same, and reads it with `formula::view_ascii(unit)`: the unit's `asciiText`
+when it declares one, otherwise its `symbolText`. ASCII here means printable
+ASCII, the bytes 0x20 to 0x7E; the empty text counts.
+
+A unit whose symbol is not ASCII must declare its key:
+
+<!-- snippet: not from the example -->
+```cpp
+inline constexpr formula::Unit MicrogramPerLitre { .dimension = formula::dim::Mass / formula::dim::Volume,
+                                                   .magnitudeNumerator = 1,
+                                                   .magnitudeDenominator = 1'000'000,
+                                                   .symbolText = formula::symbol("µg/L"),
+                                                   .asciiText = formula::symbol("ug/L") };
+```
+
+Without the key, the unit is refused wherever it is written -- as a quantity's
+unit, a constant's, a rounding's, or a table's key or result, the same places
+a dimensionless unit with a scale and no symbol is refused -- with
+`formula: a unit whose symbol is not ASCII must declare an ASCII key`. A key
+that is itself not ASCII is refused the same way: the key is what a serialiser
+trusts. The four built-in units whose symbols are not ASCII declare theirs:
+
+| Unit | Symbol | `asciiText` |
+|---|---|---|
+| `PerMille` | `‰` | `permille` |
+| `Micrometre` | `µm` | `um` |
+| `Celsius` | `°C` | `degC` |
+| `Fahrenheit` | `°F` | `degF` |
+
+A unit built at run time is not checked where it is written, so ask
+`formula::has_ascii_key(unit)` before trusting `view_ascii`; build its key from
+run-time text with `formula::checked_ascii_symbol()`, which refuses what
+`checked_symbol()` refuses and returns `SymbolError::NotAscii` for any byte
+outside printable ASCII. A trace's derived quotient unit carries a key when
+either of its units declares one: micrometres per second are shown as `µm/s`
+and keyed `um/s`.
+
+The key is never displayed: `render()`, traces, `number_text` and
+`std::format` write `symbolText`.
 
 ## Exact conversion
 

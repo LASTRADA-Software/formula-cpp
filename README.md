@@ -221,6 +221,12 @@ the outcome or the error, and neither is read unchecked. The area is held
 exactly, with `formula::pi` an exact fraction close to pi, and has no short
 decimal, so it is printed rounded to six places and marked `≈`.
 
+To serialise a unit -- a JSON annotation, a database column -- write
+`formula::view_ascii(unit)`, its stable ASCII key, not its display symbol,
+which may be restyled. A unit whose symbol is not ASCII declares the key as
+`.asciiText` (`µm` is keyed `um`), and one that does not is refused where it is
+written.
+
 ### A measurement nobody took stays missing
 
 ```cpp

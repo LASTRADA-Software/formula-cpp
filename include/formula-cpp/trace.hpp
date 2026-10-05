@@ -2830,15 +2830,46 @@ namespace detail
                || unitSymbol.find("\xe2\x8b\x85") != std::string_view::npos; // U+22C5 dot operator
     }
 
+    /// @p overText and @p underText joined by a slash, the divisor bracketed
+    /// when it is more than one unit word (`compound_unit_symbol`): the
+    /// spelling of a quotient unit, its symbol and its key alike. Empty when
+    /// either is empty or already holds a slash (`m/s/s` reads two ways), or
+    /// when the joined text, brackets included, would not fit a `Symbol`.
+    [[nodiscard]] inline std::optional<Symbol> quotient_unit_text(std::string_view overText,
+                                                                  std::string_view underText) noexcept
+    {
+        bool const bracketed = compound_unit_symbol(underText);
+        if (overText.empty() || underText.empty() || overText.find('/') != std::string_view::npos
+            || underText.find('/') != std::string_view::npos
+            || overText.size() + 1 + underText.size() + (bracketed ? 2 : 0) + 1 > SymbolCapacity)
+            return std::nullopt;
+        Symbol joined {};
+        std::size_t written = 0;
+        for (char const spelt: overText)
+            joined.characters[written++] = spelt;
+        joined.characters[written++] = '/';
+        if (bracketed)
+            joined.characters[written++] = '(';
+        for (char const spelt: underText)
+            joined.characters[written++] = spelt;
+        if (bracketed)
+            joined.characters[written++] = ')';
+        return joined;
+    }
+
     /// The quotient of two units, `N/mm` from `N` and `mm`: its magnitude the
     /// quotient of theirs and its symbol theirs joined by a slash, the
     /// denominator bracketed when it is more than one unit word
-    /// (`mm/(mPa.s)`, `compound_unit_symbol`). Empty when either has an
+    /// (`mm/(mPa.s)`, `quotient_unit_text`). When either declares an ASCII
+    /// key, the quotient's key is their `view_ascii` keys joined the same way
+    /// -- `um/s` for micrometres per second, whose symbol keeps its micro
+    /// sign -- and refused the same way; when neither does, the quotient
+    /// declares none, and its symbol is its key. Empty when either has an
     /// offset, has no symbol, is dimensionless -- a ratio is not a percentage
     /// because some input was one, as `opaque_output_unit` rules for a
     /// dimensionless output -- or already holds a slash (`m/s/s` reads two
-    /// ways), or when the symbol, the magnitude or the dimension would not
-    /// fit -- the dimension when the quotient's own named base dimensions
+    /// ways), or when the symbol, the key, the magnitude or the dimension would
+    /// not fit -- the dimension when the quotient's own named base dimensions
     /// would number more than `NamedBaseCapacity`: a name both units carry
     /// counts once, or not at all when its exponents cancel. That is judged
     /// with `merged_dimension`, not `operator/`, whose guard aborts when
@@ -2854,12 +2885,13 @@ namespace detail
         if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar
             || under.dimension == dim::Scalar)
             return std::nullopt;
-        std::string_view const overSymbol = view(over.symbolText);
-        std::string_view const underSymbol = view(under.symbolText);
-        bool const bracketed = compound_unit_symbol(underSymbol);
-        if (overSymbol.empty() || underSymbol.empty() || overSymbol.find('/') != std::string_view::npos
-            || underSymbol.find('/') != std::string_view::npos
-            || overSymbol.size() + 1 + underSymbol.size() + (bracketed ? 2 : 0) + 1 > SymbolCapacity)
+        std::optional<Symbol> const quotientSymbol = quotient_unit_text(view(over.symbolText), view(under.symbolText));
+        if (!quotientSymbol)
+            return std::nullopt;
+        bool const keyed = !view(over.asciiText).empty() || !view(under.asciiText).empty();
+        std::optional<Symbol> const quotientKey =
+            keyed ? quotient_unit_text(view_ascii(over), view_ascii(under)) : std::optional<Symbol> { Symbol {} };
+        if (!quotientKey)
             return std::nullopt;
         std::expected<Rational, ArithmeticError> const magnitude =
             RepTraits<Rational>::divide(Rational { over.magnitudeNumerator, over.magnitudeDenominator },
@@ -2874,21 +2906,12 @@ namespace detail
         MergedDimension const quotientDimension = merged_dimension(over.dimension, under.dimension, true);
         if (!quotientDimension.fits)
             return std::nullopt;
-        Unit quotientUnit { .dimension = quotientDimension.dimension,
-                            .magnitudeNumerator = *magnitudeTop,
-                            .magnitudeDenominator = *magnitudeBottom,
-                            .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
-        std::size_t written = 0;
-        for (char const spelt: overSymbol)
-            quotientUnit.symbolText.characters[written++] = spelt;
-        quotientUnit.symbolText.characters[written++] = '/';
-        if (bracketed)
-            quotientUnit.symbolText.characters[written++] = '(';
-        for (char const spelt: underSymbol)
-            quotientUnit.symbolText.characters[written++] = spelt;
-        if (bracketed)
-            quotientUnit.symbolText.characters[written++] = ')';
-        return quotientUnit;
+        return Unit { .dimension = quotientDimension.dimension,
+                      .magnitudeNumerator = *magnitudeTop,
+                      .magnitudeDenominator = *magnitudeBottom,
+                      .symbolText = *quotientSymbol,
+                      .asciiText = *quotientKey,
+                      .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
     }
 
     /// The unit an opaque output of @p dimension is shown in, from the units

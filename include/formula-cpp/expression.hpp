@@ -51,6 +51,7 @@ struct VarNode: NodeBase
                   "no formula containing it can be trusted; the quantity appears in this "
                   "diagnostic as the template argument of VarNode");
     static_assert(detail::RequireNamedScaledScalar<Describe<Q>::unit>::value);
+    static_assert(detail::RequireAsciiKey<Describe<Q>::unit>::value);
 
     /// The quantity this node names -- the key an `Environment` is asked with.
     using quantity = Q;
@@ -77,6 +78,7 @@ template <Unit U>
 struct ConstantNode: NodeBase
 {
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The coefficient, in terms of `unit`.
     Rational number {};
