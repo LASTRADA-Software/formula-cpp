@@ -173,6 +173,7 @@ Each program's largest integers over everything it evaluates at run time.
 | example `records` | 25 | 25 | 25 | 102 |
 | example `opaque_and_retry` | 93 | 96 | 121 | 6 |
 | example `display` | 20 | 21 | 21 | 106 |
+| example `cycling_speed` | 59 | 49 | 59 | 68 |
 | the gallery generator | 29 | 27 | 29 | 98 |
 
 <!-- /census:examples -->

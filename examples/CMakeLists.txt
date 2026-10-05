@@ -324,3 +324,5 @@ add_test(NAME docs.display-snippets
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/display.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
+formula_add_example(cycling_speed cycling_speed.cpp "all checks passed: yes")
