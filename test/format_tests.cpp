@@ -397,6 +397,8 @@ TEST_CASE("a described enumeration is its words, aligned like a string", "[forma
     CHECK(std::format("[{:<12}]", formula::ConstraintOutcomeKind::Violated) == "[violated    ]");
     CHECK(std::format("{}", formula::ValueSource::ManuallyEntered) == "manually entered");
     CHECK(std::format("{}", formula::RetryEnd::Accepted) == formula::describe(formula::RetryEnd::Accepted));
+    CHECK(std::format("{}", formula::SymbolError::TooLong)
+          == "the symbol does not fit SymbolCapacity bytes, terminator included");
 }
 
 TEST_CASE("every enumeration with a describe() is formattable, and no other", "[format]")
@@ -413,6 +415,7 @@ TEST_CASE("every enumeration with a describe() is formattable, and no other", "[
     STATIC_REQUIRE(std::formattable<formula::ConstraintOutcomeKind, char>);
     STATIC_REQUIRE(std::formattable<formula::RetryEnd, char>);
     STATIC_REQUIRE(std::formattable<formula::Branch, char>);
+    STATIC_REQUIRE(std::formattable<formula::SymbolError, char>);
     // An enumeration with no describe() is not written: the formatter is not
     // a blanket one for every enumeration.
     STATIC_REQUIRE(!std::formattable<formula::CurveBreak, char>);

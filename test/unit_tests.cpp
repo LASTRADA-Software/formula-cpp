@@ -196,6 +196,11 @@ TEST_CASE("symbol(): a compound UTF-8 laboratory unit fits", "[unit][symbol]")
 {
     constexpr formula::Symbol compound = formula::symbol("\xc2\xb5mol/(L\xc2\xb7min\xc2\xb7kg)");
     STATIC_REQUIRE(formula::view(compound).size() == 18);
+
+    // 31 bytes, the most that fits, ending in a two-byte character: kept whole.
+    constexpr formula::Symbol widestLiteral = formula::symbol("abcdefghijklmnopqrstuvwxyz012\xc2\xb5");
+    STATIC_REQUIRE(formula::view(widestLiteral).size() == formula::SymbolCapacity - 1);
+    STATIC_REQUIRE(formula::view(widestLiteral).ends_with("\xc2\xb5"));
 }
 
 TEST_CASE("units report a readable symbol", "[unit]")

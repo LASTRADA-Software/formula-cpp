@@ -6,6 +6,8 @@
 /// dimensions and up to four named ones, usable as a non-type template
 /// parameter so that a dimension is part of a type rather than a runtime tag.
 
+#include <formula-cpp/error.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -296,6 +298,12 @@ enum class SymbolError : std::uint8_t
     }
     return "unknown symbol error";
 }
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<SymbolError> = true;
+} // namespace detail
 
 /// Builds a Symbol from run-time text -- a catalogue row, a configuration file -- byte for byte. Refuses text that
 /// does not fit or that holds a NUL; never truncates, never aborts. UTF-8 is not validated: a symbol is bytes.

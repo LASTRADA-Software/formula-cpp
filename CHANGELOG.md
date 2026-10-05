@@ -15,7 +15,7 @@ change is recorded here.
 - **`checked_symbol()`** builds a unit `Symbol` from run-time text -- a catalogue row, a configuration file -- byte
   for byte, and returns `std::expected<Symbol, SymbolError>`: `SymbolError::TooLong` for text that does not fit,
   `SymbolError::EmbeddedNull` for text holding a NUL byte. It never truncates and never aborts. `describe()` spells a
-  `SymbolError` for an error message.
+  `SymbolError` for an error message, and `std::format` writes it in the same words.
 
 ### Changed
 

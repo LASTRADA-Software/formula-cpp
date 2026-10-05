@@ -1145,6 +1145,27 @@ TEST_CASE("a quotient of two units is not offered when its dimension would need 
     CHECK(tariff->magnitudeDenominator == 3600000);
 }
 
+TEST_CASE("a quotient of two units is offered only while its symbol fits a Symbol", "[opaque][trace]")
+{
+    // A mass over a volume, spelled in 15 bytes each: with the slash, 31
+    // bytes, the most a Symbol holds before its terminator.
+    constexpr formula::Unit sampleMass { .dimension = formula::dim::Mass,
+                                         .symbolText = formula::symbol("AcmeSampleGrams") };
+    constexpr formula::Unit vialVolume { .dimension = formula::dim::Volume,
+                                         .symbolText = formula::symbol("AcmeVialVolumes") };
+    std::optional<formula::Unit> const fits = formula::detail::unit_quotient(sampleMass, vialVolume);
+    REQUIRE(fits.has_value());
+    CHECK(formula::view(fits->symbolText) == "AcmeSampleGrams/AcmeVialVolumes");
+    CHECK(formula::view(fits->symbolText).size() == formula::SymbolCapacity - 1);
+    CHECK(fits->dimension == formula::dim::Mass / formula::dim::Volume);
+
+    // One byte more would leave no room for the terminator: no quotient is
+    // offered, rather than a truncated symbol.
+    constexpr formula::Unit longerMass { .dimension = formula::dim::Mass,
+                                         .symbolText = formula::symbol("AcmeSampleGrams2") };
+    CHECK_FALSE(formula::detail::unit_quotient(longerMass, vialVolume).has_value());
+}
+
 TEST_CASE("an output's marker is judged by its operand step's kind, not by a row", "[opaque][trace]")
 {
     // A call's step and its output's, built by hand with no side tables: the

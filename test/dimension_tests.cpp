@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <iterator>
+#include <string_view>
 #include <type_traits>
 
 using formula::Exponent;
@@ -231,8 +232,11 @@ static_assert((FourBases / JPY * Token).namedBases[2].name == symbol("Token"));
 static_assert(formula::detail::merged_dimension(FourBases, Token / Voucher, false).fits,
               "five names go in, one cancels, four come out");
 
-// The longest name that fits, and digits after the first letter.
-static_assert(formula::base_dimension("AcmeLoyaltyUnit").namedBases[0].name == symbol("AcmeLoyaltyUnit"));
+// The longest name that fits -- 31 bytes, SymbolCapacity less the
+// terminator -- and digits after the first letter.
+static_assert(std::string_view { "AcmeLoyaltyProgrammeBonusPoints" }.size() == formula::SymbolCapacity - 1);
+static_assert(formula::base_dimension("AcmeLoyaltyProgrammeBonusPoints").namedBases[0].name
+              == symbol("AcmeLoyaltyProgrammeBonusPoints"));
 static_assert(formula::base_dimension("Credit2").namedBases[0].name == symbol("Credit2"));
 
 // g++ 13.3 and 14.2 miscompile what copy_then_overwrite_last_slot() does when
