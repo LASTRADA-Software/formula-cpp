@@ -1638,8 +1638,8 @@ template <Dialect D, SampleSource S, Vocabulary V>
 
 /// A sample's variance renders as a call on its sample,
 /// `sample_variance(m(i))`, and in LaTeX as `s^{2}({m}_{i})`, a spelling
-/// measured to typeset clean under MathJax and tectonic. The variance is one
-/// value and carries no series marker; its sample carries its own.
+/// measured to typeset clean. The variance is one value and carries no series
+/// marker; its sample carries its own.
 template <Dialect D, SampleSource S, Vocabulary V>
 [[nodiscard]] std::string render_node(SampleVarianceNode<S> const& node, V const& vocabulary)
 {

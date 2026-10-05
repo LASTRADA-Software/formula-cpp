@@ -1471,8 +1471,7 @@ formula_add_negative_test(interpolating_lookup_malformed_breakpoint
 #
 # The guard lives in `Variants`'s class body rather than in `variants()`, so
 # this one case covers the no-factory route too -- declaring a `Variants<...>`
-# directly completes the same class. That is measured, not assumed; the task
-# report records the build that showed it.
+# directly completes the same class. That is measured, not assumed.
 formula_add_negative_test(method_variants_disagree
     "formula: two variants of this method measure different dimensions")
 

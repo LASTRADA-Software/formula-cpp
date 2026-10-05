@@ -16,9 +16,8 @@
 // rest still refuses it. Measured on cl 19.51 against exactly that fixture:
 // the mutation survived, the test passed, and the defect would have shipped.
 //
-// Third of four lands in (0,2), between (0,1) and (0,3). Both mutations are
-// measured in the task report: each makes this file compile, and each is
-// caught.
+// Third of four lands in (0,2), between (0,1) and (0,3). Both mutations were
+// measured: each makes this file compile, and so each is caught.
 //
 // The three variants that DO agree are deliberately different types from one
 // another, so this file does not quietly assume a pack's agreeing members

@@ -179,8 +179,7 @@ struct SignificantDigits
 /// Rounds `unrounded` to the nearest multiple of `increment` under `roundingMode`.
 ///
 /// This is the primitive the decimal-place and significant-digit forms are built
-/// on, and it is also what snapping a computed sieve size onto a standard sieve
-/// series needs (`snap.hpp`).
+/// on.
 ///
 /// @pre `increment` is strictly positive; otherwise DomainError.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_multiple(

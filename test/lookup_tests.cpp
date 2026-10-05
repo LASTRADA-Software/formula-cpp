@@ -155,8 +155,7 @@ TEST_CASE("a value below the lowest band is reported as a miss, not a value", "[
 {
     // -5 mm == -0.5 cm, below SizeBands[0]'s low bound (0). A lazy
     // implementation that clamped to the nearest band would answer with the
-    // first band's correction (863/1000) here instead of missing -- see the
-    // mutation in this task's report.
+    // first band's correction (863/1000) here instead of missing.
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(-5));
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
@@ -718,12 +717,12 @@ TEST_CASE("an interpolated value stays exact, even when no finite decimal could 
     // percent is converted away -- 0.868333... in decimal, a number no
     // rounding of any fixed precision holds exactly.
     //
-    // This is this task's exactness question, asserted rather than asserted
-    // about: the answer is the exact rational the two rows imply, and nothing
-    // anywhere rounded it to get there. The denominator is checked as well as
-    // the value, because an implementation that computed in a fixed decimal
-    // precision could still compare equal to a rounded literal while having
-    // thrown the remainder away.
+    // This is the interpolating lookup's exactness question, asserted rather
+    // than asserted about: the answer is the exact rational the two rows imply,
+    // and nothing anywhere rounded it to get there. The denominator is checked
+    // as well as the value, because an implementation that computed in a fixed
+    // decimal precision could still compare equal to a rounded literal while
+    // having thrown the remainder away.
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(137, 30));
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());

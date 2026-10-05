@@ -683,7 +683,7 @@ TEST_CASE("render: a conditional inside a power keeps its bracket", "[render][co
 
 TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][conditional]")
 {
-    // The exact scenario named in the task: when(p, a, b) * 2 must not read
+    // The exact scenario this guards: when(p, a, b) * 2 must not read
     // as when(p, a, b * 2), which is a different formula.
     constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
     constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));

@@ -2,8 +2,8 @@
 //
 // The join: an overlaid method that reads from another record, evaluated
 // through a context and a renaming vocabulary, traced, documented, checked,
-// and across two translation units (`record_cross_tu.hpp`). Each part was
-// verified on its own in earlier tasks; this file verifies that they compose.
+// and across two translation units (`record_cross_tu.hpp`). Each part has
+// tests of its own; this file verifies that they compose.
 #include "record_cross_tu.hpp"
 
 #include <catch2/catch_test_macros.hpp>

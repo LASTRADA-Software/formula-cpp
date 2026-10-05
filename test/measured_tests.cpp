@@ -124,8 +124,8 @@ TEST_CASE("a measurement carries its quantity's own metadata", "[measured]")
 {
     // All four readers, on two different quantities. Checking one reader against
     // one quantity is not enough: a reader hardwired to return WaterVolume's
-    // answer would satisfy that, and two of these were reachable by no test at
-    // all until the task review mutated them and the suite stayed green.
+    // answer would satisfy that, and two of these were once reachable by no
+    // test at all: mutating them left the suite green.
     CHECK(Measured<WaterVolume>::quantity_unit() == unit::Litre);
     CHECK(Measured<WaterVolume>::quantity_symbol() == std::string_view { "V_w" });
     CHECK(Measured<WaterVolume>::quantity_description() == std::string_view { "volume of water added" });
@@ -210,8 +210,7 @@ namespace
 /// A quantity whose unit DOES declare bounds. No shipped `unit::` constant has
 /// any, so without this the absent-in-a-bounded-unit case cannot be written --
 /// and that is the one case where `NotMeasured` and a real verdict actually
-/// compete. The task reviewer had to build this locally to check it; it belongs
-/// in the suite.
+/// compete.
 inline constexpr formula::Unit BoundedGauge { .dimension = formula::dim::Scalar,
                                               .magnitudeNumerator = 1,
                                               .magnitudeDenominator = 100,

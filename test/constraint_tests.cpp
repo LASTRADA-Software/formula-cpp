@@ -85,7 +85,7 @@ TEST_CASE("constraint: an unmeasured input is not checked, and is never satisfie
 {
     constexpr auto outcome = formula::check(minimumStrength, nothingMeasured());
     STATIC_REQUIRE(outcome.is_not_checked());
-    STATIC_REQUIRE(!outcome.is_satisfied());   // the property this whole task exists for
+    STATIC_REQUIRE(!outcome.is_satisfied());   // the property constraints exist for
     STATIC_REQUIRE(!outcome.is_violated());    // and it is not a failure either
 }
 

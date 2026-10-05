@@ -228,7 +228,7 @@ template <int Places, std::size_t N>
     return formula::checked_evaluate<Spread>(spread, series_environment<Mass>(values)).has_value();
 }
 
-// ---- The norm-shaped cases, written for this task, numbers invented -------------
+// ---- The norm-shaped cases, numbers invented ------------------------------------
 
 // Twenty masses at 3 decimal places of g, near 40 g.
 std::array<Rational, 20> const twentyMasses {
@@ -320,8 +320,7 @@ template <int Places, typename Evaluate>
 // ---- Least squares: three data shapes ---------------------------------------------
 
 // Point k of each shape, in coherent SI -- seconds and newtons -- so the fit
-// sees exactly these numbers. Invented: the two decimal shapes' offsets are
-// primes.
+// sees exactly these numbers. Invented.
 struct FitPoint
 {
     Rational x;

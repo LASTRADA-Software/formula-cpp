@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // The join: an overlaid method, its selected variant, and a jurisdiction's
-// vocabulary, together. Each was verified on its own by the task that built
-// it; this file checks them combined, in one method that uses every overlay
-// operation, and across two translation units (`method_cross_tu.hpp`).
+// vocabulary, together. Each has tests of its own; this file checks them
+// combined, in one method that uses every overlay operation, and across two
+// translation units (`method_cross_tu.hpp`).
 #include "method_cross_tu.hpp"
 
 #include <catch2/catch_test_macros.hpp>

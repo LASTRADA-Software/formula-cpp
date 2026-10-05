@@ -249,9 +249,9 @@ TEST_CASE("an element that cannot be written back in the declared unit names tha
 
 TEST_CASE("a failure's position is optional, so a failure of no element can say so", "[series]")
 {
-    // A shape pin, not behavioural coverage: nothing in this task produces a
-    // failure of no element (a series variable fails only at an element).
-    // Later reductions do (a sum's overflow), and their tests supply the
+    // A shape pin, not behavioural coverage: a series variable fails only at
+    // an element, so no case above produces a failure of no element.
+    // Reductions do (a sum's overflow), and their tests supply the
     // behaviour. This line fails if the position reverts to a plain size_t,
     // which would force such a failure to name element 0.
     STATIC_REQUIRE(std::is_same_v<decltype(formula::SeriesFailure::element), std::optional<std::size_t>>);

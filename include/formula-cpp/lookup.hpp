@@ -18,9 +18,9 @@
 /// All three report a miss identically, split structure from contents
 /// identically, and share one `Corrections<N>` wrapper and one key-unit guard.
 /// Everything below about a miss, about `documented()` carrying a table's
-/// identity, and about what is left to a later task is written once and binds
-/// all three; the exact-lookup and interpolating-lookup sections near the end
-/// of this comment add only what is genuinely particular to each.
+/// identity, and about what is deliberately not built is written once and
+/// binds all three; the exact-lookup and interpolating-lookup sections near
+/// the end of this comment add only what is genuinely particular to each.
 ///
 /// A method's own algebra sometimes needs a coefficient no formula computes --
 /// a size-correction factor for a specimen's diameter, say -- that the
@@ -108,22 +108,22 @@
 /// `ArithmeticError` already does, with no new plumbing.
 ///
 /// **What "structured fields, never a composed sentence" means concretely
-/// here, and what is deliberately left to a later task.** The value that
-/// missed and the unit it is stated in are never lost -- they are the
-/// operand's own evaluated result, sitting with whichever caller dispatched
-/// it (and, once a lookup node is taught to a `RecordingSink`, recoverable
-/// from the operand's own step exactly as any other value is). The table's
+/// here.** The value that missed and the unit it is stated in are never
+/// lost -- they are the operand's own evaluated result, sitting with
+/// whichever caller dispatched it (and, under a `RecordingSink`,
+/// recoverable from the operand's own step exactly as any other value
+/// is). The table's
 /// identity is available the same way every other node's provenance is
 /// available in this library: wrap the lookup in `documented(...)`
 /// (`citation.hpp`), which already carries a title, a reference, a section
 /// and a full text as separate fields -- never a composed sentence -- and
 /// already composes with any `Node`, lookups included, with no change needed
-/// here. Actually *rendering* a miss's structured fields into prose --
-/// giving `Step` a `StepKind::BandedLookup` and reading `KeyUnit`, `bands`
-/// and a wrapping `Citation` back out the way `trace_render.hpp` already
-/// does for every other kind -- is `trace.hpp`/`trace_render.hpp` work, and
-/// is deliberately outside this task's own file list; nothing here forecloses
-/// it, and nothing here composes a sentence that would make it harder.
+/// here. *Rendering* a miss's structured fields into prose -- the step's
+/// `StepKind::BandedLookup`, the interval the table covers
+/// (`Step::coveredRange`) and why it failed (`Step::lookupFailure`), read
+/// back out by `trace_render.hpp` as it does for every other kind -- is
+/// `trace.hpp`/`trace_render.hpp` work, not this file's; nothing here
+/// composes a sentence that would make it harder.
 ///
 /// **Bands are half-open, `[low, high)`, exactly as `band.hpp` declares them --
 /// see `band.hpp`'s file comment.** A value sitting exactly on a shared
@@ -145,11 +145,11 @@
 /// representation a consumer teaches it: `RepTraits` is a documented public
 /// extension point (`evaluate.hpp`), and a `RepBandSelection<Rep>` seam
 /// mirroring `RepRounding` would be the way to open the same door here.
-/// **Deliberately not built in this task** -- it is additive and this task
-/// should not absorb it -- so today every representation but `Rational` is
-/// closed, full stop, until that seam exists. `checked_evaluate<Result>` --
-/// the entry point every test in this file uses -- always computes in
-/// `Rational` internally, so this restriction is never reached from there.
+/// **Deliberately not built** -- it is additive -- so today every
+/// representation but `Rational` is closed, full stop, until that seam
+/// exists. `checked_evaluate<Result>` -- the entry point every test
+/// in this file uses -- always computes in `Rational` internally, so this
+/// restriction is never reached from there.
 ///
 /// ===========================================================================
 ///
@@ -262,11 +262,11 @@
 /// aggregate, so that is one build per specimen, not one evaluation per
 /// specimen. **Giving `Environment` a categorical entry, so that a key could
 /// be supplied alongside the measurements, is deliberately not done here**:
-/// it is a change to `environment.hpp`, outside this task's files. Nothing
+/// it would be a change to `environment.hpp`, not to this file. Nothing
 /// here forecloses it -- `Environment`'s `detail::EntryTraits` is an open
 /// specialisation point, and this node's `checked_evaluate_si` already takes
 /// the environment -- but it is **a second node kind, not a field swap on
-/// this one**, and a later task should plan for that rather than the easier
+/// this one**, and should be planned as one rather than as the easier
 /// version. The reason is `key`'s own comment below: `KeyOf<Keys>{}` is a
 /// legitimate key that hits a row, so `ExactLookupNode` has no spelling for
 /// "no key yet, take it from the environment". Whatever reads a key from an
@@ -301,23 +301,23 @@
 /// `checked_evaluate<Result>` always computes in `Rational`, so this is never
 /// reached from the entry point every test here uses.
 ///
-/// **What a later task is owed, stated because the error channel cannot say
-/// it.** A miss carries `DomainError` and nothing more, so "which key missed
-/// which table" has to be rendered from the trace -- and for the exact lookup
-/// that is a harder obligation than for the banded one. A banded miss still
-/// leaves its evidence in the tree: the value that missed is the operand's
-/// own evaluated result, and once a lookup node is taught to a
-/// `RecordingSink` the operand contributes a step of its own carrying that
-/// value. **An exact lookup has no operand**, so the key that missed appears
-/// in no step at all unless `ExactLookupNode`'s own step records it. Nothing
-/// here loses the key -- it is a plain data member of the node the sink is
-/// handed, readable as `node.key`, and `Keys` is a compile-time property of
-/// the node's type -- but recovering it *does* require the later task to add
-/// a field for it, where the banded case can lean on a step that already
-/// exists. `detail::StepKindOf` (`trace.hpp`) has a specialisation for
-/// neither lookup node today, so both are equally untraceable right now; the
-/// asymmetry is written down here so the later task does not discover it
-/// after designing for the banded case alone.
+/// **Where a missed key is recorded, stated because the error channel cannot
+/// say it.** A miss carries `DomainError` and nothing more, so "which key
+/// missed which table" has to be rendered from the trace -- and for the exact
+/// lookup that asks more of the trace than the banded one does. A banded
+/// miss leaves its evidence in the tree: the value that missed is the
+/// operand's own evaluated result, and under a `RecordingSink` the operand
+/// contributes a step of its own carrying that value. **An exact lookup has
+/// no operand**, so the key that missed would appear in no step at all if
+/// `ExactLookupNode`'s own step did not record it. It does: the key is a
+/// plain data member of the node the sink is handed, readable as
+/// `node.key`, and the step keeps its value in `Step::lookupKey` and its
+/// name, when it has one, in `Step::lookupKeyName` (`trace.hpp`). A key that
+/// names no row has no name there, and its value is all that is left of it.
+/// The banded case needs no such field, because it leans on a step that
+/// already exists. The asymmetry is written down here so that a change to
+/// either kind does not assume the other records its miss the same way,
+/// or that the banded case's way would serve the exact one.
 ///
 /// ===========================================================================
 ///
@@ -453,22 +453,22 @@
 /// node's ground and one of its own that is stronger: locating the segment is
 /// the same comparison band selection is, and the answer is then *computed*, so
 /// a representation that rounds would hand back a number that is not the one
-/// the table's own rows imply -- the precise defect this task exists to avoid.
+/// the table's own rows imply -- the precise defect this node exists to avoid.
 /// As with both other kinds the message says "this representation" rather than
 /// naming a type the instantiation backtrace already names, and no
 /// `RepInterpolation<Rep>` seam is built, mirroring the decision not to build
 /// `RepBandSelection`.
 ///
-/// **What a later task is owed.** Everything the banded lookup's own note above
-/// says applies unchanged: a miss carries `DomainError` and nothing else, the
-/// value that missed is the operand's own evaluated result, and the table's
-/// identity comes from `documented()`. One thing is new, and belongs to the interpolating lookup
-/// rather than here: this node can produce `ArithmeticError::Overflow` *of its
-/// own*, from the interpolation, where the other two kinds only ever propagate
-/// one they were handed. A trace that wants to say "the interpolation
-/// overflowed" rather than "something below this overflowed" needs this node's
-/// own step to say so; nothing here loses the information, and nothing here
-/// composes a sentence that would make saying it harder.
+/// **What the trace needs from this node.** Everything the banded lookup's
+/// own note above says applies unchanged: a miss carries `DomainError` and
+/// nothing else, the value that missed is the operand's own evaluated result,
+/// and the table's identity comes from `documented()`. One thing is new, and
+/// belongs to the interpolating lookup alone: this node can produce
+/// `ArithmeticError::Overflow` *of its own*, from the interpolation, where the
+/// other two kinds only ever propagate one they were handed. A trace that says
+/// "the interpolation overflowed" rather than "something below this
+/// overflowed" needs this node's own step to say so, and it does:
+/// `Step::lookupFailure` is `LookupFailure::Computation` (`trace.hpp`).
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/enumerator.hpp>
@@ -1188,7 +1188,7 @@ struct ExactLookupNode: NodeBase
     /// file comment gives at length; a key that names no row of `keys` is a
     /// miss, reported exactly as a value falling in no band is.
     ///
-    /// **There is no unset state, and a later task must not assume one.** The
+    /// **There is no unset state, and nothing may assume one.** The
     /// default member initialiser is `KeyOf<Keys>{}` -- the enumerator whose
     /// value is zero -- which for the ordinary table is a perfectly legitimate
     /// key that hits a row. It does not mean "no key yet" and cannot be made
