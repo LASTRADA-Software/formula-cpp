@@ -87,9 +87,9 @@ class for no gain: a conversion in and out of the compiler's own integer optimis
   `add_checked_or_none`, `sub_checked_or_none` and `mul_checked_or_none`. The sum and the difference are formed on
   the two words' bit patterns with the portable routines, on every compiler, and an overflow is detected from the
   signs: calling `Int128`'s own `+` or `-` first would break their precondition that the exact result fits. Only
-  the product uses the compiler's checked builtin, `__builtin_mul_overflow` on the unsigned magnitudes, where the
-  compiler has `__int128`, and partial products in software elsewhere; it is then checked against the signed
-  range.
+  the product uses the compiler's checked builtin, `__builtin_mul_overflow` on the unsigned magnitudes, on GCC and
+  Clang (outside MSVC's ABI, so not clang-cl, which has `__int128` but multiplies in software), and partial products
+  in software elsewhere; it is then checked against the signed range.
 - **`detail::UInt128`**, an unsigned 128-bit type, carries magnitudes. A numerator equal to the minimum, -2^127, keeps
   working, as `std::uint64_t` magnitudes let -2^63 work today. It also carries `gcd` (binary, using `std::countr_zero`
   on the words) and the integer square root.
