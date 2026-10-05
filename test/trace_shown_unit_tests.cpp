@@ -918,3 +918,54 @@ TEST_CASE("a Measured value in a unit with no symbol reads in number_text and st
     CHECK(std::format("{:~HalfEven}", formula::Measured<UnnamedMass> { Rational { 1, 3 } })
           == "\xe2\x89\x88" "0.0003 kg");
 }
+
+namespace
+{
+// Invented: milliamperes, declared to whole milliamperes, and a quantity in
+// them that declares one place of its own.
+inline constexpr formula::Unit Milliampere { .dimension = formula::dim::Current,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .symbolText = formula::symbol("mA"),
+                                             .decimals = 0 };
+struct FineCurrent: formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+                                      formula::DecimalPlaces { 1 }>
+{
+};
+} // namespace
+
+TEST_CASE("a quantity's own decimal places are the places its trace shows", "[trace-render][shown-unit][decimals]")
+{
+    // Milliamperes are declared to whole ones; the quantity reads them to a
+    // tenth, and so does its trace, the input and the product it scales.
+    formula::Trace<> const scaled =
+        recorded_trace(var<FineCurrent> * Rational { 2 },
+                       formula::environment(formula::Measured<FineCurrent> { Rational { 1234, 100 } }));
+    REQUIRE(scaled.steps.size() == 3);
+    CHECK(formula::view(scaled.steps[0].unit.symbolText) == "mA");
+    CHECK(scaled.steps[0].unit.decimals == 1);
+    CHECK(formula::view(scaled.steps[2].unit.symbolText) == "mA");
+    CHECK(scaled.steps[2].unit.decimals == 1);
+
+    constexpr formula::NumberStyle padded = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded);
+    constexpr formula::NumberStyle approximately =
+        formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven);
+
+    formula::Trace<> const whole =
+        recorded_trace(var<FineCurrent> * Rational { 2 },
+                       formula::environment(formula::Measured<FineCurrent> { Rational { 12 } }));
+    CHECK(formula::render_trace(whole, { .maxSteps = 20, .numbers = padded })
+          == "1. I_f = 12.0 mA\n"
+             "2. 2\n"
+             "3. #1 * #2 = 24.0 mA\n");
+
+    // 37/3 mA and twice it, 74/3 mA, are 12.333... and 24.666... mA: each
+    // rounded to the quantity's one place.
+    formula::Trace<> const third =
+        recorded_trace(var<FineCurrent> * Rational { 2 },
+                       formula::environment(formula::Measured<FineCurrent> { Rational { 37, 3 } }));
+    CHECK(formula::render_trace(third, { .maxSteps = 20, .numbers = approximately })
+          == "1. I_f = \xe2\x89\x88" "12.3 mA\n"
+             "2. 2\n"
+             "3. #1 * #2 = \xe2\x89\x88" "24.7 mA\n");
+}

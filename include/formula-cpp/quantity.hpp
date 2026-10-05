@@ -53,9 +53,9 @@ namespace formula
 ///   names a quantity -- a function declaration taking `Measured<Q>` -- can
 ///   say `struct Rise;` for a struct quantity, and must include the
 ///   alias's declaration.
-/// - **Two aliases with all four arguments equal are one type.** `using A =
+/// - **Two aliases with all their arguments equal are one type.** `using A =
 ///   Quantity<ATag, "L", "a length", unit::Millimetre>;` and a `using B` with the
-///   same four arguments declare one quantity under two names, and nothing
+///   same arguments declare one quantity under two names, and nothing
 ///   can object: there is only one type, and naming it twice is not an error
 ///   anywhere in C++. Give every alias its own tag. Two structs never
 ///   collapse this way, whatever their bases.
@@ -93,7 +93,28 @@ namespace formula
 /// That spelling, with `dim::Mass` against `unit::Litre`, compiled without a
 /// diagnostic on every compiler it was tried on. `dimension` below is derived,
 /// so the contradiction cannot be written.
-template <typename Tag, detail::FixedString Symbol, detail::FixedString Description, Unit U>
+///
+/// **A quantity may declare its own decimal places.** The fifth parameter,
+/// `Places`, defaults to the places `U` declares. Given, it replaces them for
+/// this quantity alone, so two quantities in one unit can be read to different
+/// precision without a second unit:
+///
+///     struct FineCurrent:
+///         formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+///                           formula::DecimalPlaces { 1 }>
+///     {
+///     };
+///
+/// with `Milliampere` declared to whole milliamperes. Everything that reads a
+/// quantity's declared places -- `checked_round_to_declared`, `number_text`,
+/// `std::format`, a trace -- reads them off `unit`, which carries `Places`.
+/// `FineCurrent::unit == Milliampere` is then false, since `==` compares every
+/// member; `same_unit(FineCurrent::unit, Milliampere)` is true.
+template <typename Tag,
+          detail::FixedString Symbol,
+          detail::FixedString Description,
+          Unit U,
+          DecimalPlaces Places = declared_decimals(U)>
 struct Quantity
 {
     /// The quantity's own type, for anything that needs to name it.
@@ -105,8 +126,9 @@ struct Quantity
     /// What the quantity means, in words, for generated documentation.
     static constexpr std::string_view description = Description.view();
 
-    /// The unit its values are expressed in.
-    static constexpr Unit unit = U;
+    /// The unit its values are expressed in: `U`, with its declared places
+    /// replaced when the quantity declares its own.
+    static constexpr Unit unit = detail::with_decimals(U, Places);
 
     /// Derived from the unit -- see the note above about why it is not a
     /// parameter of its own.
@@ -120,9 +142,9 @@ namespace detail
     /// for an alias, or its base, through the derived-to-base conversion, for
     /// a struct -- which is how `Describe` learns a type's metadata without the
     /// type having to repeat it. Measured on cl, clang-cl and clang++.
-    template <typename Tag, FixedString Symbol, FixedString Description, Unit U>
-    auto quantity_base_of(Quantity<Tag, Symbol, Description, U> const&)
-        -> Quantity<Tag, Symbol, Description, U>;
+    template <typename Tag, FixedString Symbol, FixedString Description, Unit U, DecimalPlaces Places>
+    auto quantity_base_of(Quantity<Tag, Symbol, Description, U, Places> const&)
+        -> Quantity<Tag, Symbol, Description, U, Places>;
 
     template <typename T>
     concept DeclaresQuantity = requires(T const& value) { quantity_base_of(value); };

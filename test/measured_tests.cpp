@@ -529,3 +529,42 @@ TEST_CASE("the throwing twins throw the error their checked form returns", "[mea
     CHECK_THROWS_AS(formula::round_to_declared(unroundable, formula::RoundingMode::HalfEven),
                     formula::ArithmeticException);
 }
+
+// ---- a quantity's own decimal places ----
+
+namespace
+{
+
+// Invented: milliamperes, declared to whole milliamperes, and a quantity in
+// them that declares one place of its own.
+inline constexpr formula::Unit Milliampere { .dimension = formula::dim::Current,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .symbolText = formula::symbol("mA"),
+                                             .decimals = 0 };
+struct FineCurrent: formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+                                      formula::DecimalPlaces { 1 }>
+{
+};
+struct CoarseCurrent: formula::Quantity<CoarseCurrent, "I_c", "a current read to whole milliamperes", Milliampere>
+{
+};
+
+} // namespace
+
+TEST_CASE("rounding to declared precision uses the places the quantity declares", "[measured][decimals]")
+{
+    auto const fine =
+        formula::checked_round_to_declared(Measured<FineCurrent> { Rational { 1234, 100 } },
+                                           formula::RoundingMode::HalfAwayFromZero);
+    REQUIRE(fine.has_value());
+    REQUIRE(fine->has_value());
+    CHECK(fine->value() == Rational { 123, 10 });
+
+    auto const coarse =
+        formula::checked_round_to_declared(Measured<CoarseCurrent> { Rational { 1234, 100 } },
+                                           formula::RoundingMode::HalfAwayFromZero);
+    REQUIRE(coarse.has_value());
+    REQUIRE(coarse->has_value());
+    CHECK(coarse->value() == Rational { 12 });
+}

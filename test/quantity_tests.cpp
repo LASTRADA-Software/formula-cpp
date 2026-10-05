@@ -136,3 +136,60 @@ TEST_CASE("a foreign type joins on the same terms as ours", "[quantity]")
           == formula::view(unit::Celsius.symbolText));
     CHECK(Describe<ForeignTemperature>::dimension == Describe<ForeignTemperature>::unit.dimension);
 }
+
+// ---- a quantity's own decimal places ----
+
+namespace
+{
+
+// Invented: milliamperes, declared to whole milliamperes.
+inline constexpr formula::Unit Milliampere { .dimension = formula::dim::Current,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .symbolText = formula::symbol("mA"),
+                                             .decimals = 0 };
+struct FineCurrent: formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+                                      formula::DecimalPlaces { 1 }>
+{
+};
+struct CoarseCurrent: formula::Quantity<CoarseCurrent, "I_c", "a current read to whole milliamperes", Milliampere>
+{
+};
+
+} // namespace
+
+TEST_CASE("Quantity: its own decimal places, in the unit it shares", "[quantity][decimals]")
+{
+    STATIC_REQUIRE(formula::Describe<FineCurrent>::unit.decimals == 1);
+    STATIC_REQUIRE(formula::Describe<CoarseCurrent>::unit.decimals == 0);
+    STATIC_REQUIRE(formula::same_unit(formula::Describe<FineCurrent>::unit, Milliampere));
+    STATIC_REQUIRE(!(formula::Describe<FineCurrent>::unit == Milliampere));
+    STATIC_REQUIRE(formula::Describe<CoarseCurrent>::unit == Milliampere);
+}
+
+TEST_CASE("same_unit: what a unit is, not its decimals or bounds", "[unit][same_unit]")
+{
+    constexpr formula::Unit Base { .dimension = formula::dim::Length, .magnitudeNumerator = 1,
+                                   .magnitudeDenominator = 1000, .symbolText = formula::symbol("mm") };
+    constexpr formula::Unit OtherDecimals { .dimension = formula::dim::Length, .magnitudeNumerator = 1,
+                                            .magnitudeDenominator = 1000, .symbolText = formula::symbol("mm"),
+                                            .decimals = 1, .bounds = formula::at_least(0, 1) };
+    STATIC_REQUIRE(formula::same_unit(Base, OtherDecimals));
+    STATIC_REQUIRE(!formula::same_unit(Base, formula::unit::Metre));                 // magnitude
+    STATIC_REQUIRE(!formula::same_unit(formula::unit::Kelvin, formula::unit::Celsius)); // offset
+    constexpr formula::Unit OtherSymbol { .dimension = formula::dim::Length, .magnitudeNumerator = 1,
+                                          .magnitudeDenominator = 1000, .symbolText = formula::symbol("MM") };
+    STATIC_REQUIRE(!formula::same_unit(Base, OtherSymbol));
+    constexpr formula::Unit OtherKey { .dimension = formula::dim::Length, .magnitudeNumerator = 1,
+                                       .magnitudeDenominator = 1000, .symbolText = formula::symbol("mm"),
+                                       .asciiText = formula::symbol("millimetre") };
+    STATIC_REQUIRE(!formula::same_unit(Base, OtherKey));
+    constexpr formula::Unit SameKeySpelledOut { .dimension = formula::dim::Length, .magnitudeNumerator = 1,
+                                                .magnitudeDenominator = 1000, .symbolText = formula::symbol("mm"),
+                                                .asciiText = formula::symbol("mm") };
+    STATIC_REQUIRE(formula::same_unit(Base, SameKeySpelledOut)); // the same key, declared or read off the symbol
+    constexpr formula::Unit Area { .dimension = formula::dim::Length * formula::dim::Length,
+                                   .magnitudeNumerator = 1, .magnitudeDenominator = 1000,
+                                   .symbolText = formula::symbol("mm") };
+    STATIC_REQUIRE(!formula::same_unit(Base, Area)); // dimension
+}

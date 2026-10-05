@@ -75,8 +75,9 @@ that happen to be exercised.
 
 ## Declaring a quantity
 
-`formula::Quantity` takes exactly four template parameters, and a quantity is
-declared with it in one of two spellings. The alias is the shorter, and the
+`formula::Quantity` takes four template parameters, and an optional fifth for
+the quantity's [own decimal places](#a-quantitys-own-decimal-places). A quantity
+is declared with it in one of two spellings. The alias is the shorter, and the
 one these guides and the examples use:
 
 ```cpp
@@ -132,7 +133,7 @@ Rise and ReturnRise share symbol, description and unit: yes
 | | alias | struct |
 |---|---|---|
 | forward declaration | not possible | `struct Rise;` |
-| two declarations with all four arguments equal | one type, under two names | two types |
+| two declarations with all their arguments equal | one type, under two names | two types |
 | one tag, another argument different | two types | -- (a struct is its own tag) |
 | how g++ and clang name it in a diagnostic | `Quantity<RiseTag, ...>` | `Rise` |
 | how cl names it in a diagnostic | usually `Rise`, not always | `Rise` |
@@ -142,9 +143,9 @@ Rise and ReturnRise share symbol, description and unit: yes
 `struct Rise;` for a struct quantity, and must include an alias's
 declaration.
 
-**Two aliases with all four arguments equal are one type.** Repeating a
+**Two aliases with all their arguments equal are one type.** Repeating a
 declaration -- `using A = formula::Quantity<ATag, "V", "a volume", unit::Litre>;`
-and a `using B` with the same four arguments -- declares one quantity under two
+and a `using B` with the same arguments -- declares one quantity under two
 names, and nothing can object: there is only one type, and naming it twice is
 not an error anywhere in C++. Give every alias a tag of its own. Two structs
 never collapse this way, whatever their bases.
@@ -182,14 +183,51 @@ but not always -- see
 Naming a tag after its quantity, `RiseTag`, is what keeps such a
 diagnostic readable.
 
-**There is no fifth parameter for the dimension.** A `Unit` already carries
+**There is no parameter for the dimension.** A `Unit` already carries
 its dimension (`unit.dimension`), so a separate dimension parameter would
 state it a second time and let the two disagree. That is not a hypothetical
-risk: the five-parameter spelling, with `dim::Mass` paired against
+risk: a spelling with a dimension parameter, with `dim::Mass` paired against
 `unit::Litre`, compiled without a diagnostic on every compiler it was tried
 on. `Quantity::dimension` is derived from the unit instead, so there is
 no second place for it to disagree with, and no spelling that lets a caller
 write the contradiction at all.
+
+### A quantity's own decimal places
+
+A quantity takes its declared decimal places from its unit, unless it declares
+its own. The fifth parameter, a `formula::DecimalPlaces`, defaults to the
+unit's places; given, it replaces them for that quantity alone, so two
+quantities in one unit can be read to different precision without a second
+unit:
+
+```cpp
+inline constexpr formula::Unit Milliampere { .dimension = formula::dim::Current,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .symbolText = formula::symbol("mA"),
+                                             .decimals = 0 };
+
+struct FineCurrent:
+    formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+                      formula::DecimalPlaces { 1 }>
+{
+};
+
+struct CoarseCurrent: formula::Quantity<CoarseCurrent, "I_c", "a current read to whole milliamperes", Milliampere>
+{
+};
+```
+
+A quantity's `unit` is its unit with those places in it, so everything that
+reads declared places reads the quantity's: 12.34 mA rounds to 12.3 mA through
+`checked_round_to_declared` for `FineCurrent` and to 12 mA for `CoarseCurrent`,
+and `number_text`, `std::format` and a trace show each to its own places.
+
+`FineCurrent::unit == Milliampere` is false, since `==` compares every member
+of a unit, its decimals among them. Whether two quantities share a unit is what
+`formula::same_unit` answers: the same scale, symbol and ASCII key, whatever
+their decimals and bounds. `same_unit(FineCurrent::unit, Milliampere)` and
+`same_unit(FineCurrent::unit, CoarseCurrent::unit)` are both true.
 
 ## `Describe<T>`, and foreign types
 

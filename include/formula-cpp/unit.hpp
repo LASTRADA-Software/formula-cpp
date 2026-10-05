@@ -151,6 +151,37 @@ std::string_view view_ascii(Unit&&) = delete;
     return detail::is_printable_ascii(view_ascii(unitValue));
 }
 
+namespace detail
+{
+    /// @p declared with its display precision replaced by @p places: how a quantity that declares its own places
+    /// holds its unit.
+    [[nodiscard]] constexpr Unit with_decimals(Unit declared, DecimalPlaces places) noexcept
+    {
+        declared.decimals = places.value;
+        return declared;
+    }
+
+    /// Whether two units put values on one scale: the same dimension, factor and offset, compared as declared.
+    [[nodiscard]] constexpr bool same_scale(Unit const& leftUnit, Unit const& rightUnit) noexcept
+    {
+        return leftUnit.dimension == rightUnit.dimension
+               && leftUnit.magnitudeNumerator == rightUnit.magnitudeNumerator
+               && leftUnit.magnitudeDenominator == rightUnit.magnitudeDenominator
+               && leftUnit.offsetNumerator == rightUnit.offsetNumerator
+               && leftUnit.offsetDenominator == rightUnit.offsetDenominator;
+    }
+} // namespace detail
+
+/// Whether two units are the same unit: the same scale (dimension, factor, offset), the same display symbol and the
+/// same key (`view_ascii`). Their declared decimals and bounds may differ -- a quantity read to a tenth of a
+/// milliampere and one read to whole milliamperes are both in milliamperes -- which is what `==`, comparing every
+/// member, does not answer. Use this, or `view_ascii`, to key a table by unit.
+[[nodiscard]] constexpr bool same_unit(Unit const& leftUnit, Unit const& rightUnit) noexcept
+{
+    return detail::same_scale(leftUnit, rightUnit) && view(leftUnit.symbolText) == view(rightUnit.symbolText)
+           && view_ascii(leftUnit) == view_ascii(rightUnit);
+}
+
 /// A rounding to decimal places, named once and used wherever a method rounds
 /// the same way: which unit the places are of, how many, and which way to go.
 /// `constexpr DecimalRounding tenthMpa { unit::Megapascal, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };`

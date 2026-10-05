@@ -238,6 +238,19 @@ and keyed `um/s`.
 The key is never displayed: `render()`, traces, `number_text` and
 `std::format` write `symbolText`.
 
+### Comparing units
+
+`==` compares every member of two units, `asciiText`, `decimals` and `bounds`
+among them: a unit declared to one decimal place is not `==` to the same unit
+declared to none. `formula::same_unit(leftUnit, rightUnit)` asks whether two
+units are the same unit: the same dimension, factor and offset, the same
+`symbolText` and the same key (`view_ascii`), whatever their decimals and
+bounds. A key declared equal to the symbol is the same key as none declared.
+Use `same_unit`, or `view_ascii`, to key a table by unit, and to ask whether two
+quantities that declare their own decimal places (see
+[Quantities and measurements](quantities.md#a-quantitys-own-decimal-places))
+share a unit.
+
 ## Exact conversion
 
 Converting between two units multiplies by the source unit's magnitude, adds

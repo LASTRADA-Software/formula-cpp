@@ -31,6 +31,13 @@ change is recorded here.
   to carry them. Both ends are inclusive; with no end it reports `NotChecked`, never `WithinBounds`; a lower end
   above the upper one is refused as `DomainError`; an absent measurement is `NotMeasured`. `within` is the same
   check spelled to throw. `checked_within_bounds` applies the same rule to the ends a unit declares.
+- **A quantity's own decimal places, and `same_unit`.** `Quantity` takes an optional fifth parameter, a
+  `DecimalPlaces` that defaults to the places its unit declares: `Quantity<FineCurrent, "I_f", "...", Milliampere,
+  DecimalPlaces { 1 }>` reads milliamperes to a tenth while the unit, and every other quantity in it, keeps its own
+  places. The quantity's `unit` carries those places, so `checked_round_to_declared`, `number_text`, `std::format`
+  and traces use them. `same_unit(leftUnit, rightUnit)` says whether two units are the same unit -- the same
+  dimension, factor, offset, symbol and key (`view_ascii`) -- whatever their declared decimals and bounds, which `==`,
+  comparing every member, does not answer.
 
 ### Changed
 
@@ -48,7 +55,9 @@ change is recorded here.
   positional initialisers, `Unit { dimension, 1, 1000, 0, 1, symbol, 2 }`, no longer compiles or puts its values in
   the wrong members, while designated initialisers are unaffected. Unit equality compares `asciiText` too, so two
   units that differ only in their key are no longer equal: a micrometre built at run time without a key is not
-  `unit::Micrometre`.
+  `unit::Micrometre`. To compare what a unit is, ignoring its decimals and bounds, use `same_unit`, which compares
+  keys through `view_ascii`: that micrometre, keyed `µm`, is not the same unit as `unit::Micrometre`, keyed `um`,
+  either.
 - **Breaking:** `Bounds::present` is replaced by `lowPresent` and `highPresent`, one for each end, so a unit can
   declare a minimum or a maximum alone. Both come before the four integer fields, so a `Bounds` built with
   positional initialisers can change meaning or stop compiling. One whose low numerator is a constant 0 or 1 still

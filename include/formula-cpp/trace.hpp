@@ -2189,14 +2189,12 @@ namespace detail
     /// name: the same dimension, factor, offset and symbol. Their declared
     /// decimals and bounds may differ -- two gram readings are grams whatever
     /// precision each was declared at -- which is why this is not
-    /// `Unit::operator==`.
+    /// `Unit::operator==`. It ignores the ASCII key too, which is never
+    /// displayed: this compares what a unit shows, where `same_unit` also
+    /// compares its key.
     [[nodiscard]] constexpr bool same_scale_and_symbol(Unit const& leftUnit, Unit const& rightUnit) noexcept
     {
-        return leftUnit.dimension == rightUnit.dimension && leftUnit.magnitudeNumerator == rightUnit.magnitudeNumerator
-               && leftUnit.magnitudeDenominator == rightUnit.magnitudeDenominator
-               && leftUnit.offsetNumerator == rightUnit.offsetNumerator
-               && leftUnit.offsetDenominator == rightUnit.offsetDenominator
-               && view(leftUnit.symbolText) == view(rightUnit.symbolText);
+        return same_scale(leftUnit, rightUnit) && view(leftUnit.symbolText) == view(rightUnit.symbolText);
     }
 
     /// Whether `RecordingSink` records a step of its own for @p N, a single

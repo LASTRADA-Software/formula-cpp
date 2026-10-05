@@ -420,3 +420,32 @@ TEST_CASE("every enumeration with a describe() is formattable, and no other", "[
     // a blanket one for every enumeration.
     STATIC_REQUIRE(!std::formattable<formula::CurveBreak, char>);
 }
+
+namespace
+{
+
+// Invented: milliamperes, declared to whole milliamperes, and a quantity in
+// them that declares one place of its own.
+inline constexpr formula::Unit Milliampere { .dimension = formula::dim::Current,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .symbolText = formula::symbol("mA"),
+                                             .decimals = 0 };
+struct FineCurrent: formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+                                      formula::DecimalPlaces { 1 }>
+{
+};
+struct CoarseCurrent: formula::Quantity<CoarseCurrent, "I_c", "a current read to whole milliamperes", Milliampere>
+{
+};
+
+} // namespace
+
+TEST_CASE("a Measured formats to the places its quantity declares", "[format][decimals]")
+{
+    // 37/3 mA is 12.333... mA: rounded, to one place and to none.
+    CHECK(std::format("{:~HalfEven}", Measured<FineCurrent> { Rational { 37, 3 } }) == "\xe2\x89\x88" "12.3 mA");
+    CHECK(std::format("{:~HalfEven}", Measured<CoarseCurrent> { Rational { 37, 3 } }) == "\xe2\x89\x88" "12 mA");
+    // An exact decimal is never cut short, whatever the places.
+    CHECK(std::format("{:~HalfEven}", Measured<FineCurrent> { Rational { 1234, 100 } }) == "12.34 mA");
+}
