@@ -469,8 +469,11 @@ A `Measured` value in a dimensioned unit with no symbol is written as a
 trace writes it: moved exactly into the coherent unit and followed by that
 unit's spelling, since a unit with no symbol cannot say what scale its
 number is on. 3 of a unit of 1/1000 kg reads `3/1000 kg` as a fraction and
-`0.003 kg` as a decimal, never a bare `3`; `std::format` writes it the same
-way. A value in a dimensionless unit with no symbol is a bare number.
+`0.003 kg` as a decimal, never a bare `3`. Its places are read as a trace
+reads them: the coherent unit's 3 are a default nobody chose, so they are
+never padded to, and never round a value that is not zero to `≈0` -- 1/3 of
+that unit reads `≈0.0003 kg`. `std::format` writes it the same way. A value
+in a dimensionless unit with no symbol is a bare number.
 
 A `NumberText`'s characters are read through `view()`, a `std::string_view`,
 on a named object -- `view()` on a temporary does not compile, since the view

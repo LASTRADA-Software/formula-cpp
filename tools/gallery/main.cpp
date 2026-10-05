@@ -476,6 +476,10 @@ constexpr auto settledEstimate = formula::retry<IteratedEstimate, 4, formula::Fi
 /// unit with no symbol, which is a bare number.
 [[nodiscard]] std::string unit_cell(formula::Unit unitOfValue)
 {
+    // A cell names a unit, not a value, so `number_text` and `std::format`,
+    // which write a value with its unit, do not fit, and the library has no
+    // public spelling of a unit by its size and zero. `rounding_unit_text` is
+    // its one spelling of that, so the cell uses it rather than a second copy.
     std::string const unitText = formula::detail::rounding_unit_text(unitOfValue, formula::detail::verbatim_text);
     return unitText.empty() ? std::string { "dimensionless" } : unitText;
 }

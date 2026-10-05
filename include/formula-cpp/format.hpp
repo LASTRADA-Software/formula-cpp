@@ -367,14 +367,19 @@ inline constexpr RoundingModeName RoundingModeNames[] {
     return specEnd;
 }
 
-/// @p shownValue, a number in @p shownIn, spelled as @p formatSpec's body
-/// asks -- the number alone, without the unit's symbol. Throws
-/// `std::format_error` when it cannot be spelled (`number_format_failed`).
+/// @p shownValue, a number declared in @p declaredIn that `shown_number` has
+/// already moved into the unit it is shown in, spelled as @p formatSpec's
+/// body asks -- the number alone, without the unit's text. `{}` and `~Mode`
+/// spell it as `number_text` does (`checked_shown_value_text`), so a value
+/// moved into the coherent unit reads as a trace line reads it; `~.N Mode`
+/// and `.N Mode` round at the N places they name. Throws `std::format_error`
+/// when it cannot be spelled (`number_format_failed`).
 [[nodiscard]] inline NumberText spell_formatted_number(Rational shownValue,
-                                                       Unit const& shownIn,
+                                                       Unit const& declaredIn,
                                                        NumberFormatSpec const& formatSpec)
 {
     auto const spelling = [&]() -> std::expected<NumberText, ArithmeticError> {
+        NumberStyle const approximating = NumberStyle::approximate_decimal(formatSpec.roundingMode);
         switch (formatSpec.body)
         {
             case NumberFormatBody::Fraction:
@@ -385,17 +390,16 @@ inline constexpr RoundingModeName RoundingModeNames[] {
                                             formatSpec.roundingMode,
                                             DecimalPadding::Padded);
             case NumberFormatBody::Approximated: {
-                Unit roundedIn = shownIn;
-                if (formatSpec.places.has_value())
-                    roundedIn.decimals = *formatSpec.places;
-                return checked_number_text(shownValue,
-                                           NumberStyle::approximate_decimal(formatSpec.roundingMode),
-                                           roundedIn);
+                if (!formatSpec.places.has_value())
+                    return checked_shown_value_text(shownValue, approximating, declaredIn);
+                Unit roundedIn = shown_unit_of(declaredIn, declaredIn.dimension);
+                roundedIn.decimals = *formatSpec.places;
+                return checked_number_text(shownValue, approximating, roundedIn);
             }
             case NumberFormatBody::ExactOrFraction:
                 break;
         }
-        return checked_number_text(shownValue, NumberStyle::exact_decimal(), shownIn);
+        return checked_shown_value_text(shownValue, NumberStyle::exact_decimal(), declaredIn);
     };
     std::expected<NumberText, ArithmeticError> const spelled = spelling();
     if (!spelled)
@@ -469,8 +473,7 @@ template <Described Q, typename OutputIterator>
         shown_number(*shownMeasured.stored(), declaredIn, declaredIn.dimension);
     if (!shownValue)
         number_format_failed(shownValue.error());
-    NumberText const spelled =
-        spell_formatted_number(*shownValue, shown_unit_of(declaredIn, declaredIn.dimension), formatSpec);
+    NumberText const spelled = spell_formatted_number(*shownValue, declaredIn, formatSpec);
     std::string unitText;
     auto appendTo = [&unitText](std::string_view written) { unitText += written; };
     write_shown_unit(appendTo, declaredIn);
@@ -695,9 +698,12 @@ struct formatter<formula::Int128, char>
 /// **A dimensioned unit with no symbol** cannot say what scale its number is
 /// on, so the number is moved exactly into the coherent unit and followed by
 /// that unit's spelling, as `number_text` writes it: 3 of a unit of 1/1000 kg
-/// is `0.003 kg`, `{:/}` `3/1000 kg`. Every body, the decimals `~Mode` reads
-/// included, then applies to the number in the coherent unit. A value that
-/// cannot be moved throws, never writing the number on the other scale.
+/// is `0.003 kg`, `{:/}` `3/1000 kg`. `{}` and `~Mode` then spell it as a
+/// trace line does: the coherent unit's 3 places are a default nobody chose,
+/// so they are never padded, and never round a value other than zero to `≈0`
+/// -- `{:~HalfEven}` of 1/3 of that unit is `≈0.0003 kg`. `.N Mode` and
+/// `~.N Mode` round at the N places of the coherent unit they name. A value
+/// that cannot be moved throws, never writing the number on the other scale.
 ///
 /// **The modes** are `RoundingMode`'s enumerators, spelled exactly as they
 /// are there. **There is no default mode**: the same number rounds

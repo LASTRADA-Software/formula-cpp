@@ -7,6 +7,7 @@
 #include <formula-cpp/calculation.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/opaque.hpp>
@@ -24,6 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <optional>
 #include <span>
 #include <string>
@@ -886,4 +888,33 @@ TEST_CASE("every value of a rejection, a bill, the statistics, a precision limit
     // An opaque call, its outputs, and a sum over one of them.
     check_each_value_is_in_the_unit_written_after_it(
         recorded_trace(formula::opaque_output<"span">(lowestAndSpan) + var<TareMass>, determinations));
+}
+
+TEST_CASE("a Measured value in a unit with no symbol reads in number_text and std::format as its trace line does",
+          "[trace-render][shown-unit]")
+{
+    // The coherent unit's 3 places are a default nobody chose: a trace never
+    // pads a value to them, and never rounds one that is not zero to `≈0`.
+    // `number_text` and `std::format` spell a value they move into it alike.
+    formula::NumberStyle const halfEven = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven);
+    for (Rational const unnamedGrams : { Rational { 3 }, Rational { 30 }, Rational { 1, 3 } })
+    {
+        formula::Measured<UnnamedMass> const measured { unnamedGrams };
+        for (formula::NumberStyle const numberStyle :
+             { formula::NumberStyle::fraction(), formula::NumberStyle::exact_decimal(),
+               formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded), halfEven })
+        {
+            std::string const traced = formula::render_trace(recorded_trace(var<UnnamedMass>, formula::environment(measured)),
+                                                             { .maxSteps = 20, .numbers = numberStyle });
+            formula::NumberText const spelled = formula::number_text(measured, numberStyle);
+            CHECK(traced == "1. m_u = " + std::string { spelled.view() } + "\n");
+        }
+        formula::NumberText const exact = formula::number_text(measured, formula::NumberStyle::exact_decimal());
+        formula::NumberText const approximated = formula::number_text(measured, halfEven);
+        CHECK(std::format("{}", measured) == exact.view());
+        CHECK(std::format("{:~HalfEven}", measured) == approximated.view());
+    }
+    // 1/3 of the unnamed gram is 1/3000 kg: `≈0.0003 kg`, never `≈0 kg`.
+    CHECK(std::format("{:~HalfEven}", formula::Measured<UnnamedMass> { Rational { 1, 3 } })
+          == "\xe2\x89\x88" "0.0003 kg");
 }

@@ -659,6 +659,99 @@ namespace detail
         return checked_convert(declaredNumber, declared, coherent(dimension));
     }
 
+    /// Whether @p shownIn is a unit nobody declared: exactly the coherent unit
+    /// `coherent()` builds for its dimension -- no symbol, no scale, and
+    /// `Unit`'s default of 3 decimals, which nobody chose. A trace shows a
+    /// computed value in one, a product in joules or a ratio. A quantity
+    /// declared in `unit::One` is the same `Unit` value, so it counts as
+    /// unlabelled too.
+    [[nodiscard]] constexpr bool is_unlabelled(Unit const& shownIn) noexcept
+    {
+        return shownIn == coherent(shownIn.dimension);
+    }
+
+    /// @p numberStyle with `DecimalPadding::Trimmed`: the same notation and
+    /// the same rounding mode, never padded.
+    [[nodiscard]] constexpr NumberStyle trimmed(NumberStyle numberStyle) noexcept
+    {
+        switch (numberStyle.notation())
+        {
+            case NumberNotation::ExactDecimal:
+                return NumberStyle::exact_decimal(DecimalPadding::Trimmed);
+            case NumberNotation::ApproximateDecimal:
+                return NumberStyle::approximate_decimal(numberStyle.approximation(), DecimalPadding::Trimmed);
+            case NumberNotation::Fraction:
+                break;
+        }
+        return numberStyle;
+    }
+
+    /// Whether @p spelled is a rounding that came out as zero: `≈0`.
+    [[nodiscard]] constexpr bool rounded_to_zero(NumberText const& spelled) noexcept
+    {
+        std::string_view const spelledText = spelled.view();
+        return spelledText.size() == ApproximationMarker.size() + 1 && spelledText.starts_with(ApproximationMarker)
+               && spelledText.back() == '0';
+    }
+
+    /// `checked_number_text` for a number shown in @p shownIn, except that a
+    /// number in a unit nobody declared (`is_unlabelled`) is never padded:
+    /// the 3 decimals it would be padded to are a default, not anyone's
+    /// statement of precision. An approximating style still rounds it at
+    /// those 3 places -- unless they round a value other than zero to `≈0`,
+    /// which says nothing of it. The places are then extended to its first
+    /// significant digit, up to 18, and the value, rounded there in the
+    /// style's mode, stays marked: a tariff in euros per joule,
+    /// 3401/33480000000, reads `≈0.0000001`, and 1/11250000 `≈0.00000009`. A
+    /// value with no digit within 18 places reads `≈0`. A unit someone
+    /// declared keeps its declared places, whatever they round to.
+    ///
+    /// The one spelling of a value a trace line shows, and of a `Measured`
+    /// value moved into the coherent unit (`checked_shown_value_text`), so
+    /// that `number_text`, `std::format` and a trace write such a value alike.
+    [[nodiscard]] constexpr std::expected<NumberText, ArithmeticError> checked_shown_text(Rational shownNumber,
+                                                                                         NumberStyle numberStyle,
+                                                                                         Unit const& shownIn) noexcept
+    {
+        if (!is_unlabelled(shownIn))
+            return checked_number_text(shownNumber, numberStyle, shownIn);
+        NumberStyle const unpadded = trimmed(numberStyle);
+        std::expected<NumberText, ArithmeticError> const spelled = checked_number_text(shownNumber, unpadded, shownIn);
+        if (!spelled.has_value() || shownNumber == Rational { 0 } || !rounded_to_zero(*spelled))
+            return spelled;
+        // The first significant digit is at the fewest places a truncation
+        // leaves something at; rounded there in the style's own mode, the
+        // value cannot come out as zero.
+        NumberStyle const truncating = NumberStyle::approximate_decimal(RoundingMode::TowardZero);
+        for (std::int32_t places = declared_decimals(shownIn).value + 1; places <= ExactDecimalPlaces; ++places)
+        {
+            Unit finer = shownIn;
+            finer.decimals = places;
+            std::expected<NumberText, ArithmeticError> const truncated = checked_number_text(shownNumber, truncating, finer);
+            if (!truncated.has_value())
+                return spelled;
+            if (!rounded_to_zero(*truncated))
+                return checked_number_text(shownNumber, unpadded, finer);
+        }
+        return spelled;
+    }
+
+    /// @p shownValue, a value of a quantity declared in @p declaredIn that
+    /// `shown_number` has already moved into the unit it is shown in, as
+    /// @p numberStyle writes it there -- the number alone. A value moved into
+    /// the coherent unit is spelled as a trace line spells it
+    /// (`checked_shown_text`): its places are a default nobody declared, so
+    /// they are never padded, and never round a value other than zero to
+    /// `≈0`. A value in any other unit is spelled at the decimals that unit
+    /// declares (`checked_number_text`), as before.
+    [[nodiscard]] constexpr std::expected<NumberText, ArithmeticError> checked_shown_value_text(
+        Rational shownValue, NumberStyle numberStyle, Unit const& declaredIn) noexcept
+    {
+        if (spells_coherent_unit(declaredIn, declaredIn.dimension))
+            return checked_shown_text(shownValue, numberStyle, coherent(declaredIn.dimension));
+        return checked_number_text(shownValue, numberStyle, declaredIn);
+    }
+
     /// Writes the power a base unit's factor is raised to, as plain text and a
     /// trace write it -- `^-1`, `^(1/2)`, `^(-1/2)`, and nothing for a power of
     /// 1 -- through @p writer, which takes each piece as a `std::string_view`.
@@ -831,8 +924,11 @@ namespace detail
 /// that unit has no symbol and a dimension (`detail::spells_coherent_unit`):
 /// the number is then moved exactly into the coherent unit and followed by
 /// that unit's spelling, `3/1000 kg` for 3 of a unit of 1/1000 kg, so it is
-/// never on a scale nothing after it names. A dimensionless unit with no
-/// symbol writes the number alone.
+/// never on a scale nothing after it names. Such a value is spelled as a
+/// trace line spells it (`detail::checked_shown_value_text`): never padded to
+/// the coherent unit's default 3 places, and never rounded to `≈0` when it is
+/// not zero -- 1/3 of a unit of 1/1000 kg reads `≈0.0003 kg`. A dimensionless
+/// unit with no symbol writes the number alone.
 ///
 /// @return any error of `checked_number_text(Rational, NumberStyle, Unit const&)`;
 ///         any error of the move into the coherent unit (`checked_convert`),
@@ -856,7 +952,7 @@ template <Described Q>
     if (!shownValue)
         return std::unexpected { shownValue.error() };
     std::expected<NumberText, ArithmeticError> spelled =
-        checked_number_text(*shownValue, shownStyle, detail::shown_unit_of(declaredIn, declaredIn.dimension));
+        detail::checked_shown_value_text(*shownValue, shownStyle, declaredIn);
     if (!spelled || !detail::writes_a_unit(declaredIn))
         return spelled;
     detail::NumberTextWriter appendTo { *spelled };

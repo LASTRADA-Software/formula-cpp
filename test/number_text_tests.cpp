@@ -558,6 +558,14 @@ TEST_CASE("a measured value in a dimensioned unit with no symbol is shown in the
     STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 3 } },
                                         NumberStyle::approximate_decimal(RoundingMode::HalfEven))
                    == "0.003 kg");
+    // The coherent unit's 3 places are a default nobody chose, as in a trace:
+    // never padded to, and never rounding a value that is not zero to `≈0`.
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 30 } },
+                                        NumberStyle::exact_decimal(DecimalPadding::Padded))
+                   == "0.03 kg");
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 1, 3 } },
+                                        NumberStyle::approximate_decimal(RoundingMode::HalfEven))
+                   == "\xe2\x89\x88" "0.0003 kg");
     // A unit with only a negative exponent is written with it, and no slash.
     STATIC_REQUIRE(formula::number_text(Measured<UnnamedLoading> { Rational { 3 } }, NumberStyle::fraction())
                    == "3000 kg^-1");

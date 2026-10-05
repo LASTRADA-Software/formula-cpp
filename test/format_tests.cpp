@@ -173,6 +173,12 @@ TEST_CASE("a Measured in a dimensioned unit with no symbol formats in the cohere
     CHECK(std::format("{:/}", threeUnnamed) == "3/1000 kg");
     CHECK(std::format("{:.4HalfEven}", threeUnnamed) == "0.0030 kg");
     CHECK(std::format("{:>10}", threeUnnamed) == "  0.003 kg");
+    // `~Mode` reads the coherent unit's places as a trace does: 1/3 of the
+    // unit is 1/3000 kg, `≈0.0003 kg`, never `≈0 kg`. `~.N` rounds at the N
+    // places it names.
+    Measured<UnnamedMass> const thirdUnnamed { Rational { 1, 3 } };
+    CHECK(std::format("{:~HalfEven}", thirdUnnamed) == "\xe2\x89\x88" "0.0003 kg");
+    CHECK(std::format("{:~.5HalfEven}", thirdUnnamed) == "\xe2\x89\x88" "0.00033 kg");
     // The same text number_text writes.
     formula::NumberText const fraction = formula::number_text(threeUnnamed, NumberStyle::fraction());
     CHECK(std::format("{:/}", threeUnnamed) == fraction.view());
