@@ -39,6 +39,18 @@ change is recorded here.
   still written in full. `same_unit(leftUnit, rightUnit)` says whether two units are the same unit -- the same
   dimension, factor, offset, symbol and key (`view_ascii`) -- whatever their declared decimals and bounds, which `==`,
   comparing every member, does not answer.
+- `formula::parse_decimal_text` reads decimal text that arrives at run time -- a CSV import, a form field, a
+  configuration value -- into a `ParsedDecimal`: its exact value and the places it was typed to, so `"2.400"` is 12/5
+  at 3 places and `"2.4"` is 12/5 at 1. `Rational::from_decimal_text` gives the value alone. Text that is not a
+  decimal (whitespace, a decimal comma, separators, `inf`, `nan`) is `DomainError`. Text beyond the parser's range
+  is `Overflow`, for example digits above 2^127 - 1 in magnitude, or a scale outside 10^-38 to 10^38 once trailing
+  zeros fold. The same parser reads `_r` literals.
+- `formula::checked_transform` and `formula::checked_combine<Result>` apply a callback that can fail to measured
+  values: it returns `std::expected<Rational, ArithmeticError>`, as `checked_mul` does, and its error comes back
+  unchanged. An absent value stays absent without calling it. Both are `noexcept` when the callback is, so
+  `checked_transform(reading, [](Rational litres) noexcept { return checked_mul(litres, Rational { 10 }); })` can be
+  written under a no-throw rule. A callback that returns a bare `Rational` does not compile; it belongs to
+  `transform` or `combine`.
 
 ### Changed
 
@@ -72,6 +84,11 @@ change is recorded here.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.
+- `_r` literals take a 128-bit mantissa, so every integer up to 2^127 - 1 in magnitude can be written as one
+  (`12'345'678'901'234'567'890_r` compiles), and `Rational::from_decimal` and `_r` scale by powers of ten from
+  10^-38 to 10^38 rather than stopping at 10^18. `from_decimal` folds a mantissa's trailing zeros into a negative
+  exponent first, so `from_decimal(10, -39)` is 1/10^38. Only refusals turn into answers: every value that answered
+  before is unchanged.
 
 ## [0.4.0] - 2026-10-05
 

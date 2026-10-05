@@ -8,15 +8,15 @@
 ///   denominator in. The sum and the difference are formed on the two words'
 ///   bit patterns; the product's overflow check is the compiler's own 128-bit
 ///   integer where it has one, and portable code on the two words elsewhere
-///   (`int128.hpp`).
+///   (`int128.hpp`). The powers of ten up to 10^38 that `from_decimal`'s
+///   exponent spans are 128-bit too.
 /// - **64 bits**, `Int`, for what stays 64-bit: the powers of ten up to 10^18
-///   that rounding's decimal places and `from_decimal`'s exponent span, the
-///   `_r` literal's mantissa, and narrowing a value to the 64-bit fields of
-///   `Band`, `Breakpoint` and a `Unit`'s magnitude (a rounded root's unit
-///   scale, a trace's unit quotient). MSVC has no __builtin_*_overflow, and
-///   its <intrin.h> equivalents are not constexpr, so these checks are
-///   written in portable C++ and used on every compiler. Optimisers
-///   recognise these idioms.
+///   that rounding's decimal places span, and narrowing a value to the
+///   64-bit fields of `Band`, `Breakpoint` and a `Unit`'s magnitude (a
+///   rounded root's unit scale, a trace's unit quotient). MSVC has no
+///   __builtin_*_overflow, and its <intrin.h> equivalents are not constexpr,
+///   so these checks are written in portable C++ and used on every compiler.
+///   Optimisers recognise these idioms.
 ///
 /// **The overflow census.** This repository's own census programs are compiled
 /// with `FORMULA_OVERFLOW_CENSUS` defined. The macro is internal to them: it
@@ -381,14 +381,26 @@ struct WideDivMod
     return u128_decimal(magnitude(operandValue)).length;
 }
 
-/// `operandValue * 10^exponent`, for the exponents 0 to 18 `mul_pow10` takes
-/// on 64 bits, or nothing on overflow or an exponent out of that range.
+/// `10^exponent` on 128 bits, for `0 <= exponent <= 38`; `nullopt` otherwise. 10^38 is the largest power of ten
+/// `Int128` holds.
+[[nodiscard]] constexpr std::optional<Int128> pow10_wide(int exponent) noexcept
+{
+    if (exponent < 0 || exponent > 38)
+        return std::nullopt;
+    Int128 power { 1 };
+    for (int multiplied = 0; multiplied < exponent; ++multiplied)
+        power = power * Int128 { 10 };
+    return power;
+}
+
+/// `operandValue * 10^exponent`, for the exponents 0 to 38 `pow10_wide`
+/// takes, or nothing on overflow or an exponent out of that range.
 [[nodiscard]] constexpr std::optional<Int128> mul_pow10(Int128 operandValue, int exponent) noexcept
 {
-    std::optional<Int> const powerOfTen = pow10(exponent);
+    std::optional<Int128> const powerOfTen = pow10_wide(exponent);
     if (!powerOfTen)
         return std::nullopt;
-    return mul_checked_or_none(operandValue, Int128 { *powerOfTen });
+    return mul_checked_or_none(operandValue, *powerOfTen);
 }
 
 } // namespace formula::detail

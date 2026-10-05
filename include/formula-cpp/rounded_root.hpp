@@ -153,6 +153,9 @@ namespace detail
     {
         if (radicandInUnitSquared.sign() < 0)
             return std::unexpected { ArithmeticError::DomainError };
+        // As `checked_round` reports them, whichever path the root takes.
+        if (places.value > 18 || places.value < -18)
+            return std::unexpected { ArithmeticError::Overflow };
 
         std::expected<Rational, ArithmeticError> const exactRoot = checked_exact_nth_root(radicandInUnitSquared, 2);
         if (exactRoot.has_value())

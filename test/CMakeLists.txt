@@ -32,6 +32,7 @@ add_executable(formula-cpp-tests
     expression_tests.cpp
     rational_tests.cpp
     rational_literal_tests.cpp
+    decimal_parsing_tests.cpp
     render_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp
@@ -371,6 +372,19 @@ formula_add_negative_test(measured_convert_dimension_mismatch_absent
     "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
 formula_add_negative_test(measured_convert_currency_mismatch
     "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
+
+# A checked_transform or checked_combine callback reports failure through
+# std::expected; one returning a bare Rational belongs to transform or combine.
+formula_add_negative_test(checked_transform_plain_callback
+    "formula: a checked_transform callback must return std::expected" EXPECT_COUNT 1)
+formula_add_negative_test(checked_combine_plain_callback
+    "formula: a checked_combine callback must return std::expected" EXPECT_COUNT 1)
+# A callback that cannot be called with the measured values at all is refused
+# in the library's own words, not the standard library's.
+formula_add_negative_test(checked_transform_uncallable_callback
+    "formula: a checked_transform callback must be callable with a Rational" EXPECT_COUNT 1)
+formula_add_negative_test(checked_combine_uncallable_callback
+    "formula: a checked_combine callback must be callable with two Rationals" EXPECT_COUNT 1)
 
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately

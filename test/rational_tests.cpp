@@ -82,7 +82,7 @@ static_assert(Rational::from_decimal(45, -2)->denominator() == 20);
 static_assert(Rational::from_decimal(3, 0) == Rational { 3 });
 static_assert(Rational::from_decimal(3, 2) == Rational { 300 });
 static_assert(Rational::from_decimal(0, -5) == Rational { 0 });
-static_assert(!Rational::from_decimal(1, -19).has_value());
+static_assert(!Rational::from_decimal(1, -39).has_value());
 static_assert(!Rational::from_decimal(IntMax, 1).has_value());
 static_assert(Rational::from_decimal(Int64Max, 1) == Rational { Rational::Int { Int64Max } * 10 });
 
@@ -138,6 +138,16 @@ TEST_CASE("from_decimal is exact where from_double_exact is not", "[rational]")
     REQUIRE(fromBinary.has_value());
     CHECK(fromBinary->denominator() != 20);
     CHECK(fromBinary->to_double() == 0.45);
+}
+
+TEST_CASE("from_decimal: exponents up to 38 either way", "[rational]")
+{
+    STATIC_REQUIRE(*Rational::from_decimal(1, -19) == Rational::make(1, *formula::detail::pow10_wide(19)).value());
+    STATIC_REQUIRE(Rational::from_decimal(1, -38).has_value());
+    STATIC_REQUIRE(Rational::from_decimal(1, -39).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(Rational::from_decimal(1, 38).has_value());
+    STATIC_REQUIRE(Rational::from_decimal(1, 39).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(*Rational::from_decimal(10, -39) == *Rational::from_decimal(1, -38)); // trailing zeros fold first
 }
 
 TEST_CASE("from_double_exact rejects non-finite input", "[rational]")

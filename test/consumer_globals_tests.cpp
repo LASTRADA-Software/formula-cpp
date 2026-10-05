@@ -32,7 +32,8 @@
 // with a sink of its own; `apply` with every overlay operation; `Outcome`'s
 // factories; `checked_convert_to`, `checked_within_bounds`,
 // `checked_round_to_declared`, their throwing twins `convert_to`,
-// `within_bounds` and `round_to_declared`, `transform` and `combine`; `entered`,
+// `within_bounds` and `round_to_declared`, `transform` and `combine`,
+// `checked_transform` and `checked_combine`; `entered`,
 // `Environment::get` and `source_of`;
 // `measured_series`, `entered` of a series, `Environment::get_series` and
 // `checked_evaluate_series` of a series variable, derived and entered;
@@ -610,6 +611,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(convertedEdge == *inMetres && roundedEdge == *declared
                            && formula::within_bounds(edge) == *withinBounds);
     probe.checks.push_back(doubled.value() == formula::Rational { 300 } && summed.value() == formula::Rational { 300 });
+    auto const checkedDoubled = formula::checked_transform(
+        edge, [](formula::Rational measured) noexcept { return formula::checked_mul(measured, formula::Rational { 2 }); });
+    auto const checkedSummed = formula::checked_combine<EdgeX>(
+        edge, edge, [](formula::Rational augend, formula::Rational addend) noexcept {
+            return formula::checked_add(augend, addend);
+        });
+    probe.checks.push_back(checkedDoubled.has_value() && checkedDoubled->value() == formula::Rational { 300 }
+                           && checkedSummed.has_value() && checkedSummed->value() == formula::Rational { 300 });
 
     // A series: built, entered, read from an environment and evaluated both
     // ways, derived and entered.

@@ -53,6 +53,7 @@ is the only place precision is deliberately given up.
 | a fraction | `Rational { 3, 4 }` | 3/4 |
 | an exact decimal | `0.45_r` | 9/20 |
 | an exact decimal from digits known only at run time | `Rational::from_decimal(45, -2)` | 9/20 |
+| an exact decimal from text read at run time | `Rational::from_decimal_text("0.45")` | 9/20 |
 | a whole number of tens, the same way | `Rational::from_decimal(45, 1)` | 450/1 |
 | the exact value of a `double` | `Rational::from_double_exact(0.45)` | a power-of-two denominator |
 | a measured `double` on a known scale | `rational_from_double(0.45, DecimalPlaces { 2 }, mode)` | 9/20 |
@@ -75,12 +76,15 @@ Rational const g =
 `0.45_r` is read from its spelling at compile time
 ([Writing an exact decimal](#writing-an-exact-decimal)). `from_decimal`
 writes the same number from a mantissa and a power of ten that may be known
-only at run time.
+only at run time; its scale reaches from 10^-38 to 10^38. `from_decimal_text`
+reads it from text that arrives at run time
+([Decimal text at run time](#decimal-text-at-run-time)).
 
-`from_decimal`, `from_double_exact` and `rational_from_double` all return
-`std::expected<Rational, ArithmeticError>` because the conversion can fail --
-`from_decimal`'s scale factor can overflow, and `from_double_exact` can be
-asked for a NaN or an infinity. `*` unwraps a value known to be present; use
+`from_decimal`, `from_decimal_text`, `from_double_exact` and
+`rational_from_double` all return `std::expected<Rational, ArithmeticError>`
+because the conversion can fail -- `from_decimal`'s scale factor can
+overflow, `from_decimal_text` can be given text that is not a decimal, and
+`from_double_exact` can be asked for a NaN or an infinity. `*` unwraps a value known to be present; use
 the `checked_` layer described below when the input is not already known-good.
 
 `Rational r = 0.45;` does **not** compile. `Rational` has a constructor
@@ -116,8 +120,9 @@ compile. The diagnostic names the function that was reached:
 
 | Spelling | Why it is refused | Named in the diagnostic |
 |---|---|---|
-| `9'223'372'036'854'775'808_r` | one more than the largest 64-bit integer, 9'223'372'036'854'775'807, which bounds the literal's mantissa -- though a `Rational` holds the value | `formula_rational_literal_out_of_range` |
-| `0.0000000000000000001_r` | a denominator of 10^19: the literal's scale, like `from_decimal`'s, stops at 10^18 | `formula_rational_literal_out_of_range` |
+| `170'141'183'460'469'231'731'687'303'715'884'105'728_r` | 2^127, one more than the largest integer a `Rational` holds, which bounds the literal's 128-bit mantissa | `formula_rational_literal_out_of_range` |
+| `0.000'000'000'000'000'000'000'000'000'000'000'000'001_r` | a denominator of 10^39: the literal's scale, like `from_decimal`'s, stops at 10^38 | `formula_rational_literal_out_of_range` |
+| `1e39_r` | 10^39 is an integer no `Rational` holds | `formula_rational_literal_out_of_range` |
 | `0x1F_r`, `0b101_r` | not a decimal | `formula_rational_literal_not_a_decimal` |
 | `017_r` | C++ reads a leading zero as octal, so it is not the decimal 17 | `formula_rational_literal_not_a_decimal` |
 
@@ -126,6 +131,62 @@ literal with two dozen places still works when most of them are zeros.
 
 The literal is for decimals. A fraction such as one third is still
 `Rational { 1, 3 }`, or `1_r / 3`.
+
+## Decimal text at run time
+
+A value that arrives as text -- a CSV import, an instrument's export, a form
+field, a configuration value -- is read by `formula::parse_decimal_text`. It
+gives the exact value and the places the text was typed to, because a method
+that declares a precision needs to know that `"2.400"` is not `"2.4"`:
+
+```cpp
+#include <formula-cpp/format.hpp> // std::format for Rational::Int
+#include <formula-cpp/rational.hpp>
+
+#include <print>
+
+std::expected<formula::ParsedDecimal, formula::ArithmeticError> const parsed =
+    formula::parse_decimal_text("2.400");
+if (!parsed)
+{
+    std::println("not a decimal: {}", formula::describe(parsed.error()));
+    return;
+}
+// parsed->value is 12/5, parsed->places is 3
+std::println("{}/{} at {} places", parsed->value.numerator(), parsed->value.denominator(), parsed->places);
+```
+
+`Rational::from_decimal_text` gives the value alone:
+`Rational::from_decimal_text("0.0213")` is 213/10000. The same parser reads
+`_r` literals, so text and literal agree on every value.
+
+The text is an optional `+` or `-`; digits with at most one `.`, and at least
+one digit in all (`.5` and `5.` are fine, and so are leading zeros, `007`);
+then an optional exponent: `e` or `E`, an optional sign, and at least one
+digit.
+
+| Text | Value | Places |
+|---|---|---|
+| `"2.400"` | 12/5 | 3 |
+| `"2.4"` | 12/5 | 1 |
+| `"7"` | 7 | 0 |
+| `"1.5e3"` | 1500 | 0 |
+| `"15e-1"` | 3/2 | 1 |
+| `"-0.0"` | 0 | 1 |
+
+The places are the digits after the point, minus the exponent, and never below
+0.
+
+Anything else is `ArithmeticError::DomainError`: the empty text, whitespace
+anywhere (trim before parsing), a decimal comma (`"2,4"`), any digit separator
+(`"1'000"`, `"1_000"`), a second point, hexadecimal, `inf`, `nan`, and an
+exponent with no digits (`"1e"`). Text beyond the parser's range is
+`ArithmeticError::Overflow`. Most often, its digits, read as an integer, are
+above 2^127 − 1 in magnitude, or its scale lies outside 10^-38 to 10^38 once
+trailing zeros fold. So `"2.5e-38"` is refused, though 1/(4 · 10^37) would
+fit a `Rational`. The comment on `parse_decimal_text` in
+`formula-cpp/rational.hpp` lists every cause. Trailing zeros after the point
+cost nothing, however many.
 
 ## Exact or nothing
 
@@ -251,9 +312,9 @@ the answer.
 
 `Rational`'s numerator and denominator are `formula::Int128`, signed 128-bit
 integers: each holds up to 2^127 − 1, and a numerator down to −2^127 -- up to
-39 decimal digits. That is the integer width only. `DecimalPlaces` and the
-decimal-place form of `round` stay limited to ±18 places, as `from_decimal`'s
-exponent and the `_r` literal's 18 places are; an out-of-range
+39 decimal digits. `from_decimal`'s exponent, the `_r` literal and
+`parse_decimal_text` reach 10^-38 to 10^38. `DecimalPlaces` and the
+decimal-place form of `round` stay limited to ±18 places; an out-of-range
 `DecimalPlaces` reports `Overflow`, while an out-of-range `SignificantDigits`
 (fewer than 1) reports `DomainError` -- both mean "argument outside the
 domain of the operation", but a caller switching on the code should expect
