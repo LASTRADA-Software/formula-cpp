@@ -395,6 +395,10 @@ formula_add_negative_test(unit_symbol_too_long "formula_unit_symbol_too_long")
 # expression", clang and g++ "call to consteval function ... is not a constant
 # expression"; the expected text is the part they share.
 formula_add_negative_test(unit_symbol_from_runtime_text "is not a constant expression")
+# Only a bool sets a Bounds end's flag, so a positional Bounds whose second value is a number is refused. g++ says
+# "use of deleted function", clang "invokes a deleted function", cl "attempting to reference a deleted function";
+# the expected text is the part they share.
+formula_add_negative_test(bounds_positional_initialiser "deleted function")
 
 formula_add_negative_test(fixed_string_not_terminated
     "formula_fixed_string_must_be_null_terminated")

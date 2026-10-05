@@ -50,14 +50,39 @@ namespace detail
     return *built;
 }
 
+/// Whether one end of a `Bounds` range is declared: a `bool` that only a `bool` can set.
+///
+/// It reads as a `bool` -- in `if`, `!`, `&&`, `||` and when assigned to one -- but no other type converts to it, so
+/// a `Bounds` written with positional initialisers whose second value is a number, `{ true, 0, 1, 100, 1 }`, does not
+/// compile instead of putting every value one member later. Structural, so a `Unit` holding it stays a template
+/// argument.
+struct BoundsEnd
+{
+    /// Whether this end of the range is declared.
+    bool declared = false;
+
+    /// An end that is declared when @p isDeclared is `true`.
+    constexpr BoundsEnd(bool isDeclared) noexcept: declared { isDeclared } {}
+
+    /// Refuses every type but `bool`: a number, a pointer or an enumerator never stands for a declared end.
+    template <typename NotBool>
+    BoundsEnd(NotBool) = delete;
+
+    /// Whether this end of the range is declared.
+    [[nodiscard]] constexpr operator bool() const noexcept { return declared; }
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(BoundsEnd const&) const noexcept = default;
+};
+
 /// Optional validity range, in the unit's own scale, as exact rationals. Either end may be declared on its own, both
 /// may be, or neither; an undeclared end's fields are ignored.
 struct Bounds
 {
     /// Whether a minimum was declared. `false` for a unit with no lower limit.
-    bool lowPresent = false;
+    BoundsEnd lowPresent = false;
     /// Whether a maximum was declared. `false` for a unit with no upper limit.
-    bool highPresent = false;
+    BoundsEnd highPresent = false;
     /// Numerator of the declared minimum.
     std::int64_t lowNumerator = 0;
     /// Denominator of the declared minimum.

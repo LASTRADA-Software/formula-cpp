@@ -74,15 +74,14 @@ change is recorded here.
   keys through `view_ascii`: that micrometre, keyed `µm`, is not the same unit as `unit::Micrometre`, keyed `um`,
   either.
 - **Breaking:** `Bounds::present` is replaced by `lowPresent` and `highPresent`, one for each end, so a unit can
-  declare a minimum or a maximum alone. Both come before the four integer fields, so a `Bounds` built with
-  positional initialisers can change meaning or stop compiling. One whose low numerator is a constant 0 or 1 still
-  compiles, with every value one member later: `{ true, 0, 1, 100, 1 }`, once a range of 0 to 100, now declares a
-  minimum of 1/100 and no maximum, so 0 is reported below the minimum and any value above 100 within bounds. A list
-  of the flag alone, `{ true }`, once 0 to 0, now declares a minimum of 0 and no maximum. Every other list no longer
-  compiles, except `{}` and `{ false }`, which still declare no bounds (GCC only warns when a value is not a
-  constant). Write `bounds()`, `at_least()`, `at_most()` or designated initialisers instead, which are unaffected.
-  Code that read `present` reads `lowPresent || highPresent`, or each end on its own. A unit that declared bounds
-  with `bounds()` gives the same answers as before.
+  declare a minimum or a maximum alone. Each is a `BoundsEnd`, which reads as a `bool` but takes nothing else, so a
+  `Bounds` built with positional initialisers in the old order no longer compiles: in `{ true, 0, 1, 100, 1 }`, once
+  a range of 0 to 100, the 0 lands on `highPresent` and is refused, rather than every value moving one member later.
+  `{}` and `{ false }` still compile and declare no bounds. `{ true }` alone still compiles too, but where it once
+  declared a range of 0 to 0 it now declares a minimum of 0 and no maximum. Write `bounds()`, `at_least()`,
+  `at_most()` or designated initialisers instead, which are unaffected. Code that read `present` reads
+  `lowPresent || highPresent`, or each end on its own. A unit that declared bounds with `bounds()` gives the same
+  answers as before.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.

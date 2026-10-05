@@ -860,6 +860,9 @@ inline constexpr Unit BoundedPercent { .dimension = dim::Scalar,
 
 static_assert(!unit::Litre.bounds.lowPresent && !unit::Litre.bounds.highPresent);
 static_assert(BoundedPercent.bounds.lowPresent && BoundedPercent.bounds.highPresent);
+// A positional list of the low flag alone still compiles, and declares a minimum of 0 and no maximum. A longer
+// positional list whose second value is a number does not (negative/bounds_positional_initialiser.cpp).
+static_assert(formula::Bounds { true } == formula::at_least(0, 1));
 
 static_assert(*formula::checked_within_bounds(*Rational::make(50, 1), BoundedPercent)
               == BoundsCheck::WithinBounds);

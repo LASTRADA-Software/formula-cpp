@@ -408,11 +408,13 @@ and `highPresent`, one for each end. `formula::bounds(lowNumerator,
 lowDenominator, highNumerator, highDenominator)` declares both,
 `formula::at_least(numerator, denominator)` a minimum only, and
 `formula::at_most(numerator, denominator)` a maximum only. Both ends are
-inclusive, and a unit that declares neither reports `NotChecked`. A `Bounds`
-written positionally before the two flags existed can change meaning without a
-compile error -- `{ true, 0, 1, 100, 1 }`, once 0 to 100, now declares a minimum
-of 1/100 and no maximum -- so write `bounds()`, `at_least()`, `at_most()` or
-designated initialisers.
+inclusive, and a unit that declares neither reports `NotChecked`. Each flag is
+a `BoundsEnd`, which reads as a `bool` but only a `bool` sets, so a `Bounds`
+written positionally before the two flags existed no longer compiles: in
+`{ true, 0, 1, 100, 1 }`, once 0 to 100, the 0 lands on `highPresent`. Only
+`{}` and `{ false }`, which declare no bounds, and `{ true }`, which once meant
+0 to 0 and now declares a minimum of 0, still compile. Write `bounds()`,
+`at_least()`, `at_most()` or designated initialisers.
 
 Limits known only at run time -- a specification row, a catalogue entry -- need
 no unit to carry them. `formula::checked_within(value, lowEnd, highEnd)` takes
