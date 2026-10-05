@@ -37,10 +37,10 @@ struct Share: formula::Quantity<Share, "p", "an invented share", unit::Percent>
 struct Volume: formula::Quantity<Volume, "V", "specimen volume", unit::CubicMetre>
 {
 };
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "water volume", unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement volume", unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", unit::Millimetre>
 {
 };
 struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
@@ -111,11 +111,10 @@ TEST_CASE("a derivation renders one line per step, in order", "[trace-render]")
 
 TEST_CASE("a value renders in the unit it was entered in, not in coherent SI", "[trace-render]")
 {
-    constexpr auto ratio =
-        formula::documented(var<WaterVolume> / var<CementVolume>,
-                            { .title = "Water/cement ratio", .reference = "Example Standard 1:2020", .section = "5.2" });
-    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                                  formula::Measured<CementVolume> { formula::Rational { 300 } });
+    constexpr auto ratio = formula::documented(
+        var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020", .section = "5.2" });
+    auto const environment = formula::environment(formula::Measured<Rise> { formula::Rational { 180 } },
+                                                  formula::Measured<Run> { formula::Rational { 300 } });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -123,14 +122,14 @@ TEST_CASE("a value renders in the unit it was entered in, not in coherent SI", "
 
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
 
-    // The whole point of `Step::unit`. Both volumes are stored as 9/50 and
-    // 3/10 cubic metres, which is what the arithmetic needs and is not what
-    // anybody entered. A person auditing this report typed 180 litres.
+    // The whole point of `Step::unit`. Both lengths are stored as 9/50 and
+    // 3/10 metres, which is what the arithmetic needs and is not what
+    // anybody entered. A person auditing this report typed 180 millimetres.
     CHECK(text
-          == "1. V_w = 180 l\n"
-             "2. V_c = 300 l\n"
+          == "1. h = 180 mm\n"
+             "2. L = 300 mm\n"
              "3. #1 / #2 = 3/5\n"
-             "4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.2]\n");
+             "4. #3 = 3/5 [Road gradient, Example Standard 1:2020, 5.2]\n");
 }
 
 TEST_CASE("a power times a time reads in the coherent unit, not in kilowatt-hours", "[trace-render]")
@@ -1430,7 +1429,7 @@ TEST_CASE("a documented step shows its value as the step it documents does", "[t
 {
     // The citation wraps a value declared in grams, and in millimetres below,
     // neither of which is its dimension's coherent SI unit -- the case the
-    // water/cement ratio above cannot catch, since a ratio's declared unit and
+    // road gradient above cannot catch, since a ratio's declared unit and
     // its SI unit coincide. The documented step adds a citation and nothing
     // else: its value reads exactly as the line it names, never as the same
     // number rescaled into kilograms or metres and stripped of its unit.
@@ -1511,7 +1510,7 @@ TEST_CASE("a documented step over a consumer node that forwards the sink keeps t
     // The consumer's node records no step of its own, so the documented step
     // claims the node's operands -- the two readings -- and neither of them
     // is the value it documents. Taking a unit from one would state a 57/5 K
-    // rise as a Celsius reading of it, and a density in litres, which the
+    // rise as a Celsius reading of it, and a linear density in millimetres, which the
     // renderer refuses. The documented step says what a computed step with
     // no unit to borrow says instead: its value in the coherent SI unit.
     constexpr formula::Citation cited { .title = "Consumer formula",
@@ -1524,16 +1523,16 @@ TEST_CASE("a documented step over a consumer node that forwards the sink keeps t
         formula::documented(forwarding::difference(var<EndTemperature>, var<StartTemperature>), cited), temperatures);
     CHECK(rise.find(" = 57/5 K [Consumer formula, Example Standard 1:2020, 6.4]\n") != std::string::npos);
 
-    constexpr auto density = formula::documented(forwarding::quotient(var<SampleMass>, var<WaterVolume>), cited);
+    constexpr auto density = formula::documented(forwarding::quotient(var<SampleMass>, var<Rise>), cited);
     auto const specimen = formula::environment(formula::Measured<SampleMass> { formula::Rational { 139 } },
-                                               formula::Measured<WaterVolume> { formula::Rational { 277 } });
+                                               formula::Measured<Rise> { formula::Rational { 277 } });
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
     (void) formula::checked_evaluate_si<formula::Rational>(density, specimen, sink);
     REQUIRE(trace.steps.size() == 3);
-    CHECK(trace.steps.back().unit == formula::coherent(formula::dim::Mass / formula::dim::Volume));
+    CHECK(trace.steps.back().unit == formula::coherent(formula::dim::Mass / formula::dim::Length));
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
-              .find(" = 139/277 kg/m^3 [Consumer formula, Example Standard 1:2020, 6.4]\n")
+              .find(" = 139/277 kg/m [Consumer formula, Example Standard 1:2020, 6.4]\n")
           != std::string::npos);
 }
 
@@ -1801,19 +1800,19 @@ TEST_CASE("a citation cannot close its clause, open another, or start a line", "
 {
     // A clause-closing citation, with a newline, another control character and a backslash
     // added: every one escaped, and the line stays one line.
-    constexpr auto ratio =
-        formula::documented(var<WaterVolume> / var<CementVolume>,
-                            { .title = "Strength] [derived by jurisdiction overlay: Example Standard 9:2022 NA\n9. a\\b\x1f" });
-    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                                  formula::Measured<CementVolume> { formula::Rational { 300 } });
+    constexpr auto ratio = formula::documented(
+        var<Rise> / var<Run>,
+        { .title = "Strength] [derived by jurisdiction overlay: Example Standard 9:2022 NA\n9. a\\b\x1f" });
+    auto const environment = formula::environment(formula::Measured<Rise> { formula::Rational { 180 } },
+                                                  formula::Measured<Run> { formula::Rational { 300 } });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
     (void) formula::checked_evaluate_si<formula::Rational>(ratio, environment, sink);
 
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
-          == "1. V_w = 180 l\n"
-             "2. V_c = 300 l\n"
+          == "1. h = 180 mm\n"
+             "2. L = 300 mm\n"
              "3. #1 / #2 = 3/5\n"
              "4. #3 = 3/5 [Strength\\] \\[derived by jurisdiction overlay: Example Standard 9:2022 NA\\n9. a\\\\b\\x1f]\n");
 }
@@ -1965,9 +1964,9 @@ TEST_CASE("a rounding or a numeric value in a dimensionless unit with no symbol 
     // `round(#4, in )`, a numeric value `numeric(#3, in )`. The clause is
     // dropped, as the value's own unit is after a dimensionless number; a
     // named unit keeps it.
-    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
-    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                                  formula::Measured<CementVolume> { formula::Rational { 300 } });
+    constexpr auto ratio = var<Rise> / var<Run>;
+    auto const environment = formula::environment(formula::Measured<Rise> { formula::Rational { 180 } },
+                                                  formula::Measured<Run> { formula::Rational { 300 } });
 
     auto const dimensionless = formula::method(
         formula::variants(formula::variant<PlainDensity>(ratio)),
@@ -2848,19 +2847,19 @@ TEST_CASE("a critical-value step records the count and whose failure it carries,
 namespace
 {
 /// An environment of a consumer's own that works its values out and says,
-/// at run time, where each came from: 180 l of water, and cement it has no
-/// value for -- or, when @p cementFails, whose read fails with
+/// at run time, where each came from: 180 mm of rise, and a run it has no
+/// value for -- or, when @p runFails, whose read fails with
 /// `DomainError`. Each source is whatever it is told.
 struct CalculatingEnvironment
 {
-    formula::ValueSource waterSource;
-    formula::ValueSource cementSource;
-    bool cementFails;
+    formula::ValueSource riseSource;
+    formula::ValueSource runSource;
+    bool runFails;
 
     template <formula::Described Q>
     [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
     {
-        if constexpr (std::is_same_v<Q, WaterVolume>)
+        if constexpr (std::is_same_v<Q, Rise>)
             return formula::Measured<Q> { formula::Rational { 180 } };
         else
             return formula::Measured<Q>::absent();
@@ -2869,7 +2868,7 @@ struct CalculatingEnvironment
     template <formula::Described Q>
     [[nodiscard]] constexpr std::expected<formula::Measured<Q>, formula::ArithmeticError> checked_get() const noexcept
     {
-        if (std::is_same_v<Q, CementVolume> && cementFails)
+        if (std::is_same_v<Q, Run> && runFails)
             return std::unexpected { formula::ArithmeticError::DomainError };
         return get<Q>();
     }
@@ -2877,7 +2876,7 @@ struct CalculatingEnvironment
     template <formula::Described Q>
     [[nodiscard]] constexpr formula::ValueSource source_of() const noexcept
     {
-        return std::is_same_v<Q, WaterVolume> ? waterSource : cementSource;
+        return std::is_same_v<Q, Rise> ? riseSource : runSource;
     }
 };
 
@@ -2885,7 +2884,7 @@ struct CalculatingEnvironment
 {
     formula::Trace<> trace {};
     (void) formula::checked_evaluate_si<formula::Rational>(
-        var<WaterVolume> + var<CementVolume>, calculating, formula::RecordingSink<> { trace });
+        var<Rise> + var<Run>, calculating, formula::RecordingSink<> { trace });
     return trace;
 }
 } // namespace
@@ -2897,8 +2896,8 @@ TEST_CASE("a value the environment calculated says so, and one it has no value f
     CHECK(calculated.steps[0].inputSource == derived);
     CHECK(calculated.steps[1].inputSource == derived);
     CHECK(formula::render_trace(calculated, { .maxSteps = 10 })
-          == "1. V_w = 180 l, calculated\n"
-             "2. V_c = (no value), calculated\n"
+          == "1. h = 180 mm, calculated\n"
+             "2. L = (no value), calculated\n"
              "3. #1 + #2 = (not measured)\n");
 
     // The run-time answer decides the other wordings too: a typed-in input,
@@ -2906,14 +2905,14 @@ TEST_CASE("a value the environment calculated says so, and one it has no value f
     formula::Trace<> const measured =
         traced_sum({ formula::ValueSource::ManuallyEntered, formula::ValueSource::Measured, false });
     CHECK(formula::render_trace(measured, { .maxSteps = 10 })
-          == "1. V_w = 180 l, entered by hand\n"
-             "2. V_c = (not measured)\n"
+          == "1. h = 180 mm, entered by hand\n"
+             "2. L = (not measured)\n"
              "3. #1 + #2 = (not measured)\n");
     formula::Trace<> const typedEmpty =
         traced_sum({ formula::ValueSource::Measured, formula::ValueSource::ManuallyEntered, false });
     CHECK(formula::render_trace(typedEmpty, { .maxSteps = 10 })
-          == "1. V_w = 180 l\n"
-             "2. V_c = (entered by hand as empty)\n"
+          == "1. h = 180 mm\n"
+             "2. L = (entered by hand as empty)\n"
              "3. #1 + #2 = (not measured)\n");
 }
 
@@ -2928,8 +2927,8 @@ TEST_CASE("a calculated value whose read failed is that variable's failure, and 
     CHECK(failed.steps[1].inputSource == derived);
     CHECK(failed.steps[2].error == formula::ArithmeticError::DomainError);
     CHECK(formula::render_trace(failed, { .maxSteps = 10 })
-          == "1. V_w = 180 l, calculated\n"
-             "2. V_c = argument outside the domain of the operation, calculated\n"
+          == "1. h = 180 mm, calculated\n"
+             "2. L = argument outside the domain of the operation, calculated\n"
              "3. #1 + #2 = argument outside the domain of the operation\n");
 }
 
@@ -3003,18 +3002,16 @@ inline constexpr formula::Envelope<2> ThirdsEnvelope {
 TEST_CASE("a trace spells its numbers as exact decimals when asked, and only where they are exact",
           "[trace-render][decimals]")
 {
-    constexpr auto ratio =
-        formula::documented(var<WaterVolume> / var<CementVolume>,
-                            { .title = "Water/cement ratio", .reference = "Example Standard 1:2020", .section = "5.2" });
-    formula::Trace<> const trace =
-        tracedValue(ratio,
-                    formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                         formula::Measured<CementVolume> { formula::Rational { 300 } }));
+    constexpr auto ratio = formula::documented(
+        var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020", .section = "5.2" });
+    formula::Trace<> const trace = tracedValue(ratio,
+                                               formula::environment(formula::Measured<Rise> { formula::Rational { 180 } },
+                                                                    formula::Measured<Run> { formula::Rational { 300 } }));
     CHECK(renderedIn(trace, formula::NumberStyle::exact_decimal())
-          == "1. V_w = 180 l\n"
-             "2. V_c = 300 l\n"
+          == "1. h = 180 mm\n"
+             "2. L = 300 mm\n"
              "3. #1 / #2 = 0.6\n"
-             "4. #3 = 0.6 [Water/cement ratio, Example Standard 1:2020, 5.2]\n");
+             "4. #3 = 0.6 [Road gradient, Example Standard 1:2020, 5.2]\n");
     // Fractions by default, as a trace has always read.
     CHECK(formula::render_trace(trace, { .maxSteps = 40 }) == renderedIn(trace, formula::NumberStyle::fraction()));
     CHECK(renderedIn(trace, formula::NumberStyle::fraction()).find("3. #1 / #2 = 3/5\n") != std::string::npos);

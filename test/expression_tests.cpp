@@ -8,10 +8,10 @@
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 struct BeamLength: formula::Quantity<BeamLength, "L", "beam length", formula::unit::Millimetre>
@@ -40,16 +40,17 @@ using Tree = formula::BinaryNode<Op, Left, Right>;
 
 TEST_CASE("expression: a variable carries its quantity's dimension", "[expression]")
 {
-    STATIC_REQUIRE(formula::VarNode<WaterVolume>::dimension == formula::dim::Volume);
+    STATIC_REQUIRE(formula::VarNode<Rise>::dimension == formula::dim::Length);
     STATIC_REQUIRE(formula::VarNode<BeamLength>::dimension == formula::dim::Length);
-    STATIC_REQUIRE(std::is_same_v<formula::VarNode<WaterVolume>::quantity, WaterVolume>);
+    STATIC_REQUIRE(formula::VarNode<AppliedForce>::dimension == formula::dim::Mass);
+    STATIC_REQUIRE(std::is_same_v<formula::VarNode<Rise>::quantity, Rise>);
 }
 
 TEST_CASE("expression: every node satisfies the Node concept", "[expression]")
 {
-    STATIC_REQUIRE(formula::Node<formula::VarNode<WaterVolume>>);
-    STATIC_REQUIRE(formula::Node<decltype(var<WaterVolume> + var<CementVolume>)>);
-    STATIC_REQUIRE(formula::Node<decltype(-var<WaterVolume>)>);
+    STATIC_REQUIRE(formula::Node<formula::VarNode<Rise>>);
+    STATIC_REQUIRE(formula::Node<decltype(var<Rise> + var<Run>)>);
+    STATIC_REQUIRE(formula::Node<decltype(-var<Rise>)>);
     STATIC_REQUIRE(formula::Node<decltype(formula::number(rat(2)))>);
     STATIC_REQUIRE_FALSE(formula::Node<formula::Rational>);
     STATIC_REQUIRE_FALSE(formula::Node<int>);
@@ -57,7 +58,7 @@ TEST_CASE("expression: every node satisfies the Node concept", "[expression]")
 
 TEST_CASE("expression: multiplication and division combine dimensions", "[expression]")
 {
-    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    constexpr auto ratio = var<Rise> / var<Run>;
     constexpr auto moment = var<AppliedForce> * var<BeamLength>;
 
     STATIC_REQUIRE(formula::is_dimensionless(decltype(ratio)::dimension));
@@ -66,11 +67,11 @@ TEST_CASE("expression: multiplication and division combine dimensions", "[expres
 
 TEST_CASE("expression: addition and subtraction keep the shared dimension", "[expression]")
 {
-    constexpr auto total = var<WaterVolume> + var<CementVolume>;
-    constexpr auto excess = var<WaterVolume> - var<CementVolume>;
+    constexpr auto total = var<Rise> + var<Run>;
+    constexpr auto excess = var<Rise> - var<Run>;
 
-    STATIC_REQUIRE(decltype(total)::dimension == formula::dim::Volume);
-    STATIC_REQUIRE(decltype(excess)::dimension == formula::dim::Volume);
+    STATIC_REQUIRE(decltype(total)::dimension == formula::dim::Length);
+    STATIC_REQUIRE(decltype(excess)::dimension == formula::dim::Length);
 }
 
 TEST_CASE("expression: negation keeps the operand's dimension", "[expression]")
@@ -154,18 +155,18 @@ TEST_CASE("expression: a Rational mixed into a formula becomes a dimensionless c
 
 TEST_CASE("expression: the tree keeps its shape and its operands", "[expression]")
 {
-    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    constexpr auto ratio = var<Rise> / var<Run>;
 
     STATIC_REQUIRE(decltype(ratio)::op == formula::BinaryOperator::Divide);
     // `decltype` of a member access yields the member's declared type, with no
     // const from the object it was read through -- so no `const` here.
-    STATIC_REQUIRE(std::is_same_v<decltype(ratio.lhs), formula::VarNode<WaterVolume>>);
-    STATIC_REQUIRE(std::is_same_v<decltype(ratio.rhs), formula::VarNode<CementVolume>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio.lhs), formula::VarNode<Rise>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio.rhs), formula::VarNode<Run>>);
 }
 
 TEST_CASE("expression: a deep tree carries no state beyond its constants", "[expression]")
 {
-    constexpr auto deep = (var<WaterVolume> + var<CementVolume>) / (var<WaterVolume> - var<CementVolume>) *var<BeamLength>;
+    constexpr auto deep = (var<Rise> + var<Run>) / (var<Rise> - var<Run>) *var<BeamLength>;
 
     STATIC_REQUIRE(decltype(deep)::dimension == formula::dim::Length);
 
@@ -174,14 +175,14 @@ TEST_CASE("expression: a deep tree carries no state beyond its constants", "[exp
     // value, and how much an empty child costs inside its parent is the
     // compiler's business. Measured, the five-leaf tree above was 5 bytes on
     // cl and clang-cl and 9 on g++ -- correct on all three, portable on none.
-    STATIC_REQUIRE(std::is_empty_v<formula::VarNode<WaterVolume>>);
+    STATIC_REQUIRE(std::is_empty_v<formula::VarNode<Rise>>);
     STATIC_REQUIRE_FALSE(std::is_empty_v<formula::ConstantNode<formula::unit::One>>);
 }
 
 TEST_CASE("expression: the same formula written twice is the same type", "[expression]")
 {
-    constexpr auto first = var<WaterVolume> / var<CementVolume>;
-    constexpr auto second = var<WaterVolume> / var<CementVolume>;
+    constexpr auto first = var<Rise> / var<Run>;
+    constexpr auto second = var<Rise> / var<Run>;
 
     STATIC_REQUIRE(std::is_same_v<decltype(first), decltype(second)>);
 }

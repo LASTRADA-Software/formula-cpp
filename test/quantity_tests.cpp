@@ -14,7 +14,7 @@ namespace unit = formula::unit;
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "volume of the effective mixing water", unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", unit::Millimetre>
 {
 };
 
@@ -26,49 +26,49 @@ struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen"
 
 // ---- the metadata is in the type ----
 
-static_assert(WaterVolume::symbol == std::string_view { "V_w" });
-static_assert(WaterVolume::description == std::string_view { "volume of the effective mixing water" });
-static_assert(WaterVolume::unit == unit::Litre);
+static_assert(Rise::symbol == std::string_view { "h" });
+static_assert(Rise::description == std::string_view { "height gained" });
+static_assert(Rise::unit == unit::Millimetre);
 
 // The dimension is DERIVED from the unit, never declared beside it, so
 // there is no second place for it to disagree with.
-static_assert(WaterVolume::dimension == dim::Volume);
+static_assert(Rise::dimension == dim::Length);
 static_assert(SpecimenMass::dimension == dim::Mass);
-static_assert(WaterVolume::dimension == unit::Litre.dimension);
+static_assert(Rise::dimension == unit::Millimetre.dimension);
 
 // ---- identity ----
 
-static_assert(!std::is_same_v<WaterVolume, SpecimenMass>);
+static_assert(!std::is_same_v<Rise, SpecimenMass>);
 
 // Two quantities alike in EVERYTHING but their tag are still different types.
 // Without this the library would happily let a report label one measurement with
 // another's name.
-static_assert(!std::is_same_v<cross::WaterVolume, cross::CementVolume>);
-static_assert(cross::WaterVolume::symbol == cross::CementVolume::symbol);
-static_assert(cross::WaterVolume::unit == cross::CementVolume::unit);
+static_assert(!std::is_same_v<cross::Rise, cross::Run>);
+static_assert(cross::Rise::symbol == cross::Run::symbol);
+static_assert(cross::Rise::unit == cross::Run::unit);
 
 TEST_CASE("a quantity type means the same thing in every translation unit", "[quantity]")
 {
     // Defined in quantity_cross_tu_b.cpp. If the two translation units disagreed
-    // about what cross::WaterVolume is, this would not link.
-    CHECK(cross::symbol_of_water_volume() == std::string_view { "V_w" });
-    CHECK(cross::water_and_cement_are_distinct());
+    // about what cross::Rise is, this would not link.
+    CHECK(cross::symbol_of_rise() == std::string_view { "h" });
+    CHECK(cross::rise_and_run_are_distinct());
 
     // The stronger claim, which the link failure alone does not make: both
     // translation units named the SAME specialisation. See the note in
     // quantity_cross_tu.hpp for why this compares `dimension` and not `symbol` --
     // `symbol` aliases a shared template parameter object and is equal even
     // between two different quantities.
-    CHECK(cross::address_of_water_volume_dimension() == &cross::WaterVolume::dimension);
-    CHECK(cross::address_of_water_volume_dimension() != &cross::CementVolume::dimension);
+    CHECK(cross::address_of_rise_dimension() == &cross::Rise::dimension);
+    CHECK(cross::address_of_rise_dimension() != &cross::Run::dimension);
 }
 
 TEST_CASE("a quantity reports its own metadata", "[quantity]")
 {
-    CHECK(WaterVolume::symbol == std::string_view { "V_w" });
-    CHECK(WaterVolume::description == std::string_view { "volume of the effective mixing water" });
-    CHECK(formula::view(WaterVolume::unit.symbolText) == std::string_view { "l" });
-    CHECK(WaterVolume::unit.decimals == 1);
+    CHECK(Rise::symbol == std::string_view { "h" });
+    CHECK(Rise::description == std::string_view { "height gained" });
+    CHECK(formula::view(Rise::unit.symbolText) == std::string_view { "mm" });
+    CHECK(Rise::unit.decimals == 1);
     CHECK(SpecimenMass::unit.decimals == 3);
 }
 
@@ -76,18 +76,17 @@ TEST_CASE("a quantity reports its own metadata", "[quantity]")
 
 using formula::Describe;
 
-static_assert(Describe<WaterVolume>::symbol == std::string_view { "V_w" });
-static_assert(Describe<WaterVolume>::description
-              == std::string_view { "volume of the effective mixing water" });
-static_assert(Describe<WaterVolume>::unit == unit::Litre);
-static_assert(Describe<WaterVolume>::dimension == dim::Volume);
+static_assert(Describe<Rise>::symbol == std::string_view { "h" });
+static_assert(Describe<Rise>::description == std::string_view { "height gained" });
+static_assert(Describe<Rise>::unit == unit::Millimetre);
+static_assert(Describe<Rise>::dimension == dim::Length);
 
 // Reading through Describe must agree with reading the type directly. If these
 // ever diverge, every consumer above this layer is reading something else.
-static_assert(Describe<WaterVolume>::symbol == WaterVolume::symbol);
+static_assert(Describe<Rise>::symbol == Rise::symbol);
 static_assert(Describe<SpecimenMass>::unit == SpecimenMass::unit);
 
-static_assert(formula::Described<WaterVolume>);
+static_assert(formula::Described<Rise>);
 static_assert(!formula::Described<int>);
 
 // RequireDescribed's POSITIVE path. test/negative/describe_undeclared_type.cpp
@@ -96,7 +95,7 @@ static_assert(!formula::Described<int>);
 // suite -- measured: mutating it left 79/79 green. Spelled with `::value`
 // because the assertion is in the class body, so a bare alias instantiates
 // nothing and checks nothing.
-static_assert(formula::RequireDescribed<WaterVolume>::value);
+static_assert(formula::RequireDescribed<Rise>::value);
 static_assert(formula::RequireDescribed<SpecimenMass>::value);
 
 // A foreign type, standing in for a `double` or a vendor SDK type: no base, no
@@ -122,10 +121,10 @@ static_assert(Describe<ForeignTemperature>::dimension == dim::Temperature);
 
 TEST_CASE("metadata reads the same through Describe as off the type", "[quantity]")
 {
-    CHECK(Describe<WaterVolume>::symbol == WaterVolume::symbol);
-    CHECK(Describe<WaterVolume>::description == WaterVolume::description);
-    CHECK(Describe<WaterVolume>::unit == WaterVolume::unit);
-    CHECK(Describe<WaterVolume>::dimension == WaterVolume::dimension);
+    CHECK(Describe<Rise>::symbol == Rise::symbol);
+    CHECK(Describe<Rise>::description == Rise::description);
+    CHECK(Describe<Rise>::unit == Rise::unit);
+    CHECK(Describe<Rise>::dimension == Rise::dimension);
 }
 
 TEST_CASE("a foreign type joins on the same terms as ours", "[quantity]")

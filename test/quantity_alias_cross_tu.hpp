@@ -19,20 +19,20 @@
 namespace cross_alias
 {
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "volume of water added", formula::unit::Litre>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", formula::unit::Millimetre>;
 
 /// Same symbol, same description, same unit -- a different tag, and so a
 /// different type.
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_w", "volume of water added", formula::unit::Litre>;
+using Run = formula::Quantity<struct RunTag, "h", "height gained", formula::unit::Millimetre>;
 
 /// Defined in quantity_alias_cross_tu_b.cpp. Takes the quantity by value, so
 /// the alias's specialisation is part of the mangled name the two translation
 /// units must agree on.
-[[nodiscard]] std::string_view symbol_of(WaterVolume);
-[[nodiscard]] bool water_and_cement_are_distinct();
+[[nodiscard]] std::string_view symbol_of(Rise);
+[[nodiscard]] bool rise_and_run_are_distinct();
 
-/// The address of `WaterVolume::dimension` as THIS translation unit sees it --
+/// The address of `Rise::dimension` as THIS translation unit sees it --
 /// see `quantity_cross_tu.hpp` for why `dimension`, and not `symbol`.
-[[nodiscard]] void const* address_of_water_volume_dimension();
+[[nodiscard]] void const* address_of_rise_dimension();
 
 } // namespace cross_alias

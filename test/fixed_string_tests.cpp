@@ -10,8 +10,8 @@ using formula::detail::FixedString;
 
 // ---- it carries exactly the text it was given ----
 
-static_assert(FixedString { "V_w" }.view() == std::string_view { "V_w" });
-static_assert(FixedString { "V_w" }.view().size() == 3);
+static_assert(FixedString { "abc" }.view() == std::string_view { "abc" });
+static_assert(FixedString { "abc" }.view().size() == 3);
 static_assert(FixedString { "" }.view().empty());
 static_assert(FixedString { "a sentence with spaces" }.view().size() == 22);
 
@@ -26,13 +26,13 @@ struct Tagged
     static constexpr std::string_view text = S.view();
 };
 
-static_assert(Tagged<"V_w">::text == std::string_view { "V_w" });
+static_assert(Tagged<"abc">::text == std::string_view { "abc" });
 
 // Same text means the same type; different text means a different type. This is
 // what makes a quantity's symbol part of its identity rather than a field
 // somebody can change without the type noticing.
-static_assert(std::is_same_v<Tagged<"V_w">, Tagged<"V_w">>);
-static_assert(!std::is_same_v<Tagged<"V_w">, Tagged<"V_c">>);
+static_assert(std::is_same_v<Tagged<"abc">, Tagged<"abc">>);
+static_assert(!std::is_same_v<Tagged<"abc">, Tagged<"xyz">>);
 
 // ---- equality across capacities ----
 //

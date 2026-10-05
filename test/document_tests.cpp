@@ -25,10 +25,10 @@ namespace
 struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", formula::unit::Millimetre>
 {
 };
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 // Shares Diameter's symbol on purpose, with a different description and a
@@ -58,13 +58,11 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 using formula::var;
 
 // Invented, as every citation in this repository must be.
-constexpr auto ratio =
-    formula::documented(var<WaterVolume> / var<CementVolume>,
-                        { .title = "Water/cement ratio", .reference = "Example Standard 1:2020", .section = "5.4.2" });
+constexpr auto ratio = formula::documented(
+    var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020", .section = "5.4.2" });
 
 constexpr auto perCent = formula::documented(
-    ratio * rat(100),
-    { .title = "Water/cement ratio, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
+    ratio * rat(100), { .title = "Road gradient, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
 
 // A two-variable predicate -- var<ReplicateA> against var<ReplicateB>, not a
 // variable against an inert constant -- so a symbol-table test can tell
@@ -97,14 +95,14 @@ TEST_CASE("document: the documentation carries the rendered formula", "[document
 {
     formula::Documentation const documentation = formula::document(ratio);
 
-    CHECK(documentation.formula == "V_w / V_c");
+    CHECK(documentation.formula == "h / L");
 }
 
 TEST_CASE("document: the rendered formula follows the requested dialect", "[document]")
 {
     formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(ratio);
 
-    CHECK(latex.formula == "\\frac{V_w}{V_c}");
+    CHECK(latex.formula == "\\frac{h}{L}");
 }
 
 TEST_CASE("document: the rendered formula follows the Markdown dialect too", "[document]")
@@ -116,7 +114,7 @@ TEST_CASE("document: the rendered formula follows the Markdown dialect too", "[d
     // exercises it (it only reads .symbols, which is dialect-independent).
     formula::Documentation const markdown = formula::document<formula::Dialect::Markdown>(ratio);
 
-    CHECK(markdown.formula == "`V_w` / `V_c`");
+    CHECK(markdown.formula == "`h` / `L`");
 }
 
 TEST_CASE("document: citations come back outermost first", "[document]")
@@ -124,18 +122,18 @@ TEST_CASE("document: citations come back outermost first", "[document]")
     formula::Documentation const documentation = formula::document(perCent);
 
     REQUIRE(documentation.citations.size() == 2);
-    CHECK(documentation.citations[0].title == std::string_view { "Water/cement ratio, per cent" });
+    CHECK(documentation.citations[0].title == std::string_view { "Road gradient, per cent" });
     CHECK(documentation.citations[0].section == std::string_view { "5.4.3" });
-    CHECK(documentation.citations[1].title == std::string_view { "Water/cement ratio" });
+    CHECK(documentation.citations[1].title == std::string_view { "Road gradient" });
     CHECK(documentation.citations[1].section == std::string_view { "5.4.2" });
 }
 
 TEST_CASE("document: an undocumented formula yields an empty citation list", "[document]")
 {
-    formula::Documentation const documentation = formula::document(var<WaterVolume> + var<CementVolume>);
+    formula::Documentation const documentation = formula::document(var<Rise> + var<Run>);
 
     CHECK(documentation.citations.empty());
-    CHECK(documentation.formula == "V_w + V_c");
+    CHECK(documentation.formula == "h + L");
 }
 
 TEST_CASE("document: the symbol table carries each variable's symbol, description and unit", "[document]")
@@ -143,29 +141,28 @@ TEST_CASE("document: the symbol table carries each variable's symbol, descriptio
     formula::Documentation const documentation = formula::document(ratio);
 
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
-    CHECK(documentation.symbols[0].description == std::string_view { "effective water content" });
-    CHECK(documentation.symbols[0].unit == formula::unit::Litre);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
+    CHECK(documentation.symbols[0].description == std::string_view { "height gained" });
+    CHECK(documentation.symbols[0].unit == formula::unit::Millimetre);
 }
 
 TEST_CASE("document: symbols come back in first-appearance order", "[document]")
 {
     // Alphabetical order would put A before d in a formula that reads
     // pi * d^2 / 4, which is not how anyone reads it.
-    formula::Documentation const documentation =
-        formula::document(formula::pi * formula::pow<2>(var<Diameter>) / var<WaterVolume>);
+    formula::Documentation const documentation = formula::document(formula::pi * formula::pow<2>(var<Diameter>) / var<Rise>);
 
     REQUIRE(documentation.symbols.size() == 2);
     CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "h" });
 }
 
 TEST_CASE("document: a quantity used twice appears once", "[document]")
 {
-    formula::Documentation const documentation = formula::document(var<WaterVolume> + var<WaterVolume> * rat(2));
+    formula::Documentation const documentation = formula::document(var<Rise> + var<Rise> * rat(2));
 
     REQUIRE(documentation.symbols.size() == 1);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
 }
 
 TEST_CASE("document: two entries for the same quantity compare equal", "[document]")
@@ -219,10 +216,10 @@ TEST_CASE("document: a negated variable still appears in the symbol table", "[do
 
 TEST_CASE("document: a variable under a root still appears in the symbol table", "[document]")
 {
-    formula::Documentation const documentation = formula::document(formula::sqrt(var<WaterVolume>));
+    formula::Documentation const documentation = formula::document(formula::sqrt(var<Rise>));
 
     REQUIRE(documentation.symbols.size() == 1);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
 }
 
 TEST_CASE("document: a variable inside a RoundNode still appears in the symbol table, "
@@ -241,14 +238,14 @@ TEST_CASE("document: a variable inside a RoundNode still appears in the symbol t
     // the overload wherever it is declared, exactly as document.hpp's own
     // comment on that block says.
     constexpr auto node =
-        var<CementVolume>
-        + formula::rounded<formula::unit::Litre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<WaterVolume>);
+        var<Run>
+        + formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Rise>);
     formula::Documentation const documentation = formula::document(node);
 
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_c" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "L" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "h" });
 }
 
 TEST_CASE("document: a variable inside a RoundSignificantNode still appears in the symbol table", "[document]")
@@ -291,24 +288,23 @@ TEST_CASE("document: a variable under a rounded square root appears in the symbo
 
 TEST_CASE("document: a logarithm lists what its argument reads and states itself as a call", "[document]")
 {
-    formula::Documentation const documentation = formula::document(formula::ln(var<WaterVolume> / var<CementVolume>));
-    CHECK(documentation.formula == "ln(V_w / V_c)");
+    formula::Documentation const documentation = formula::document(formula::ln(var<Rise> / var<Run>));
+    CHECK(documentation.formula == "ln(h / L)");
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
-    CHECK(formula::document<formula::Dialect::LaTeX>(formula::exp(var<WaterVolume> / var<CementVolume>)).formula
-          == "\\exp\\left(\\frac{V_w}{V_c}\\right)");
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "L" });
+    CHECK(formula::document<formula::Dialect::LaTeX>(formula::exp(var<Rise> / var<Run>)).formula
+          == "\\exp\\left(\\frac{h}{L}\\right)");
 }
 
 TEST_CASE("document: a rounded logarithm lists what its argument reads", "[document]")
 {
-    formula::Documentation const documentation =
-        formula::document(formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<WaterVolume> / var<CementVolume>));
-    CHECK(documentation.formula == "round(log10(V_w / V_c), to 2 dp)");
+    formula::Documentation const documentation = formula::document(
+        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(var<Rise> / var<Run>));
+    CHECK(documentation.formula == "round(log10(h / L), to 2 dp)");
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "L" });
 }
 
 namespace
@@ -344,13 +340,13 @@ TEST_CASE("document: a critical value shows its declared sizes, its count and th
 TEST_CASE("document: a variable read through numeric_value_of still appears in the symbol table", "[document]")
 {
     // Invented, as every justification in this repository is.
-    constexpr auto node = formula::numeric_value_of<formula::unit::Litre,
-                                                     "Example Standard 1:2020 states this coefficient over the "
-                                                     "numeric value in litres">(var<WaterVolume>);
+    constexpr auto node = formula::numeric_value_of<formula::unit::Millimetre,
+                                                    "Example Standard 1:2020 states this coefficient over the "
+                                                    "numeric value in millimetres">(var<Rise>);
     formula::Documentation const documentation = formula::document(node);
 
     REQUIRE(documentation.symbols.size() == 1);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
 }
 
 TEST_CASE("document: a WhenNode's predicate contributes to the symbol table", "[document]")
@@ -376,14 +372,14 @@ TEST_CASE("document: a WhenNode's predicate's right-hand side contributes to the
     // green. A predicate comparing two quantities closes that gap, and is
     // also the more realistic shape: a formula guarded on one measurement
     // exceeding another, not on a fixed number.
-    constexpr auto node = formula::when(var<WaterVolume> > var<CementVolume>, var<Diameter>, var<ExcavationDepth>);
+    constexpr auto node = formula::when(var<Rise> > var<Run>, var<Diameter>, var<ExcavationDepth>);
     formula::Documentation const documentation = formula::document(node);
 
     // First-appearance order: predicate lhs, predicate rhs, thenBranch,
     // elseBranch.
     REQUIRE(documentation.symbols.size() == 4);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "L" });
 }
 
 TEST_CASE("document: a WhenNode documents both branches, not just the one that would be taken", "[document]")
@@ -994,39 +990,39 @@ TEST_CASE("a per-element rounding documents as its series, with every granularit
 
 namespace
 {
-struct Binder: formula::Quantity<Binder, "V_b", "an invented binder content", formula::unit::Litre>
+struct TotalRun: formula::Quantity<TotalRun, "L_t", "an invented total run", formula::unit::Millimetre>
 {
 };
-struct Additive: formula::Quantity<Additive, "V_a", "an invented additive content", formula::unit::Litre>
+struct ExtraRun: formula::Quantity<ExtraRun, "L_x", "an invented extra run", formula::unit::Millimetre>
 {
 };
-struct MixRatio: formula::Quantity<MixRatio, "w", "an invented water/binder ratio", formula::unit::One>
+struct Grade: formula::Quantity<Grade, "g", "an invented road grade", formula::unit::One>
 {
 };
-struct MixPerCent: formula::Quantity<MixPerCent, "w_p", "an invented water/binder ratio, per cent", formula::unit::One>
+struct GradePerCent: formula::Quantity<GradePerCent, "g_p", "an invented road grade, per cent", formula::unit::One>
 {
 };
-struct Surplus: formula::Quantity<Surplus, "V_s", "an invented surplus of water over cement", formula::unit::Litre>
+struct Excess: formula::Quantity<Excess, "L_e", "an invented excess of rise over run", formula::unit::Millimetre>
 {
 };
 
 // Invented, as every citation in this repository must be.
-inline constexpr formula::Citation ratioClause { .title = "Water/binder ratio",
+inline constexpr formula::Citation ratioClause { .title = "Road grade",
                                                  .reference = "Example Standard 3:2022",
                                                  .section = "4.1" };
-inline constexpr formula::Citation perCentClause { .title = "Water/binder ratio, per cent",
+inline constexpr formula::Citation perCentClause { .title = "Road grade, per cent",
                                                    .reference = "Example Standard 3:2022",
                                                    .section = "4.2" };
 
 /// Given against the grain -- the per-cent value first, which reads the
-/// ratio, which reads the binder -- and calculated as the binder, the ratio,
-/// the per-cent value and the surplus. The water and the cement are each read
+/// ratio, which reads the total run -- and calculated as the total run, the
+/// ratio, the per-cent value and the excess. The rise and the run are each read
 /// by two definitions.
-inline constexpr auto mix =
-    formula::calculation(formula::define<MixPerCent>(formula::documented(var<MixRatio> * rat(100), perCentClause)),
-                         formula::define<MixRatio>(formula::documented(var<WaterVolume> / var<Binder>, ratioClause)),
-                         formula::define<Binder>(var<CementVolume> + var<Additive>),
-                         formula::define<Surplus>(var<WaterVolume> - var<CementVolume>));
+inline constexpr auto grades =
+    formula::calculation(formula::define<GradePerCent>(formula::documented(var<Grade> * rat(100), perCentClause)),
+                         formula::define<Grade>(formula::documented(var<Rise> / var<TotalRun>, ratioClause)),
+                         formula::define<TotalRun>(var<Run> + var<ExtraRun>),
+                         formula::define<Excess>(var<Rise> - var<Run>));
 
 struct Unrounded
 {
@@ -1035,12 +1031,12 @@ struct Unrounded
 /// A method reading the ratio, and the constant standing for the ratio once
 /// an overlay fixes it at 1/2.
 inline constexpr auto perCentMethod = formula::method(
-    formula::variants(formula::variant<Unrounded>(var<MixRatio> * rat(100))),
+    formula::variants(formula::variant<Unrounded>(var<Grade> * rat(100))),
     formula::rounding_rule<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 inline constexpr formula::Citation fixedClause { .reference = "Example Standard 3:2022 NA", .section = "NA.1" };
 inline constexpr auto fixedRatio =
-    std::get<0>(formula::apply(formula::overlay(formula::with_constant<MixRatio>(rat(1, 2), fixedClause)), perCentMethod)
+    std::get<0>(formula::apply(formula::overlay(formula::with_constant<Grade>(rat(1, 2), fixedClause)), perCentMethod)
                     .variantSet.cases)
         .expression.lhs;
 } // namespace
@@ -1048,51 +1044,50 @@ inline constexpr auto fixedRatio =
 TEST_CASE("document: a calculation's page is its definitions, in the order they are calculated in",
           "[document][calculation]")
 {
-    CHECK(formula::document(mix).formula == "V_b = V_c + V_a\nw = V_w / V_b\nw_p = w * 100\nV_s = V_w - V_c");
-    CHECK(formula::document<formula::Dialect::Markdown>(mix).formula
-          == "`V_b` = `V_c` + `V_a`\n\n`w` = `V_w` / `V_b`\n\n`w_p` = `w` * 100\n\n`V_s` = `V_w` - `V_c`");
+    CHECK(formula::document(grades).formula == "L_t = L + L_x\ng = h / L_t\ng_p = g * 100\nL_e = h - L");
+    CHECK(formula::document<formula::Dialect::Markdown>(grades).formula
+          == "`L_t` = `L` + `L_x`\n\n`g` = `h` / `L_t`\n\n`g_p` = `g` * 100\n\n`L_e` = `h` - `L`");
 }
 
 TEST_CASE("document: a calculation's symbol table is what it calculates, each with its definition, then its inputs",
           "[document][calculation]")
 {
-    formula::Documentation const page = formula::document(mix);
+    formula::Documentation const page = formula::document(grades);
 
     // The calculated quantities in the order they are calculated in; then
     // the inputs, each once, in the order the definitions first read them
-    // when read in that order: the cement and the additive by the binder's,
-    // the water by the ratio's. Neither the water's nor the cement's second
-    // read, by the surplus's, adds a row, nor does the ratio's read of the
-    // binder or the per-cent value's of the ratio.
+    // when read in that order: the run and the extra run by the total run's,
+    // the rise by the ratio's. Neither the rise's nor the run's second
+    // read, by the excess's, adds a row, nor does the ratio's read of the
+    // total run or the per-cent value's of the ratio.
     REQUIRE(page.symbols.size() == 7);
     CHECK(page.symbols[0]
-          == formula::SymbolEntry { .symbol = "V_b",
-                                    .description = "an invented binder content",
-                                    .unit = formula::unit::Litre,
-                                    .calculatedAs = "V_c + V_a" });
-    CHECK(page.symbols[1]
-          == formula::SymbolEntry { .symbol = "w",
-                                    .description = "an invented water/binder ratio",
-                                    .unit = formula::unit::One,
-                                    .calculatedAs = "V_w / V_b" });
+          == formula::SymbolEntry { .symbol = "L_t",
+                                    .description = "an invented total run",
+                                    .unit = formula::unit::Millimetre,
+                                    .calculatedAs = "L + L_x" });
+    CHECK(
+        page.symbols[1]
+        == formula::SymbolEntry {
+            .symbol = "g", .description = "an invented road grade", .unit = formula::unit::One, .calculatedAs = "h / L_t" });
     CHECK(page.symbols[2]
-          == formula::SymbolEntry { .symbol = "w_p",
-                                    .description = "an invented water/binder ratio, per cent",
+          == formula::SymbolEntry { .symbol = "g_p",
+                                    .description = "an invented road grade, per cent",
                                     .unit = formula::unit::One,
-                                    .calculatedAs = "w * 100" });
+                                    .calculatedAs = "g * 100" });
     CHECK(page.symbols[3]
-          == formula::SymbolEntry { .symbol = "V_s",
-                                    .description = "an invented surplus of water over cement",
-                                    .unit = formula::unit::Litre,
-                                    .calculatedAs = "V_w - V_c" });
+          == formula::SymbolEntry { .symbol = "L_e",
+                                    .description = "an invented excess of rise over run",
+                                    .unit = formula::unit::Millimetre,
+                                    .calculatedAs = "h - L" });
     CHECK(page.symbols[4]
-          == formula::SymbolEntry { .symbol = "V_c", .description = "cement content", .unit = formula::unit::Litre });
+          == formula::SymbolEntry {
+              .symbol = "L", .description = "horizontal distance covered", .unit = formula::unit::Millimetre });
     CHECK(page.symbols[5]
           == formula::SymbolEntry {
-              .symbol = "V_a", .description = "an invented additive content", .unit = formula::unit::Litre });
+              .symbol = "L_x", .description = "an invented extra run", .unit = formula::unit::Millimetre });
     CHECK(page.symbols[6]
-          == formula::SymbolEntry {
-              .symbol = "V_w", .description = "effective water content", .unit = formula::unit::Litre });
+          == formula::SymbolEntry { .symbol = "h", .description = "height gained", .unit = formula::unit::Millimetre });
 }
 
 TEST_CASE("document: a calculation's citations are its definitions', in the order they are calculated in",
@@ -1100,7 +1095,7 @@ TEST_CASE("document: a calculation's citations are its definitions', in the orde
 {
     // The ratio's before the per-cent value's, though the per-cent value's
     // definition was given first.
-    formula::Documentation const page = formula::document(mix);
+    formula::Documentation const page = formula::document(grades);
     REQUIRE(page.citations.size() == 2);
     CHECK(page.citations[0] == ratioClause);
     CHECK(page.citations[1] == perCentClause);
@@ -1109,19 +1104,19 @@ TEST_CASE("document: a calculation's citations are its definitions', in the orde
 TEST_CASE("document: a calculation's definitions are written in the page's dialect and words",
           "[document][calculation][vocabulary]")
 {
-    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(mix);
+    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(grades);
     REQUIRE(latex.symbols.size() == 7);
-    CHECK(latex.symbols[1].calculatedAs == "\\frac{V_w}{V_b}");
-    CHECK(latex.symbols[2].calculatedAs == "w \\cdot 100");
+    CHECK(latex.symbols[1].calculatedAs == "\\frac{h}{L_t}");
+    CHECK(latex.symbols[2].calculatedAs == "g \\cdot 100");
 
-    constexpr auto words = formula::vocabulary(formula::renames<Binder>("B"), formula::renames<WaterVolume>("W"));
-    formula::Documentation const renamed = formula::document(mix, words);
-    CHECK(renamed.formula == "B = V_c + V_a\nw = W / B\nw_p = w * 100\nV_s = W - V_c");
+    constexpr auto words = formula::vocabulary(formula::renames<TotalRun>("T"), formula::renames<Rise>("H"));
+    formula::Documentation const renamed = formula::document(grades, words);
+    CHECK(renamed.formula == "T = L + L_x\ng = H / T\ng_p = g * 100\nL_e = H - L");
     REQUIRE(renamed.symbols.size() == 7);
-    CHECK(renamed.symbols[0].symbol == "B");
-    CHECK(renamed.symbols[1].calculatedAs == "W / B");
-    CHECK(renamed.symbols[6].symbol == "W");
-    CHECK(renamed.symbols[6].description == "effective water content");
+    CHECK(renamed.symbols[0].symbol == "T");
+    CHECK(renamed.symbols[1].calculatedAs == "H / T");
+    CHECK(renamed.symbols[6].symbol == "H");
+    CHECK(renamed.symbols[6].description == "height gained");
 }
 
 TEST_CASE("document: a calculated quantity an overlay fixes in a definition is one row, also read only when read",
@@ -1129,28 +1124,28 @@ TEST_CASE("document: a calculated quantity an overlay fixes in a definition is o
 {
     // The per-cent value reads the constant standing for the ratio, and not
     // the ratio: one row, calculated and fixed, not also read.
-    constexpr auto fixedOnly = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
-                                                    formula::define<MixPerCent>(fixedRatio * rat(100)));
+    constexpr auto fixedOnly = formula::calculation(formula::define<Grade>(var<Rise> / var<Run>),
+                                                    formula::define<GradePerCent>(fixedRatio * rat(100)));
     formula::Documentation const fixedPage = formula::document(fixedOnly);
     REQUIRE(fixedPage.symbols.size() == 4);
     CHECK(fixedPage.symbols[0]
-          == formula::SymbolEntry { .symbol = "w",
-                                    .description = "an invented water/binder ratio",
+          == formula::SymbolEntry { .symbol = "g",
+                                    .description = "an invented road grade",
                                     .unit = formula::unit::One,
                                     .fixedValue = rat(1, 2),
                                     .fixedBy = fixedClause,
-                                    .calculatedAs = "V_w / V_c" });
-    CHECK(fixedPage.symbols[1].symbol == "w_p");
-    CHECK(fixedPage.symbols[1].calculatedAs == "w * 100");
-    CHECK(fixedPage.symbols[2].symbol == "V_w");
-    CHECK(fixedPage.symbols[3].symbol == "V_c");
+                                    .calculatedAs = "h / L" });
+    CHECK(fixedPage.symbols[1].symbol == "g_p");
+    CHECK(fixedPage.symbols[1].calculatedAs == "g * 100");
+    CHECK(fixedPage.symbols[2].symbol == "h");
+    CHECK(fixedPage.symbols[3].symbol == "L");
 
     // It reads the ratio as well, before or after the constant: also read,
     // in either order.
-    constexpr auto readFirst = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
-                                                    formula::define<MixPerCent>(var<MixRatio> + fixedRatio));
-    constexpr auto fixedFirst = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
-                                                     formula::define<MixPerCent>(fixedRatio + var<MixRatio>));
+    constexpr auto readFirst = formula::calculation(formula::define<Grade>(var<Rise> / var<Run>),
+                                                    formula::define<GradePerCent>(var<Grade> + fixedRatio));
+    constexpr auto fixedFirst = formula::calculation(formula::define<Grade>(var<Rise> / var<Run>),
+                                                     formula::define<GradePerCent>(fixedRatio + var<Grade>));
     struct NamedPage
     {
         std::string_view order;
@@ -1161,7 +1156,7 @@ TEST_CASE("document: a calculated quantity an overlay fixes in a definition is o
     {
         INFO(bothPage.order);
         REQUIRE(bothPage.page.symbols.size() == 4);
-        CHECK(bothPage.page.symbols[0].calculatedAs == "V_w / V_c");
+        CHECK(bothPage.page.symbols[0].calculatedAs == "h / L");
         CHECK(bothPage.page.symbols[0].fixedValue == rat(1, 2));
         CHECK(bothPage.page.symbols[0].alsoReadAsInput);
     }
@@ -1171,32 +1166,31 @@ TEST_CASE("document: a calculated quantity an overlay derives in a definition is
           "[document][calculation][overlay]")
 {
     // The per-cent value reads the ratio as an overlay derives it, from the
-    // water and the additive, where the calculation calculates it from the
-    // water and the cement: one row, holding both, and what the overlay
-    // cited. The additive, read only by the overlay's definition, is an
+    // rise and the extra run, where the calculation calculates it from the
+    // rise and the run: one row, holding both, and what the overlay
+    // cited. The extra run, read only by the overlay's definition, is an
     // input like any other.
     constexpr formula::Citation derivedClause { .reference = "Example Standard 3:2022 NA", .section = "NA.2" };
     constexpr auto derivedRatio =
-        std::get<0>(formula::apply(formula::overlay(formula::add_derived<MixRatio>(var<WaterVolume> / var<Additive>,
-                                                                                   derivedClause)),
+        std::get<0>(formula::apply(formula::overlay(formula::add_derived<Grade>(var<Rise> / var<ExtraRun>, derivedClause)),
                                    perCentMethod)
                         .variantSet.cases)
             .expression.lhs;
-    constexpr auto derivedOnly = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
-                                                      formula::define<MixPerCent>(derivedRatio * rat(100)));
+    constexpr auto derivedOnly = formula::calculation(formula::define<Grade>(var<Rise> / var<Run>),
+                                                      formula::define<GradePerCent>(derivedRatio * rat(100)));
     formula::Documentation const derivedPage = formula::document(derivedOnly);
     REQUIRE(derivedPage.symbols.size() == 5);
     CHECK(derivedPage.symbols[0]
-          == formula::SymbolEntry { .symbol = "w",
-                                    .description = "an invented water/binder ratio",
+          == formula::SymbolEntry { .symbol = "g",
+                                    .description = "an invented road grade",
                                     .unit = formula::unit::One,
-                                    .derivedAs = "V_w / V_a",
+                                    .derivedAs = "h / L_x",
                                     .derivedBy = derivedClause,
-                                    .calculatedAs = "V_w / V_c" });
-    CHECK(derivedPage.symbols[1].symbol == "w_p");
-    CHECK(derivedPage.symbols[2].symbol == "V_w");
-    CHECK(derivedPage.symbols[3].symbol == "V_c");
-    CHECK(derivedPage.symbols[4].symbol == "V_a");
+                                    .calculatedAs = "h / L" });
+    CHECK(derivedPage.symbols[1].symbol == "g_p");
+    CHECK(derivedPage.symbols[2].symbol == "h");
+    CHECK(derivedPage.symbols[3].symbol == "L");
+    CHECK(derivedPage.symbols[4].symbol == "L_x");
 }
 
 TEST_CASE("document: a calculation's citation is listed as often as its definitions cite it",
@@ -1204,9 +1198,9 @@ TEST_CASE("document: a calculation's citation is listed as often as its definiti
 {
     // Two definitions citing the same clause: the page lists it twice, as a
     // single formula's page lists a citation it meets twice.
-    constexpr auto citedTwice = formula::calculation(
-        formula::define<MixRatio>(formula::documented(var<WaterVolume> / var<CementVolume>, ratioClause)),
-        formula::define<Surplus>(formula::documented(var<WaterVolume> - var<CementVolume>, ratioClause)));
+    constexpr auto citedTwice =
+        formula::calculation(formula::define<Grade>(formula::documented(var<Rise> / var<Run>, ratioClause)),
+                             formula::define<Excess>(formula::documented(var<Rise> - var<Run>, ratioClause)));
     formula::Documentation const page = formula::document(citedTwice);
     REQUIRE(page.citations.size() == 2);
     CHECK(page.citations[0] == ratioClause);
@@ -1299,48 +1293,47 @@ TEST_CASE("document: RenderOptions writes every number the page states in its st
 TEST_CASE("document: a calculation's definitions follow RenderOptions, their typed numbers never rounded",
           "[document][calculation][decimals]")
 {
-    // A water/binder ratio scaled by a typed 4/5, which is 0.8, and a third
+    // A road grade scaled by a typed 4/5, which is 0.8, and a third
     // of it, a typed 1/3 with no exact decimal.
-    constexpr auto scaledMix =
-        formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<Binder> * rat(4, 5)),
-                             formula::define<MixPerCent>(var<MixRatio> * rat(1, 3)));
+    constexpr auto scaledGrades = formula::calculation(formula::define<Grade>(var<Rise> / var<TotalRun> * rat(4, 5)),
+                                                       formula::define<GradePerCent>(var<Grade> * rat(1, 3)));
     constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
     constexpr formula::RenderOptions roundedAndPadded { .numbers = formula::NumberStyle::approximate_decimal(
                                                             formula::RoundingMode::HalfEven,
                                                             formula::DecimalPadding::Padded) };
 
-    formula::Documentation const fractions = formula::document(scaledMix);
-    formula::Documentation const decimals = formula::document(scaledMix, formula::DefaultVocabulary {}, exactDecimals);
+    formula::Documentation const fractions = formula::document(scaledGrades);
+    formula::Documentation const decimals = formula::document(scaledGrades, formula::DefaultVocabulary {}, exactDecimals);
     REQUIRE(fractions.symbols.size() >= 2);
     REQUIRE(decimals.symbols.size() >= 2);
     REQUIRE(fractions.symbols[0].calculatedAs.has_value());
     REQUIRE(decimals.symbols[0].calculatedAs.has_value());
     REQUIRE(decimals.symbols[1].calculatedAs.has_value());
-    CHECK(decimals.symbols[0].symbol == "w");
+    CHECK(decimals.symbols[0].symbol == "g");
     CHECK(fractions.symbols[0].calculatedAs->ends_with(" * 4/5"));
     CHECK(decimals.symbols[0].calculatedAs->ends_with(" * 0.8"));
-    CHECK(decimals.symbols[1].symbol == "w_p");
-    CHECK(*decimals.symbols[1].calculatedAs == "w * 1/3");
+    CHECK(decimals.symbols[1].symbol == "g_p");
+    CHECK(*decimals.symbols[1].calculatedAs == "g * 1/3");
     // The page's formula is the calculation as render writes it, under the
     // same options.
-    CHECK(decimals.formula == formula::render(scaledMix, formula::DefaultVocabulary {}, exactDecimals));
+    CHECK(decimals.formula == formula::render(scaledGrades, formula::DefaultVocabulary {}, exactDecimals));
     CHECK(decimals.formula != fractions.formula);
 
     // A rounding, padding style writes the same page: a typed number is
     // written exactly, and never padded.
-    formula::Documentation const rounded = formula::document(scaledMix, formula::DefaultVocabulary {}, roundedAndPadded);
+    formula::Documentation const rounded = formula::document(scaledGrades, formula::DefaultVocabulary {}, roundedAndPadded);
     CHECK(rounded.formula == decimals.formula);
     REQUIRE(rounded.symbols.size() >= 2);
     CHECK(rounded.symbols[0].calculatedAs == decimals.symbols[0].calculatedAs);
     CHECK(rounded.symbols[1].calculatedAs == decimals.symbols[1].calculatedAs);
 
     // Nor is a typed number in a unit that declares decimals padded to them:
-    // the litre declares one, and a typed 5 l stays 5 l.
+    // the millimetre declares one, and a typed 5 mm stays 5 mm.
     constexpr auto toppedUp = formula::calculation(
-        formula::define<Surplus>(var<WaterVolume> - var<CementVolume> + formula::constant<formula::unit::Litre>(rat(5))));
+        formula::define<Excess>(var<Rise> - var<Run> + formula::constant<formula::unit::Millimetre>(rat(5))));
     formula::Documentation const toppedUpPage = formula::document(toppedUp, formula::DefaultVocabulary {}, roundedAndPadded);
     REQUIRE_FALSE(toppedUpPage.symbols.empty());
     REQUIRE(toppedUpPage.symbols[0].calculatedAs.has_value());
-    CHECK(toppedUpPage.symbols[0].calculatedAs->ends_with(" + 5 l"));
-    CHECK(toppedUpPage.formula.ends_with(" + 5 l"));
+    CHECK(toppedUpPage.symbols[0].calculatedAs->ends_with(" + 5 mm"));
+    CHECK(toppedUpPage.formula.ends_with(" + 5 mm"));
 }
