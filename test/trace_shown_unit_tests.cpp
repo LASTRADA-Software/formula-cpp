@@ -7,6 +7,7 @@
 #include <formula-cpp/calculation.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/opaque.hpp>
@@ -24,6 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <optional>
 #include <span>
 #include <string>
@@ -85,6 +87,14 @@ struct FineMass: formula::Quantity<FineMass, "m_f", "finely read mass", FineGram
 
 // A dimensionless value whose unit has a symbol.
 struct Share: formula::Quantity<Share, "s", "invented share", unit::Percent>
+{
+};
+
+// A Celsius scale with no symbol: an offset unit the rounding clause must name by its size and its zero.
+inline constexpr formula::Unit UnnamedCelsius { .dimension = formula::dim::Temperature,
+                                                .offsetNumerator = 27315,
+                                                .offsetDenominator = 100 };
+struct UnnamedReading: formula::Quantity<UnnamedReading, "T_u", "a reading on an unnamed scale", UnnamedCelsius>
 {
 };
 
@@ -319,6 +329,73 @@ TEST_CASE("a value in a unit with no symbol is shown in the coherent unit, with 
     CHECK(trace_text(var<UnnamedMass> * Rational { 2 }, inputs).starts_with("1. m_u = 3/1000 kg\n"));
 }
 
+TEST_CASE("a rounding in a unit with no symbol names that unit by its size", "[trace-render][shown-unit][rounding]")
+{
+    // 3.141 of the unnamed gram to 2 places is 3.14 of it: 157/50000 kg. The
+    // places count in the unnamed gram, and the line says so in the coherent
+    // unit the value is written in.
+    auto const masses = formula::environment(formula::Measured<UnnamedMass> { Rational { 3141, 1000 } });
+    CHECK(trace_text(formula::rounded<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                         var<UnnamedMass>),
+                     masses)
+          == "1. m_u = 3141/1000000 kg\n"
+             "2. round(#1, to 2 dp of 1/1000 kg) = 157/50000 kg [nearest, ties to even]\n");
+    CHECK(trace_text(formula::rounded_to_digits<UnnamedGram,
+                                                formula::SignificantDigits { 2 },
+                                                formula::RoundingMode::HalfEven>(var<UnnamedMass>),
+                     masses)
+              .find("2. round(#1, to 2 sf of 1/1000 kg) = 31/10000 kg")
+          != std::string::npos);
+    // 20.5 on the unnamed Celsius scale, rounded to 0 places of it: 21, which
+    // is 294.15 K. The places count from that scale's zero, 273.15 K.
+    auto const readings = formula::environment(formula::Measured<UnnamedReading> { Rational { 41, 2 } });
+    CHECK(trace_text(formula::rounded<UnnamedCelsius, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+                         var<UnnamedReading>),
+                     readings)
+          == "1. T_u = 5873/20 K\n"
+             "2. round(#1, to 0 dp of 1 K from 5463/20 K) = 5883/20 K [nearest, ties away from zero]\n");
+
+    // A rounded root, a rounded output of an opaque operation and a method's
+    // rounding rule name the unit the same way.
+    CHECK(trace_text(formula::rounded_sqrt<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                         var<UnnamedMass> * var<UnnamedMass>),
+                     masses)
+              .find("round(sqrt(#3), to 2 dp of 1/1000 kg) = 157/50000 kg")
+          != std::string::npos);
+    CHECK(trace_text(formula::rounded_output<"span",
+                                             UnnamedGram,
+                                             formula::DecimalPlaces { 2 },
+                                             formula::RoundingMode::HalfEven>(lowestAndSpan),
+                     determinations)
+              .find(", to 2 dp of 1/1000 kg) = 7/2000 kg")
+          != std::string::npos);
+    auto const doubled = formula::method(
+        formula::variants(formula::variant<UnnamedTotal>(var<UnnamedMass> * Rational { 2 })),
+        formula::rounding_rule<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(),
+        formula::constraints());
+    formula::Trace<> ruleTrace {};
+    (void) formula::evaluate_method<UnnamedTotal>(doubled, masses, formula::RecordingSink<> { ruleTrace });
+    CHECK(formula::render_trace(ruleTrace, { .maxSteps = 20 }).find(", in 1/1000 kg) = 157/25000 kg") != std::string::npos);
+}
+
+TEST_CASE("a constant and a numeric value in a unit with no symbol say what scale their number is on",
+          "[trace][units]")
+{
+    // A constant typed as 3 of a unit of 1/1000 kg with no symbol: render()
+    // writes it in the coherent unit, as a trace does, never as a bare 3.
+    auto const typedMass = formula::constant<UnnamedGram>(formula::Rational { 3 });
+    CHECK(formula::render(typedMass) == "3/1000 kg");
+    // Two tokens, so a power of it brackets as one of a constant with a symbol does.
+    CHECK(formula::render(formula::pow<2>(typedMass)) == "(3/1000 kg)^2");
+
+    // numeric(x, in <unit>) names the unit its bare number is taken in by its
+    // size, in render() and in the trace line alike.
+    auto const bareMass = formula::numeric_value_of<UnnamedGram, "the table is in unnamed grams">(typedMass);
+    CHECK(formula::render(bareMass) == "numeric(3/1000 kg, in 1/1000 kg)");
+    std::string const traced = trace_text(bareMass, formula::environment());
+    CHECK(traced.find("numeric(#1, in 1/1000 kg)") != std::string::npos);
+}
+
 TEST_CASE("a dimensionless value is still a bare number", "[trace-render][shown-unit]")
 {
     auto const inputs = formula::environment(formula::Measured<SampleMass> { Rational { 413, 10 } },
@@ -384,11 +461,11 @@ TEST_CASE("a value scaled by a pure number reads in its own unit", "[trace-rende
           == "1. m = 413/10 g\n"
              "2. 2\n"
              "3. #1 / #2 = 413/20 g\n");
-    // A pure number divided by a mass is no mass: the coherent unit, 1/kg.
+    // A pure number divided by a mass is no mass: the coherent unit, kg^-1.
     CHECK(trace_text(Rational { 2 } / var<SampleMass>, inputs)
           == "1. 2\n"
              "2. m = 413/10 g\n"
-             "3. #1 / #2 = 20000/413 1/kg\n");
+             "3. #1 / #2 = 20000/413 kg^-1\n");
 }
 
 TEST_CASE("a sum of two values in one unit reads in it, at the finer precision", "[trace-render][shown-unit]")
@@ -466,6 +543,37 @@ TEST_CASE("a conditional reads in its chosen branch's unit, offset or not", "[tr
              "2. T_0 = 20 \xc2\xb0" "C\n"
              "3. T_1 = 25 \xc2\xb0" "C\n"
              "4. if #1 > #2 then #3 = 25 \xc2\xb0" "C\n");
+}
+
+TEST_CASE("a precision limit's first pass reads in the unit of the level it restates",
+          "[trace-render][shown-unit][precision]")
+{
+    // The level is a constant in grams and the limit names no quantity, so
+    // nothing in the types says grams: pass 1 reads off the step it restates,
+    // 40 g, never 1/25 kg.
+    CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                         formula::constant<unit::Gram>(Rational { 40 }), formula::constant<unit::Gram>(Rational { 1 })),
+                     determinations)
+              .starts_with("1. 40 g\n"
+                           "2. level (pass 1 of 2) = #1 = 40 g\n"));
+    // A level constant in a unit with no symbol cannot lend its unit
+    // (`restated_unit_or` borrows only a unit with a symbol): pass 1 stays in
+    // the unit the types give, the coherent kilogram, as before.
+    CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                         formula::constant<UnnamedGram>(Rational { 40000 }), formula::constant<unit::Gram>(Rational { 1 })),
+                     determinations)
+              .find("2. level (pass 1 of 2) = #1 = 40 kg\n")
+          != std::string::npos);
+    // A level constant in degrees Celsius is a point on an offset scale, which
+    // `borrowable_for_a_point` lets a restating step show: pass 1 reads in
+    // degrees Celsius, as the constant's own line does, never as a kelvin
+    // difference.
+    CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                         formula::constant<unit::Celsius>(Rational { 20 }),
+                         formula::constant<unit::Celsius>(Rational { 1 })),
+                     determinations)
+              .starts_with("1. 20 \xc2\xb0" "C\n"
+                           "2. level (pass 1 of 2) = #1 = 20 \xc2\xb0" "C\n"));
 }
 
 TEST_CASE("a Celsius reading scaled by a pure number, and its absolute value, read in kelvin",
@@ -708,6 +816,12 @@ TEST_CASE("every value a trace shows is in the unit written after it", "[trace-r
                       -var<Strength>),
         inputs));
     check_each_value_is_in_the_unit_written_after_it(recorded_trace(var<UnnamedMass> * Rational { 2 } - var<TareMass>, inputs));
+    // A pure number over a mass: kg^-1 after a fraction.
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(Rational { 2 } / var<SampleMass>, inputs));
+    // A rounding in a unit with no symbol.
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::rounded<UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(var<UnnamedMass>),
+        inputs));
 }
 
 TEST_CASE("every value of a rejection, a bill, the statistics, a precision limit and an opaque call is in the unit written after it",
@@ -765,8 +879,42 @@ TEST_CASE("every value of a rejection, a bill, the statistics, a precision limit
                                                                         formula::constant<unit::Kilogram>(Rational { 1, 7 }))
             * var<HeavyMass>,
         pair));
+    // A precision limit over a level constant in grams.
+    check_each_value_is_in_the_unit_written_after_it(recorded_trace(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Gram>(Rational { 40 }),
+                                                                        formula::constant<unit::Gram>(Rational { 1 })),
+        pair));
 
     // An opaque call, its outputs, and a sum over one of them.
     check_each_value_is_in_the_unit_written_after_it(
         recorded_trace(formula::opaque_output<"span">(lowestAndSpan) + var<TareMass>, determinations));
+}
+
+TEST_CASE("a Measured value in a unit with no symbol reads in number_text and std::format as its trace line does",
+          "[trace-render][shown-unit]")
+{
+    // The coherent unit's 3 places are a default nobody chose: a trace never
+    // pads a value to them, and never rounds one that is not zero to `≈0`.
+    // `number_text` and `std::format` spell a value they move into it alike.
+    formula::NumberStyle const halfEven = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven);
+    for (Rational const unnamedGrams : { Rational { 3 }, Rational { 30 }, Rational { 1, 3 } })
+    {
+        formula::Measured<UnnamedMass> const measured { unnamedGrams };
+        for (formula::NumberStyle const numberStyle :
+             { formula::NumberStyle::fraction(), formula::NumberStyle::exact_decimal(),
+               formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded), halfEven })
+        {
+            formula::Trace<> const recorded = recorded_trace(var<UnnamedMass>, formula::environment(measured));
+            std::string const traced = formula::render_trace(recorded, { .maxSteps = 20, .numbers = numberStyle });
+            formula::NumberText const spelled = formula::number_text(measured, numberStyle);
+            CHECK(traced == "1. m_u = " + std::string { spelled.view() } + "\n");
+        }
+        formula::NumberText const exact = formula::number_text(measured, formula::NumberStyle::exact_decimal());
+        formula::NumberText const approximated = formula::number_text(measured, halfEven);
+        CHECK(std::format("{}", measured) == exact.view());
+        CHECK(std::format("{:~HalfEven}", measured) == approximated.view());
+    }
+    // 1/3 of the unnamed gram is 1/3000 kg: `≈0.0003 kg`, never `≈0 kg`.
+    CHECK(std::format("{:~HalfEven}", formula::Measured<UnnamedMass> { Rational { 1, 3 } })
+          == "\xe2\x89\x88" "0.0003 kg");
 }

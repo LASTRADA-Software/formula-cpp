@@ -1574,8 +1574,7 @@ namespace detail
     /// fixed a value inside the computation over that record.
     ///
     /// Declared here, after `overlay.hpp` is included, and found by `apply()`
-    /// all the same -- measured by phase 14's spike on cl, clang-cl,
-    /// clang++ and g++.
+    /// all the same -- measured on cl, clang-cl, clang++ and g++.
     template <typename Sub, typename Role, typename Requirement, Node Operand>
     struct ConstantRewrite<Sub, RecordScopeNode<Role, Requirement, Operand>>:
         ConstantRewriteOperand<Sub, Operand,

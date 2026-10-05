@@ -7,13 +7,13 @@
 // getting wrong once to find.
 //
 // **The table has exactly ONE row, and that is the point of the file.** The
-// first draft put the malformed key in the middle of three, applying this
-// phase's position rule mechanically. It was the wrong table: a key that is not
-// a number is not below the key after it either, so both rules fire on such a
-// table, and deleting `RequireBreakpointWellFormed` entirely still left that
-// file failing to compile -- through `RequireBreakpointsAscend`. The file would
-// have gone on passing with the guard it exists to pin deleted, which is the
-// defect `exact_lookup_unscoped_key.cpp` was found to have.
+// first draft put the malformed key in the middle of three, applying the
+// put-the-defect-in-the-middle rule mechanically. It was the wrong table: a key
+// that is not a number is not below the key after it either, so both rules fire
+// on such a table, and deleting `RequireBreakpointWellFormed` entirely still
+// left that file failing to compile -- through `RequireBreakpointsAscend`. The
+// file would have gone on passing with the guard it exists to pin deleted,
+// which is the defect `exact_lookup_unscoped_key.cpp` was found to have.
 //
 // A one-row table has no adjacent pair, so the ordering sweep never runs and
 // this guard is the only thing standing between an author and a table with a

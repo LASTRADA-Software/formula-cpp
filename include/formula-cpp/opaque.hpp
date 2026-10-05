@@ -221,7 +221,7 @@ namespace detail
     /// only ASCII letters, digits and spaces, no space at either end and no
     /// two spaces together. Anything else would need escaping somewhere, and
     /// the site's MathJax shows a LaTeX text-mode escape backslash and all
-    /// (phase 15's spike, step 9).
+    /// (measured under MathJax 3.2.2 with the site's configuration).
     [[nodiscard]] consteval bool readable_name(std::string_view candidate) noexcept
     {
         if (candidate.empty() || candidate.front() == ' ' || candidate.back() == ' ')
@@ -797,8 +797,7 @@ struct OpaqueCall
     using operation = Op;
 
     /// The inputs, in the order the operation declares them. No `{}`
-    /// initialiser, deliberately (defect class 4): see `Corrections`
-    /// (`lookup.hpp`).
+    /// initialiser, deliberately: see `Corrections` (`lookup.hpp`).
     std::tuple<Inputs...> inputs;
 
     /// Why the method uses the operation here: required by `opaque()`, and
@@ -951,7 +950,8 @@ namespace detail
 /// @p Origin is `detail::`, and says whether `opaque_output` found the name
 /// (see `detail::UnnamedOpaqueOutput`); leave it to its default.
 ///
-/// No `{}` initialiser on `call`, deliberately (defect class 4).
+/// No `{}` initialiser on `call`, deliberately: see `Corrections`
+/// (`lookup.hpp`).
 template <std::size_t I, typename Call, typename Origin = detail::NamedOpaqueOutput>
 struct OpaqueOutputNode: NodeBase
 {
@@ -1027,6 +1027,7 @@ struct RoundedOpaqueOutputNode: NodeBase
                   U,
                   !OpaqueOutputNode<I, Call, Origin>::refused
                       && U.dimension == OpaqueOutputNode<I, Call, Origin>::dimension>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The call whose output this is. Evaluating this node evaluates it whole.
     Call call;
@@ -1482,8 +1483,8 @@ namespace detail
 ///
 /// The body is gated on the call being sound (`if constexpr`): without the
 /// gate, g++ 14.2 follows a refused `compute`'s one message with errors of
-/// its own (phase 15's spike, step 7), the behaviour
-/// `checked_evaluate_series` records for its refusal.
+/// its own -- the behaviour `checked_evaluate_series` records for its
+/// refusal, and what `opaque_throwing_compute`'s REJECTs pin.
 template <typename Rep = Rational, std::size_t I, typename Op, typename... Inputs, typename Origin, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node,
                                                            Env const& environment,

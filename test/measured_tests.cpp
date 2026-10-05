@@ -124,8 +124,8 @@ TEST_CASE("a measurement carries its quantity's own metadata", "[measured]")
 {
     // All four readers, on two different quantities. Checking one reader against
     // one quantity is not enough: a reader hardwired to return WaterVolume's
-    // answer would satisfy that, and two of these were reachable by no test at
-    // all until the task review mutated them and the suite stayed green.
+    // answer would satisfy that, and two of these were once reachable by no
+    // test at all: mutating them left the suite green.
     CHECK(Measured<WaterVolume>::quantity_unit() == unit::Litre);
     CHECK(Measured<WaterVolume>::quantity_symbol() == std::string_view { "V_w" });
     CHECK(Measured<WaterVolume>::quantity_description() == std::string_view { "volume of water added" });
@@ -190,7 +190,7 @@ static_assert(formula::combine<Density>(Measured<WaterVolume> {}, Measured<Speci
 TEST_CASE("absence survives a conversion instead of becoming a number", "[measured]")
 {
     // 450 litres is exactly 9/20 of a cubic metre -- the same exact conversion
-    // phase 3 proved, now carrying a quantity's identity with it.
+    // `unit_tests.cpp` pins, now carrying a quantity's identity with it.
     auto const present = formula::checked_convert_to<VolumeInCubicMetres>(measured(450, 1));
     REQUIRE(present.has_value());
     REQUIRE(present->has_value());
@@ -210,8 +210,7 @@ namespace
 /// A quantity whose unit DOES declare bounds. No shipped `unit::` constant has
 /// any, so without this the absent-in-a-bounded-unit case cannot be written --
 /// and that is the one case where `NotMeasured` and a real verdict actually
-/// compete. The task reviewer had to build this locally to check it; it belongs
-/// in the suite.
+/// compete.
 inline constexpr formula::Unit BoundedGauge { .dimension = formula::dim::Scalar,
                                               .magnitudeNumerator = 1,
                                               .magnitudeDenominator = 100,
@@ -285,7 +284,7 @@ TEST_CASE("rounding to declared precision leaves an absent value absent", "[meas
 
 // ---- an inner error is an ERROR, never silently reported as absence ----
 //
-// Three functions delegate to a phase-3 checked_ function and, until this
+// Three functions delegate to an underlying checked_ function and, until this
 // section, only ever exercised its success path. Turning the inner failure
 // into `return Measured<Q> {}` (or, for bounds, `NotMeasured`) instead of
 // propagating the error leaves every test above this comment green -- that

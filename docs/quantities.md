@@ -183,9 +183,9 @@ diagnostic readable.
 **There is no fifth parameter for the dimension.** A `Unit` already carries
 its dimension (`unit.dimension`), so a separate dimension parameter would
 state it a second time and let the two disagree. That is not a hypothetical
-risk: a spike compiled the five-parameter spelling with `dim::Mass` paired
-against `unit::Litre`, and all three compilers accepted the contradiction in
-silence. `Quantity::dimension` is derived from the unit instead, so there is
+risk: the five-parameter spelling, with `dim::Mass` paired against
+`unit::Litre`, compiled without a diagnostic on every compiler it was tried
+on. `Quantity::dimension` is derived from the unit instead, so there is
 no second place for it to disagree with, and no spelling that lets a caller
 write the contradiction at all.
 

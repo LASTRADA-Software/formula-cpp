@@ -57,8 +57,8 @@ class Measured
     // which is the common case and the one a person actually reads.
     //
     // Nothing performs SFINAE on `Measured<T>` today, so the cost is currently
-    // zero. Phase 5's expression layer may well want to, and if it does, this
-    // is the line to revisit -- the concept it would need already exists.
+    // zero. If a later layer needs to, this is the line to revisit -- the
+    // concept it would need already exists.
     static_assert(RequireDescribed<Q>::value);
 
   public:

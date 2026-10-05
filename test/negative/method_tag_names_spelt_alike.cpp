@@ -3,9 +3,9 @@
 //
 // `TagName<Cube>` spelling `Cylinder` beside a real `Cylinder` variant. The
 // tags are distinct types, so the distinct-tag rule accepts them, but a trace
-// line naming the variant that ran would read `Cylinder` for either (final
-// review of phase 11, L3). Refused where the names are shown, the first time
-// the method is evaluated, whichever tag is asked for -- here `Cube`.
+// line naming the variant that ran would read `Cylinder` for either. Refused
+// where the names are shown, the first time the method is evaluated,
+// whichever tag is asked for -- here `Cube`.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>

@@ -586,135 +586,22 @@ namespace detail
                                              : std::to_string(recorded.lookupKey));
     }
 
-    /// A value no line can spell, and why: `(not shown: <reason>)`. The one
-    /// spelling of it, for a value its unit cannot show and for a value its
-    /// style cannot spell in that unit alike.
-    [[nodiscard]] inline std::string not_shown_text(ArithmeticError whyNot)
-    {
-        return "(not shown: " + std::string { describe(whyNot) } + ")";
-    }
-
-    /// The coherent unit of @p dimension, spelt from its base units:
-    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
-    /// one. Written after every dimensioned value whose unit has no symbol, so
-    /// that a slope in metres per second does not read as a pure number.
-    ///
-    /// A named base dimension is spelt by its name -- the name is also the
-    /// symbol of its coherent unit -- ahead of the SI units on its side of the
-    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
-    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
-    /// read as money per energy, not as seconds squared of money per metre.
-    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
-    /// only letters and digits, but a hand-filled `namedBases` can hold
-    /// anything.
+    /// The coherent unit of @p dimension spelt from its base units, as a
+    /// trace line writes it: `coherent_unit_spelling` (`render.hpp`), with
+    /// each named base dimension's name escaped as author text.
     [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
     {
-        struct BaseUnit
-        {
-            std::string_view symbol;
-            Exponent exponent;
-        };
-        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
-                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
-                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
-                                              BaseUnit { "cd", dimension.luminosity } };
-        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
-            std::string factorText { symbolText };
-            if (denominatorPart != 1)
-                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
-            else if (numeratorPart != 1)
-                factorText += "^" + std::to_string(numeratorPart);
-            return factorText;
-        };
-        std::string above;
-        std::string below;
-        std::size_t belowCount = 0;
-        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
-            if (baseExponent.numerator > 0)
-                above += (above.empty() ? "" : " ")
-                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
-            else if (baseExponent.numerator < 0)
-            {
-                below += (below.empty() ? "" : " ")
-                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
-                ++belowCount;
-            }
-        };
-        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
-            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
-        for (BaseUnit const& base: bases)
-            place(base.symbol, base.exponent);
-        if (below.empty())
-            return above;
-        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
-    }
-
-    /// Whether a value of @p dimension in @p declared is shown in the coherent
-    /// unit, spelt by `coherent_unit_text`, rather than in @p declared: when
-    /// @p declared has no symbol and @p dimension is not dimensionless. A
-    /// unit with no symbol cannot say what scale its number is on, so the
-    /// number is moved into the one scale its spelling names. The one rule
-    /// for every place a number is written with its unit: a step's value, a
-    /// squared deviation, a conformity row, a derivation's header, and a
-    /// bound a table, a curve or a permitted set declared
-    /// (`shown_bound_text`), so that every number on a line is in the unit
-    /// written after it.
-    [[nodiscard]] inline bool spells_coherent_unit(Unit const& declared, Dimension dimension)
-    {
-        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
-    }
-
-    /// The unit a value of @p dimension declared in @p declared is shown in:
-    /// the coherent unit where `spells_coherent_unit` says so, @p declared
-    /// otherwise.
-    [[nodiscard]] inline Unit shown_unit_of(Unit const& declared, Dimension dimension)
-    {
-        return spells_coherent_unit(declared, dimension) ? coherent(dimension) : declared;
+        return coherent_unit_spelling(dimension, escaped_author_text);
     }
 
     /// The text written after a value shown in `shown_unit_of(@p declared,
-    /// @p dimension)`: the coherent unit's spelling, the declared unit's
-    /// escaped symbol, or nothing for a dimensionless value in a unit with
-    /// no symbol.
+    /// @p dimension)`, as a trace line writes it: `shown_unit_spelling`
+    /// (`render.hpp`), with each symbol and name escaped as author text. A
+    /// bound a table declared is shown in that unit by `shown_bound_text`
+    /// (`render.hpp`), which `render()` writes its tables with too.
     [[nodiscard]] inline std::string shown_unit_text(Unit const& declared, Dimension dimension)
     {
-        return spells_coherent_unit(declared, dimension) ? coherent_unit_text(dimension) : unit_symbol_text(declared);
-    }
-
-    /// A bound declared in @p declaredIn as a numerator/denominator pair -- a
-    /// band's, a curve's row or a permitted value -- spelled exact
-    /// (`declared_number_text`) in the unit a value declared in @p declaredIn
-    /// is shown in (`shown_unit_of`), without that unit's text: the caller
-    /// writes `shown_unit_text(declaredIn, declaredIn.dimension)` after the
-    /// bounds it lists. A bound of a unit with no symbol is moved into the
-    /// coherent unit, as the value it is compared with is, so that no number
-    /// on the line is in a scale the line does not name.
-    ///
-    /// Only that move can fail, and the bound then reads `(not shown: ...)`
-    /// rather than as a number in the wrong scale. A 64-bit pair times a
-    /// well-formed unit's 64-bit magnitude always fits a `Rational`, so the
-    /// move fails only for a pair that names no rational, a zero denominator;
-    /// for a malformed unit, one whose magnitude is zero (`DomainError`) or
-    /// whose magnitude or offset has a zero denominator (`DivisionByZero`);
-    /// and for a unit with an offset, whose sum can overflow: a bound of
-    /// 1/(2^63 - 1) in a unit of magnitude 1/(2^63 - 25) and offset
-    /// 1/(2^63 - 165) does. A bound of a unit with a symbol is never
-    /// converted, and never fails.
-    [[nodiscard]] inline std::string shown_bound_text(std::int64_t declaredNumerator,
-                                                      std::int64_t declaredDenominator,
-                                                      Unit const& declaredIn,
-                                                      NumberStyle numberStyle)
-    {
-        if (!spells_coherent_unit(declaredIn, declaredIn.dimension))
-            return declared_number_text(declaredNumerator, declaredDenominator, declaredIn, numberStyle);
-        std::expected<Rational, ArithmeticError> const declared = Rational::make(declaredNumerator, declaredDenominator);
-        if (!declared)
-            return not_shown_text(declared.error());
-        Unit const coherentUnit = coherent(declaredIn.dimension);
-        std::expected<Rational, ArithmeticError> const inCoherent = checked_convert(*declared, declaredIn, coherentUnit);
-        if (!inCoherent)
-            return not_shown_text(inCoherent.error());
-        return styled_number_text(*inCoherent, numberStyle.exact_only(), coherentUnit);
+        return shown_unit_spelling(declared, dimension, escaped_author_text);
     }
 
     /// Whether two bounds declared as numerator/denominator pairs are one
@@ -900,14 +787,16 @@ namespace detail
         // and "runs 15/2 to 15/2 mm" would describe it as a range it is not.
         // `at <key>` is the spelling `render()` gives a breakpoint, for the
         // same reason: a row is a point.
-        std::string const lowText = shown_bound_text(
-            recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator, keyUnit, numberStyle);
         if (same_declared_bound(recorded.coveredRange->lowNumerator,
                                 recorded.coveredRange->lowDenominator,
                                 recorded.coveredRange->highNumerator,
                                 recorded.coveredRange->highDenominator))
+        {
+            std::string const onlyRowText = shown_bound_text(
+                recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator, keyUnit, numberStyle);
             return "outside the curve, whose only row is at "
-                   + number_with_unit(lowText, shown_unit_text(keyUnit, keyUnit.dimension));
+                   + number_with_unit(onlyRowText, shown_unit_text(keyUnit, keyUnit.dimension));
+        }
         return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keyUnit, numberStyle);
     }
 
@@ -923,9 +812,9 @@ namespace detail
     /// clause the line would read `lookup(#1) = argument outside the domain of
     /// the operation` for a case where nothing was outside any domain and the
     /// real failure happened two levels down -- a plausible answer to a
-    /// question the line cannot otherwise answer, which is the defect phase 9
-    /// refused `bool satisfied()` over. `Step::lookupFailure` is what resolves
-    /// it, and `LookupFailure` (`trace.hpp`) records how.
+    /// question the line cannot otherwise answer, which is the defect a
+    /// constraint's `bool satisfied()` was refused over. `Step::lookupFailure`
+    /// is what resolves it, and `LookupFailure` (`trace.hpp`) records how.
     ///
     /// The same bracket `citation_suffix`, `rounding_mode_suffix` and
     /// `constraint_outcome_suffix` use, for the reason the last of those gives
@@ -1076,15 +965,16 @@ namespace detail
                + " for " + tag_words(compared.subject());
     }
 
-    /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit whose
-    /// symbol is @p unitSymbolText, in `render()`'s words (`rounding_call`), for every step that rounds to
-    /// one number of decimal places; an element-wise rounding has its own spelling. No unit clause for a
-    /// unit with no symbol.
+    /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit
+    /// @p unitText names, in `render()`'s words (`rounding_call`), for every step that rounds to
+    /// one number of decimal places; an element-wise rounding has its own spelling. @p unitText is
+    /// `rounding_unit_text`'s (`render.hpp`): a unit's symbol, or for a unit with no symbol its size, in the
+    /// coherent unit the value after `=` is written in.
     [[nodiscard]] inline std::string rounding_call_text(std::string const& inner,
                                                         int granularity,
-                                                        std::string const& unitSymbolText)
+                                                        std::string const& unitText)
     {
-        return rounding_call<Dialect::Plain>(inner, DecimalPlaces { granularity }, unitSymbolText);
+        return rounding_call<Dialect::Plain>(inner, DecimalPlaces { granularity }, unitText);
     }
 
     /// `round(ln(#1), to 4 dp)`: `render()`'s spelling, one step with the function inside it, because the
@@ -1160,17 +1050,20 @@ namespace detail
             case StepKind::VariantSelected:
                 return sole_operand(shownStep);
             case StepKind::Round:
-                return rounding_call_text(sole_operand(shownStep), shownStep.granularity, unit_symbol_text(shownStep.unit));
+                return rounding_call_text(sole_operand(shownStep),
+                                          shownStep.granularity,
+                                          rounding_unit_text(shownStep.unit, escaped_author_text));
             case StepKind::RoundSignificant:
                 return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " sf"
-                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                       + unit_clause(" of ", rounding_unit_text(shownStep.unit, escaped_author_text)) + ")";
             // The unit only: the granularity belongs with whose rule it is,
             // in the suffix -- see `rounding_rule_suffix`.
             case StepKind::RoundingRuleApplied:
-                return "round(" + sole_operand(shownStep) + unit_clause(", in ", unit_symbol_text(shownStep.unit)) + ")";
+                return "round(" + sole_operand(shownStep)
+                       + unit_clause(", in ", rounding_unit_text(shownStep.unit, escaped_author_text)) + ")";
             case StepKind::NumericValue:
-                return "numeric(" + sole_operand(shownStep) + unit_clause(", in ", unit_symbol_text(shownStep.sourceUnit))
-                       + ")";
+                return "numeric(" + sole_operand(shownStep)
+                       + unit_clause(", in ", rounding_unit_text(shownStep.sourceUnit, escaped_author_text)) + ")";
             case StepKind::Conditional:
                 return conditional_expression(shownStep);
             case StepKind::Constraint:
@@ -1243,7 +1136,7 @@ namespace detail
             // for `Round`.
             case StepKind::ElementwiseRound:
                 return "round(" + sole_operand(shownStep) + ", to " + granularities_text(shownStep.elementGranularities)
-                       + " dp" + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                       + " dp" + unit_clause(" of ", rounding_unit_text(shownStep.unit, escaped_author_text)) + ")";
             // A declared domain's line is its points, as a per-element
             // constant's is its values -- see `series_step_line`.
             case StepKind::SeriesDomain:
@@ -1272,8 +1165,9 @@ namespace detail
             // `render()`'s spelling, `round(sqrt(...), to ...)`: one shownStep, and
             // the root inside it, because the root itself was never a value.
             case StepKind::RoundedRoot:
-                return rounding_call_text(
-                    "sqrt(" + sole_operand(shownStep) + ")", shownStep.granularity, unit_symbol_text(shownStep.unit));
+                return rounding_call_text("sqrt(" + sole_operand(shownStep) + ")",
+                                          shownStep.granularity,
+                                          rounding_unit_text(shownStep.unit, escaped_author_text));
             case StepKind::RoundedNaturalLogarithm:
                 return rounded_transcendental_expression(Transcendental::NaturalLogarithm, shownStep);
             case StepKind::RoundedDecimalLogarithm:
@@ -1341,7 +1235,7 @@ namespace detail
                 return rounding_call_text(shownStep.operands.empty() ? std::string { "an opaque output" }
                                                                      : "output of " + sole_operand(shownStep),
                                           shownStep.granularity,
-                                          unit_symbol_text(shownStep.unit));
+                                          rounding_unit_text(shownStep.unit, escaped_author_text));
             // A retry's steps name its result as `render()` does, `w(k)` for
             // an attempt's value and `w(k-1)` for the one before; the
             // attempt's and the retry's own lines are `retry_attempt_line` and
@@ -1633,8 +1527,8 @@ namespace detail
     /// is.
     ///
     /// `selected by tag` names **how** the choice was made, not only that it
-    /// was: a tag is the only discriminator a method has in this phase, and
-    /// saying so now is what will keep this line true once there is a second.
+    /// was: a tag is the only discriminator a method has, and saying so now is
+    /// what will keep this line true once there is a second.
     ///
     /// The same bracket `citation_suffix` and `lookup_suffix` use, for the
     /// reason `lookup_suffix` gives: it is where a reader already looks for
@@ -2161,6 +2055,14 @@ namespace detail
                 shown_bound_text(neighbours.low.numerator, neighbours.low.denominator, keyUnit, numberStyle), keySymbol);
             std::string const highText = number_with_unit(
                 shown_bound_text(neighbours.high.numerator, neighbours.high.denominator, keyUnit, numberStyle), keySymbol);
+            // Raw pairs, not values, and exact all the same: an exact hit
+            // records the one row it hit twice, from a single index
+            // (`locate_and_snap`, `snap.hpp`), and the permitted set is
+            // strictly ascending by value (`RequireValidBreakpointTable`), so
+            // two different rows never hold one value. A lookup's segment and
+            // a missed lookup's range compare by value
+            // (`same_declared_bound`), which costs nothing there and does not
+            // depend on how a row was typed.
             if (neighbours.low == neighbours.high)
                 return " [on " + lowText + "]";
             if (recorded.tieBroken)
@@ -2224,37 +2126,17 @@ namespace detail
     }
 
     /// @p limitRow, whose limits are numbers in @p recorded's unit, as the
-    /// range it permits (`limit_row_text`), in the unit @p recorded's value
-    /// is shown in (`shown_unit_of`), so that a value and the row it was
-    /// judged against are never shown in two scales. A limit the shown unit
-    /// cannot hold is reported, `(not shown: ...)`, never restated.
+    /// range it permits, in the unit @p recorded's value is shown in, its
+    /// symbol escaped: `limit_row_text` (`render.hpp`), the spelling
+    /// `render()` writes an envelope's row in too, so that a value and the
+    /// row it was judged against are never shown in two scales. A limit the
+    /// shown unit cannot hold is reported, `(not shown: ...)`, never
+    /// restated.
     [[nodiscard]] inline std::string conformity_row_text(ShownStep const& recorded,
                                                          LimitRow const& limitRow,
                                                          NumberStyle numberStyle)
     {
-        if (!spells_coherent_unit(recorded.unit, recorded.dimension))
-            return limit_row_text(limitRow, unit_symbol_text(recorded.unit), recorded.unit, numberStyle);
-        Unit const shownUnit = shown_unit_of(recorded.unit, recorded.dimension);
-        auto const inShownUnit = [&](Limit const& side) -> std::expected<Limit, ArithmeticError> {
-            std::optional<Rational> const sideValue = side.value();
-            if (!sideValue.has_value())
-                return side;
-            std::expected<Rational, ArithmeticError> const sideInShownUnit =
-                checked_convert(*sideValue, recorded.unit, shownUnit);
-            if (!sideInShownUnit)
-                return std::unexpected { sideInShownUnit.error() };
-            return formula::limit(*sideInShownUnit);
-        };
-        std::expected<Limit, ArithmeticError> const lowerShown = inShownUnit(limitRow.lower);
-        if (!lowerShown)
-            return not_shown_text(lowerShown.error());
-        std::expected<Limit, ArithmeticError> const upperShown = inShownUnit(limitRow.upper);
-        if (!upperShown)
-            return not_shown_text(upperShown.error());
-        return limit_row_text(LimitRow { .lower = *lowerShown, .upper = *upperShown },
-                              shown_unit_text(recorded.unit, recorded.dimension),
-                              shownUnit,
-                              numberStyle);
+        return limit_row_text<Dialect::Plain>(limitRow, recorded.unit, recorded.dimension, escaped_author_text, numberStyle);
     }
 
     /// A conformity step's line, without its number: `conform(#1)` and every
@@ -3006,7 +2888,7 @@ namespace detail
     {
         std::string lineText = rounding_call_text(opaque_output_label(recorded, opaqueLine),
                                                   recorded.granularity,
-                                                  unit_symbol_text(recorded.unit))
+                                                  rounding_unit_text(recorded.unit, escaped_author_text))
                                + " = ";
         bool const callFailed = opaqueLine.call != nullptr && opaqueLine.call->failure != OpaqueFailure::None;
         if (recorded.error.has_value() && callFailed)
@@ -3523,14 +3405,13 @@ namespace detail
         // unit, which can overflow for a value its own unit holds well, a
         // great many kilowatt-hours counted in joules. One with no symbol
         // moves into the coherent unit and says so, as a trace line's value
-        // does (`shown_unit_of`); that move is the one that can fail: for a
+        // does (`shown_number`); that move is the one that can fail: for a
         // value whose coherent form overflows, and for a malformed unit, one
         // whose magnitude is zero (`DomainError`) or whose magnitude or offset
         // has a zero denominator (`DivisionByZero`).
         Unit const shownUnit = shown_unit_of(shown.unit, shown.unit.dimension);
         std::expected<Rational, ArithmeticError> const inShownUnit =
-            spells_coherent_unit(shown.unit, shown.unit.dimension) ? checked_convert(*shown.value, shown.unit, shownUnit)
-                                                                    : std::expected<Rational, ArithmeticError> { *shown.value };
+            shown_number(*shown.value, shown.unit, shown.unit.dimension);
         if (!inShownUnit)
             return not_shown_text(inShownUnit.error());
         std::expected<NumberText, ArithmeticError> const spelled =

@@ -13,7 +13,7 @@
 /// number and the rule does not correct for that, because it was never meant
 /// to be evaluated in any other unit. This library cannot make a rule like
 /// that consistent, and silently dropping the unit to accommodate it would
-/// defeat the entire dimensional layer phases 3 and 4 exist for.
+/// defeat what the entire dimensional layer exists for.
 ///
 /// So the hole is explicit, narrow, and impossible to take quietly:
 ///
@@ -87,6 +87,7 @@ struct NumericValueNode: NodeBase
                   "over a bare number rather than over a quantity; one that is empty, blank, or only "
                   "NUL bytes defeats the only safeguard this escape hatch has");
     static_assert(detail::RequireEscapeUnitMatches<U, Operand>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The expression whose numeric value is taken.
     ///

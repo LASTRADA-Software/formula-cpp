@@ -16,6 +16,12 @@ change is recorded here.
 
 ### Changed
 
+- **Breaking: a dimensionless unit with a scale or an offset and no symbol no longer compiles**, wherever it is
+  written: as a quantity's unit, a constant's, a rounding's, or a table's key or result. A trace showed a value in
+  such a unit as a bare number in a scale nothing named (one half in hundredths read `50`), and no spelling of the
+  unit could name it. Give the unit a symbol (`%`, `ppm`, or the author's own), or declare the quantity in scale 1.
+  The refusal reads `formula: a dimensionless unit with a scale must have a symbol`. A dimensioned unit with no
+  symbol is still accepted, and shown in the coherent unit.
 - **Every computed value in a trace shows a unit.** A value scaled by a pure number, and a sum or difference of
   values shown in one unit, read in that unit: the outlier-rejection limit `#2 * #3 = 1239/500000` is now
   `#2 * #3 = 1239/500 g`. A negation and an absolute value read in their operand's unit, and a conditional and a
@@ -45,6 +51,35 @@ change is recorded here.
   count above 2^64 - 1 names the whole count. Code that reads `lookupKey` for such a step reads both.
 - `Rational`'s converting constructor takes every built-in integer type of at most 64 bits except `bool`, exactly,
   `std::uint64_t` now among them; a wider built-in integer is refused. A constructor from `Int128` is added.
+- A coherent unit with no positive exponent is spelt with negative exponents in a trace: `kg^-1`, `s^-1`,
+  `m^-1 s^-1`, `JPY^-1`, where it was `1/kg`, `1/s`, `1/(m s)`, `1/JPY`. After a number in the fraction style,
+  `20000/413 1/kg` read as a fraction divided again. A unit with a numerator keeps its slash: `m/s`, `EUR/JPY`.
+  A trace text pinned in a test changes where it showed such a unit.
+- A rounding in a unit with no symbol names that unit by its size in the coherent unit, in `render()` and in a
+  trace: `round(#1, to 2 dp of 1/1000 kg) = 157/50000 kg`, where it wrote `round(#1, to 2 dp)`, which read as places
+  of the kilogram written after it. A unit with an offset is named by its size and its zero, `to 1 dp of 1 K from
+  5463/20 K`. Only a dimensionless unit at scale 1 still writes no unit clause. A constant in such a unit renders in
+  the coherent unit (`3/1000 kg`, where it wrote a bare `3`), and `numeric(x, in <unit>)` names the unit by its size
+  too. In LaTeX the size is grouped and the unit set upright with raised powers:
+  `\operatorname{round}_{2\,(1/1000\,\mathrm{kg})}`, `2000\,\mathrm{kg}^{-1}`. Every other number a formula declares
+  in such a unit renders in the coherent unit too, as its trace writes it: a per-element constant's values
+  (`values(3/1000 kg, 1/200 kg)`), a lookup's bands, rows and the values it gives, a binning's classes, a snap's
+  permitted values, a domain's points and an envelope's limits. `number_text` and `std::format` of a `Measured`
+  value in such a unit write it the same way, `3/1000 kg` or `0.003 kg`, where they wrote a bare `3`.
+- A precision limit's first pass reads in the unit of the level step it restates, as its second pass already did:
+  a level constant declared in grams reads `40 g` on both lines, where the first pass read `1/25 kg`. The unit the
+  limit's quantities give is still used when the level's step has none to lend.
+- **`rounded_ln`, `rounded_log10` and `rounded_exp` take every argument a `Rational` holds.** Their integer kernel
+  narrowed the argument's numerator and denominator to 64 bits and answered `Overflow` beyond; `ln` of 2^70 is now
+  48.5203 at 4 places. `rounded_exp` answers up to 88.7, past which no value fits a `Rational`, wherever the result
+  fits the declared places: e^45 to 18 places, e^88 to whole units. The exponential is computed with 192 fraction
+  bits, so a result as wide as a `Rational` is still decided: e^43 to 18 places, `Overflow` before though the result
+  fits, now answers.
+- The numeric headroom page's least-squares table gives the most bits the exact curve fit's wide integers used, as
+  the overflow census measures it, in place of figures no test checked; the opaque-operation guide's widths of an
+  exact fit's outputs are pinned by a test.
+- `explain` and `checked_explain` handed a series refuse it in the library's words, pointing at `explain_series`,
+  instead of failing with "no matching function".
 
 ## [0.3.0] - 2026-10-01
 
@@ -508,45 +543,45 @@ lineage, opaque operations such as least squares, and bounded retry.
 
 ### Added
 
-**Phase 1: a consumable project.** Apache-2.0 licensing, an `INTERFACE` CMake target with install
+**A consumable project.** Apache-2.0 licensing, an `INTERFACE` CMake target with install
 and export, presets for `cl`, `clang-cl`, Clang and GCC, Catch2 through a pinned CPM bootstrap, a
 must-not-compile harness that asserts both that a build fails and that it fails with the library's
 own message, and CI that installs the library and builds a consumer against it.
 
-**Phase 2: exact numbers.** An exact rational type with checked arithmetic that reports overflow
+**Exact numbers.** An exact rational type with checked arithmetic that reports overflow
 rather than wrapping, and rounding to decimal places, significant digits and multiples under named
 rounding modes.
 
-**Phase 3: dimensions and units.** Dimensions with rational exponents, units with exact conversion
+**Dimensions and units.** Dimensions with rational exponents, units with exact conversion
 between them, and each unit's decimals and bounds.
 
-**Phase 4: quantities.** Quantities declared once with their symbol, description and unit, read
+**Quantities.** Quantities declared once with their symbol, description and unit, read
 through `Describe<T>`, and measurements that may be absent without being an error.
 
-**Phase 5: formulas.** An expression layer with the arithmetic operators, powers and roots,
+**Formulas.** An expression layer with the arithmetic operators, powers and roots,
 environments of measured values, and evaluation into an `Outcome` that holds a value, a verdict,
 an invalid result or nothing, never a bare number that hides which.
 
-**Phase 6: citations and documentation.** `documented()` citations on any part of a formula,
+**Citations and documentation.** `documented()` citations on any part of a formula,
 rendering in plain text, Markdown and LaTeX, generated documentation with a symbol table, a
 MkDocs and Doxygen site, and a formula gallery produced by running the library.
 
-**Phase 7: tracing.** Composable sinks, a trace that records every step of an evaluation, and
+**Tracing.** Composable sinks, a trace that records every step of an evaluation, and
 bounded rendering of it as an audit trail a person can check.
 
-**Phase 8: rounding, conditionals and an escape hatch.** Rounding as a node of a formula,
+**Rounding, conditionals and an escape hatch.** Rounding as a node of a formula,
 `when()` conditionals, and `numeric_value_of`, which takes a number out of its unit only with a
 stated justification that the trace records.
 
-**Phase 9: constraints.** Constraints as peers of formulas, with verdicts recorded as trace steps,
+**Constraints.** Constraints as peers of formulas, with verdicts recorded as trace steps,
 and checking a whole set without stopping at the first failure.
 
-**Phase 10: lookup tables.** Exact, banded and interpolating lookups over tables validated at
+**Lookup tables.** Exact, banded and interpolating lookups over tables validated at
 compile time for gaps, overlaps and order, each traced with the row it used or the reason it found
 none. Lookup keys are shown by their enumerator names, or by an author's own spelling through
 `EnumeratorName`.
 
-**Phase 11: methods and jurisdiction overlays.** A method holds variants chosen by tag, a rounding
+**Methods and jurisdiction overlays.** A method holds variants chosen by tag, a rounding
 rule and constraints; `evaluate_method` and `check_method` evaluate and check it, and the trace
 names the variant that ran and its position in the method as published. An overlay pins or prunes
 variants, fixes a quantity with `with_constant`, defines one with `add_derived`, replaces a
@@ -557,7 +592,7 @@ generated documentation, and an overlay that would silently do nothing is refuse
 the later one holding. A vocabulary renders a formula and its trace in a jurisdiction's own symbols,
 and `TagName` spells a variant's tag.
 
-**Phase 12: series.** A quantity measured at every point of a method's domain, `series<Q, N>`,
+**Series.** A quantity measured at every point of a method's domain, `series<Q, N>`,
 with each element absent or present on its own; elementwise arithmetic with a broadcast scalar,
 per-element constants, running totals from either end, `sum`, and per-element rounding. A failure
 names its element. Conformity judges each element against its own row of a limit envelope, closed
@@ -579,7 +614,7 @@ a conformity check -- is evaluated with `Rational` only, and refuses any other `
 time. A new guide, *Series and grading curves*, works a screen analysis through
 all of it, and the gallery gains a series, a grading curve and a binning.
 
-**Phase 13: statistics.** A sample of determinations reduced to one value: `sample_count`,
+**Statistics.** A sample of determinations reduced to one value: `sample_count`,
 `sample_mean`, `sample_variance` (over n - 1, in two passes) and `sample_range`, strict about
 absence, exact, and naming the determination at which an overflow happened. `rounded_sqrt` rounds a
 square root exactly to a declared granularity, so a standard deviation is the correctly rounded
@@ -599,7 +634,7 @@ observations actually made. None made count 0 and have no mean.
 leave 30 bits or more, but a sample variance of masses read to 0.01 mg leaves 4, and read to
 1 µg it overflows on 423 of 1,000 samples -- which recommends 128-bit intermediates.
 
-**Phase 14: other samples and other tests.** A formula reads from a record other than the one
+**Other samples and other tests.** A formula reads from a record other than the one
 being evaluated through `from_record<Role>(expression)`: one value, or a computation over the
 other specimen's own measurements. A role is a type the author declares and a record is data --
 a sample and test key, an environment and lineage keys -- held by role in a `record_context`,
@@ -622,7 +657,7 @@ observations read inside a read from another record are traced with that record,
 own row on the page; a read whose value would be a whole series is refused, and reduced inside
 instead: `from_record<Role>(sum(series<Q, N>))`.
 
-**Phase 15: opaque operations and bounded retry.** An opaque operation is a named computation a
+**Opaque operations and bounded retry.** An opaque operation is a named computation a
 method relies on but does not spell out: a type the author declares with its name, the shape of
 each input, a name for each output and what each measures, and a `compute` that receives the
 inputs' values -- never the environment -- and returns the outputs. `opaque<Op>(citation, inputs...)`

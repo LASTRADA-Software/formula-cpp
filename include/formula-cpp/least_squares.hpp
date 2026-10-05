@@ -84,6 +84,7 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/detail/least_squares_kernel.hpp>
 #include <formula-cpp/detail/wide_int.hpp>
 #include <formula-cpp/detail/wide_rounding.hpp>
@@ -236,6 +237,8 @@ struct LinearLeastSquares
     /// `DomainError`. A common denominator, a sum or a product that leaves 256
     /// bits is `Overflow` -- on readings with a different denominator on every
     /// point from 58 points (`docs/numeric-headroom.md`), never a wrong line.
+    /// The overflow census (`docs/numeric-headroom.md`) is told the bits each
+    /// of these integers used.
     static constexpr std::expected<std::array<detail::WideRatio<exact_limbs>, 2>, ArithmeticError> compute_exact(
         std::span<Rational const> domainPoints, std::span<Rational const> pointValues) noexcept
     {
@@ -249,6 +252,8 @@ struct LinearLeastSquares
         std::optional<Wide> const valueScale = detail::common_denominator<exact_limbs>(pointValues);
         if (!pointScale || !valueScale)
             return std::unexpected { ArithmeticError::Overflow };
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, pointScale->bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, valueScale->bit_length());
 
         // The four integer sums: of X, of Y, of X^2 and of X Y.
         Signed sumOfPoints {};
@@ -271,6 +276,14 @@ struct LinearLeastSquares
                 productTerm ? detail::add_checked_or_none(sumOfProducts, *productTerm) : std::nullopt;
             if (!withPoint || !withValue || !withSquare || !withProduct)
                 return std::unexpected { ArithmeticError::Overflow };
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, scaledPoint->magnitude.bit_length());
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, scaledValue->magnitude.bit_length());
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, squareTerm->magnitude.bit_length());
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, productTerm->magnitude.bit_length());
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, withPoint->magnitude.bit_length());
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, withValue->magnitude.bit_length());
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, withSquare->magnitude.bit_length());
+            FORMULA_CENSUS_NOTE_WIDTH(Wide, withProduct->magnitude.bit_length());
             sumOfPoints = *withPoint;
             sumOfValues = *withValue;
             sumOfSquares = *withSquare;
@@ -287,11 +300,20 @@ struct LinearLeastSquares
         std::optional<Signed> const pointsByProducts = detail::mul_checked_or_none(sumOfPoints, sumOfProducts);
         if (!countedSquares || !squaredSum || !countedProducts || !crossSum || !valuesBySquares || !pointsByProducts)
             return std::unexpected { ArithmeticError::Overflow };
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, countedSquares->magnitude.bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, squaredSum->magnitude.bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, countedProducts->magnitude.bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, crossSum->magnitude.bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, valuesBySquares->magnitude.bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, pointsByProducts->magnitude.bit_length());
         std::optional<Signed> const pointSpread = detail::sub_checked_or_none(*countedSquares, *squaredSum);
         std::optional<Signed> const riseTerm = detail::sub_checked_or_none(*countedProducts, *crossSum);
         std::optional<Signed> const interceptTerm = detail::sub_checked_or_none(*valuesBySquares, *pointsByProducts);
         if (!pointSpread || !riseTerm || !interceptTerm)
             return std::unexpected { ArithmeticError::Overflow };
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, pointSpread->magnitude.bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, riseTerm->magnitude.bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, interceptTerm->magnitude.bit_length());
         // A backstop only: distinct points were checked above.
         if (pointSpread->negative || pointSpread->magnitude.is_zero())
             return std::unexpected { ArithmeticError::DomainError };
@@ -300,6 +322,8 @@ struct LinearLeastSquares
         std::optional<Wide> const sharedDenominator = detail::mul_checked_or_none(pointSpread->magnitude, *valueScale);
         if (!slopeNumerator || !sharedDenominator)
             return std::unexpected { ArithmeticError::Overflow };
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, slopeNumerator->bit_length());
+        FORMULA_CENSUS_NOTE_WIDTH(Wide, sharedDenominator->bit_length());
         return std::array { detail::WideRatio<exact_limbs> {
                                 interceptTerm->negative, interceptTerm->magnitude, *sharedDenominator },
                             detail::WideRatio<exact_limbs> { riseTerm->negative, *slopeNumerator, *sharedDenominator } };

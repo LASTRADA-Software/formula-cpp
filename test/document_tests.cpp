@@ -235,7 +235,7 @@ TEST_CASE("document: a variable inside a RoundNode still appears in the symbol t
     //
     // **It does not establish that the collect() forward declarations are
     // load-bearing, and an earlier version of this comment claimed it did.**
-    // Measured while phase 10 added the lookup overloads: deleting every
+    // Measured when the lookup overloads were added: deleting every
     // forward declaration in document.hpp and rebuilding this suite succeeds
     // on cl 19.51, clang-cl 22 and g++ 14.2 -- this test included. ADL finds
     // the overload wherever it is declared, exactly as document.hpp's own
@@ -484,7 +484,7 @@ TEST_CASE("document: a constraint predicate's right-hand side reaches the symbol
     CHECK(documentation.symbols[1].description == std::string_view { "second replicate reading" });
 }
 
-// ------------------------------------------------------- phase 10: lookups
+// ----------------------------------------------------------------- lookups
 
 namespace
 {
@@ -545,7 +545,7 @@ struct AbsentReading: formula::Quantity<AbsentReading, "Z_q", "a reading no form
 /// in this file's subject survive. They are written this way because the
 /// cross-surface test at the end reads the *rendered* formula, and because a
 /// fixture that was degenerate on an axis nobody had yet named has let a
-/// mutation survive in every task of this phase.
+/// mutation survive more than once.
 inline constexpr BandTable<3> LayerBands {
     band(139, 100, 713, 100),   // 139/100 to under 713/100 mm
     band(713, 100, 3466, 200),  // 713/100 to under 1733/100 mm -- 3466/200 declared, so reduction shows
@@ -664,8 +664,8 @@ void quantityAgrees(formula::Documentation const& documentation, std::size_t& sh
 /// the same tree -- `render<D>()` fills `.formula`, `detail::collect` fills
 /// `.symbols` -- and `document()` never compares them with each other. A node
 /// kind taught to one walk and not to the other is therefore invisible to any
-/// test that asserts each half on its own, which is the shape of the defect
-/// phase 8 published: two surfaces, each internally consistent, disagreeing.
+/// test that asserts each half on its own, which is the shape of a defect
+/// once published: two surfaces, each internally consistent, disagreeing.
 ///
 /// So this asserts the relation instead of either half. For every quantity in
 /// @p Qs the rendered formula shows its symbol **if and only if** the symbol
@@ -679,7 +679,7 @@ void quantityAgrees(formula::Documentation const& documentation, std::size_t& sh
 /// kill -- every attempt to construct one failed. Its whole claim is the one
 /// below: it is the only assertion in this file that checks either half of a
 /// `Documentation` against the other rather than against a literal its author
-/// typed, which is the property phase 8's published defect violated, and it is
+/// typed, which is the property that published defect violated, and it is
 /// what a lookup kind added later gets without anyone remembering to write it.
 ///
 /// The rows also come back in the order the formula reads, which is what
@@ -854,7 +854,7 @@ TEST_CASE("document: the rendered formula and the symbol table agree on every lo
     formulaAndSymbolsAgree<CoreLength, GaugeDiameter, AbsentReading>(profileLookup() * var<GaugeDiameter>);
 }
 
-// ---- A series in the symbol table (phase 12) ----
+// ---- A series in the symbol table ----
 
 namespace
 {

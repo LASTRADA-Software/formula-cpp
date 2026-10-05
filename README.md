@@ -244,12 +244,12 @@ environment overrides the result instead of letting the formula derive it,
 `explained.trace` comes back empty — nothing ran, so nothing was recorded —
 and `explained.outcome.is_overridden()` says so instead: an overridden number
 shows *that a person entered it*, a different fact from how it was reached and
-arguably a more important one. See [the tracing guide](docs/tracing.md) for
-the detail. Tracing costs nothing when nobody asks for it: a sink is passed by
-value, and the untraced path — `evaluate()`, `checked_evaluate()` — defaults
-to one that does nothing, adding no instruction the evaluator would not
-already emit once the call inlines, measured on all four compilers this
-library targets. See [the tracing guide](docs/tracing.md).
+arguably a more important one. Tracing costs nothing when nobody asks for it:
+a sink is passed by value, and the untraced path — `evaluate()`,
+`checked_evaluate()` — defaults to one that does nothing, adding no
+instruction the evaluator would not already emit once the call inlines,
+measured on all four compilers this library targets. See
+[the tracing guide](docs/tracing.md).
 
 ### A published table that a value falls outside of gives no number at all
 

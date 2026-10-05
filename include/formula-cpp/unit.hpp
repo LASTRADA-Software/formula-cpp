@@ -546,6 +546,50 @@ struct RequireSameUnitDimension
     static constexpr bool value = true;
 };
 
+namespace detail
+{
+    /// Whether @p candidate is a dimensionless unit with a scale and no symbol: a magnitude other than 1, or an
+    /// offset other than 0, compared as fractions, and an empty symbol. A number in such a unit is in a scale
+    /// nothing on its line can name -- one half in hundredths would read `50` -- and no spelling of the unit
+    /// itself can name it either, since a dimensionless coherent unit is written as nothing. A dimensioned unit
+    /// with no symbol is not one: its value is shown in the coherent unit, which its dimension spells.
+    [[nodiscard]] constexpr bool unnamed_scaled_scalar(Unit const& candidate) noexcept
+    {
+        return candidate.dimension == dim::Scalar && view(candidate.symbolText).empty()
+               && (candidate.magnitudeNumerator != candidate.magnitudeDenominator || candidate.offsetNumerator != 0);
+    }
+
+    /// Fails to compile when @p U is a dimensionless unit with a scale and no symbol (`unnamed_scaled_scalar`).
+    /// Asserted in the class body of everything that holds a unit as a template argument -- a quantity's
+    /// description, a variable, a constant, a rounding, a key or a result of a table, a conformity check -- so
+    /// that such a unit is refused where it is written, never shown as a bare number in its scale.
+    ///
+    /// Same shape as `RequireSameUnitDimension` above, and the same caveat: it fires only when the type is
+    /// completed, so write `::value`.
+    template <Unit U>
+    struct RequireNamedScaledScalar
+    {
+        static_assert(!unnamed_scaled_scalar(U),
+                      "formula: a dimensionless unit with a scale must have a symbol (for example \"%\"), or the "
+                      "quantity must be declared in scale 1; the unit appears in this diagnostic as the template "
+                      "argument of RequireNamedScaledScalar");
+
+        /// Always `true` once reached -- the `static_assert` above already failed compilation otherwise.
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// The coherent unit of a dimension: magnitude one, offset zero, no symbol --
+/// the SI unit, times one of each named base dimension it has: the unit named
+/// after a base, which by convention has magnitude one.
+///
+/// Every `Unit` already states its own exact conversion to this one, so it is
+/// the single scale on which values from different units can meet.
+[[nodiscard]] constexpr Unit coherent(Dimension dimensionOfUnit) noexcept
+{
+    return Unit { .dimension = dimensionOfUnit };
+}
+
 /// Converts @p magnitude from @p from into @p to, exactly.
 ///
 /// Applies integer factors by multiply-then-divide rather than a precomputed

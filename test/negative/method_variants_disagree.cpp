@@ -5,9 +5,9 @@
 // that the comparison this file exists to provoke is neither the first the
 // guard makes nor the last.
 //
-// The rule inherited from phase 10 is "put the defect in the middle, because
-// that defeats a first-only and a last-only sweep at once", and phase 10 read
-// "middle" as a middle PAIR of four rows, because a band table is checked
+// The rule for a band table is "put the defect in the middle, because that
+// defeats a first-only and a last-only sweep at once", and there "middle"
+// means a middle PAIR of four rows, because a band table is checked
 // pairwise between neighbours. This guard is not pairwise between neighbours:
 // it compares the first variant against each later one, so a pack of three
 // yields only the two comparisons (0,1) and (0,2), and there is no middle one
@@ -16,9 +16,8 @@
 // rest still refuses it. Measured on cl 19.51 against exactly that fixture:
 // the mutation survived, the test passed, and the defect would have shipped.
 //
-// Third of four lands in (0,2), between (0,1) and (0,3). Both mutations are
-// measured in the task report: each makes this file compile, and each is
-// caught.
+// Third of four lands in (0,2), between (0,1) and (0,3). Both mutations were
+// measured: each makes this file compile, and so each is caught.
 //
 // The three variants that DO agree are deliberately different types from one
 // another, so this file does not quietly assume a pack's agreeing members

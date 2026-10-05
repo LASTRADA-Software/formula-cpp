@@ -2,8 +2,8 @@
 //
 // The join: an overlaid method that reads from another record, evaluated
 // through a context and a renaming vocabulary, traced, documented, checked,
-// and across two translation units (`record_cross_tu.hpp`). Each part was
-// verified on its own in earlier tasks; this file verifies that they compose.
+// and across two translation units (`record_cross_tu.hpp`). Each part has
+// tests of its own; this file verifies that they compose.
 #include "record_cross_tu.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -360,8 +360,8 @@ inline constexpr auto retainedRatio =
 
 TEST_CASE("a series formula through a context reads as through this record's environment", "[record-join]")
 {
-    // The inheritance probe, over phase 12's accessors: the
-    // context is this record's environment, `get_series` included.
+    // The inheritance probe, over the series accessors: the context is this
+    // record's environment, `get_series` included.
     constexpr auto viaContext =
         formula::checked_evaluate_si<formula::Rational>(formula::sum(formula::series<Retained, 5>), screensContext);
     constexpr auto viaEnvironment =
@@ -410,7 +410,7 @@ struct Count: formula::Quantity<Count, "n", "particles in a class", unit::One>
 {
 };
 
-// Phase 12's invented classes and sizes: three significant digits, none a
+// Invented classes and sizes: three significant digits, none a
 // preferred number or a sieve size.
 inline constexpr formula::BandTable<3> sizeClasses { formula::band(0, 1, 127, 1), formula::band(127, 1, 197, 1),
                                                      formula::band(197, 1, 331, 1) };
@@ -424,8 +424,8 @@ inline constexpr auto particlesContext = formula::record_context(
 
 TEST_CASE("raw observations read from another record are stamped with its origin", "[record-join]")
 {
-    // The observations path phase 12 added records its own step; read inside
-    // a scope, that step carries the record and its line names it.
+    // The observations path records its own step; read inside a scope, that
+    // step carries the record and its line names it.
     constexpr auto countedThere = formula::from_record<Reference>(
         formula::sum(formula::binned<unit::Metre, sizeClasses>(formula::observations<Size, 7>)));
     constexpr auto total = formula::checked_evaluate_si<formula::Rational>(countedThere, particlesContext);

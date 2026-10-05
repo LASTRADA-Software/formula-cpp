@@ -383,7 +383,7 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
     STATIC_REQUIRE(withRatioFixedAtFour(f::documented(r, nationalAnnex)) == Rational { 4 });
 
     // The citation is the one piece of a rebuilt node no value can show, and
-    // provenance is what this phase exists for: the rewritten wrapper must
+    // the one that says where a value came from: the rewritten wrapper must
     // still cite what the original cited.
     STATIC_REQUIRE(
         std::get<0>(withRatioFixedAtFourMethod(f::documented(r, nationalAnnex)).variantSet.cases).expression.citation
@@ -807,9 +807,8 @@ inline constexpr formula::Citation laterPruneAnnex { .reference = "Example Stand
 
 TEST_CASE("a pin says which jurisdiction made the variant mandatory", "[overlay][trace]")
 {
-    // Final review of phase 11, M3: a pinned method traced its selection
-    // exactly as the base method did, so nothing said a jurisdiction had made
-    // the variant mandatory.
+    // A pinned method traced its selection exactly as the base method did, so
+    // nothing said a jurisdiction had made the variant mandatory.
     constexpr auto pinned = formula::apply(formula::overlay(formula::pin_variant<Cylinder>(pinAnnex)), threeVariants);
 
     CHECK(traceOfVariant<Cylinder>(pinned, inputs)
@@ -1396,11 +1395,11 @@ TEST_CASE("an overlay's constraint judges a category code, and its verdict names
 
 TEST_CASE("an operation given an empty citation says so in every clause", "[overlay][trace]")
 {
-    // Final re-review of phase 11, M4: every operation takes a citation
-    // argument, but an empty one compiles -- `{}`, or an operation's aggregate
-    // built directly with no citation at all. A clause reading `pinned by
-    // jurisdiction overlay` and nothing more would then look cited to a reader
-    // who does not know it could have said more, so each says it was not.
+    // Every operation takes a citation argument, but an empty one compiles --
+    // `{}`, or an operation's aggregate built directly with no citation at
+    // all. A clause reading `pinned by jurisdiction overlay` and nothing more
+    // would then look cited to a reader who does not know it could have said
+    // more, so each says it was not.
     constexpr auto pinnedEmpty = formula::apply(formula::overlay(formula::pin_variant<Cylinder>({})), threeVariants);
     CHECK(traceOfVariant<Cylinder>(pinnedEmpty, inputs)
               .ends_with(" [variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction overlay (no citation "

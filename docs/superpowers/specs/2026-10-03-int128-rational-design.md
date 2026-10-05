@@ -84,8 +84,12 @@ class for no gain: a conversion in and out of the compiler's own integer optimis
 - **Plain operators behave like a built-in signed integer:** overflow, division by zero and an out-of-range shift are
   preconditions.
 - **Checked forms live in `detail/checked_int.hpp`,** beside the 64-bit ones, as `Int128` overloads of
-  `add_checked_or_none`, `sub_checked_or_none` and `mul_checked_or_none`. Natively they use `__builtin_add_overflow`
-  and its kin, which are `constexpr` on GCC and Clang. In software they use partial products.
+  `add_checked_or_none`, `sub_checked_or_none` and `mul_checked_or_none`. The sum and the difference are formed on
+  the two words' bit patterns with the portable routines, on every compiler, and an overflow is detected from the
+  signs: calling `Int128`'s own `+` or `-` first would break their precondition that the exact result fits. Only
+  the product uses the compiler's checked builtin, `__builtin_mul_overflow` on the unsigned magnitudes, on GCC and
+  Clang (outside MSVC's ABI, so not clang-cl, which has `__int128` but multiplies in software), and partial products
+  in software elsewhere; it is then checked against the signed range.
 - **`detail::UInt128`**, an unsigned 128-bit type, carries magnitudes. A numerator equal to the minimum, -2^127, keeps
   working, as `std::uint64_t` magnitudes let -2^63 work today. It also carries `gcd` (binary, using `std::countr_zero`
   on the words) and the integer square root.

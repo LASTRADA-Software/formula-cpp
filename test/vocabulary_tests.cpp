@@ -436,7 +436,7 @@ TEST_CASE("explain records in the vocabulary it is given", "[vocabulary][trace]"
 namespace
 {
 /// A consumer's own node, rendered through the one-argument extension point
-/// every earlier phase published: it knows nothing of vocabularies.
+/// the library has always published: it knows nothing of vocabularies.
 struct Gauge: formula::NodeBase
 {
     // Never read: this node is only rendered, never evaluated.
@@ -698,7 +698,7 @@ inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(
                * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
                * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) })
                * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>)
-           // Phase 13's kinds, added rather than multiplied in: the product
+           // The statistics kinds, added rather than multiplied in: the product
            // above leaves too few bits for another factor.
            + formula::rounded_sqrt<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
                  r * var<EveryFixed>)
@@ -1324,7 +1324,7 @@ TEST_CASE("a constraint over the overlaid quantities traces and documents in the
     CHECK(formula::document<formula::Dialect::LaTeX>(limit, everyVocabulary).formula == "\\text{require } E \\geq R");
 }
 
-// ---- A series in two jurisdictions' words (phase 12) ----
+// ---- A series in two jurisdictions' words ---------------
 
 namespace
 {
@@ -1393,9 +1393,9 @@ TEST_CASE("elementwise arithmetic is written in the page's vocabulary on every s
     CHECK(text.find("m_s") == std::string::npos);
 }
 
-// ---- The join: a series inside a method, under an overlay (phase 12) ----
+// ---- The join: a series inside a method, under an overlay ---------------
 //
-// Phase 11's lesson: two separately verified things do not verify their join.
+// Two separately verified things do not verify their join.
 // `sum` is the first series-holding `Node`, so it is where a series first sits
 // inside a method's variant; here it is evaluated, rendered, documented and
 // traced through a method an overlay rewrote, in a jurisdiction's words.

@@ -285,7 +285,7 @@ TEST_CASE("each statistic documents its sample on its own", "[statistics][docume
 
 TEST_CASE("an empty sample cannot be written, and the statistics refuse one all the same", "[statistics]")
 {
-    // series<Q, 0> is refused where it is written (phase 12), and a
+    // series<Q, 0> is refused where it is written (`series.hpp`), and a
     // rejection keeps at least one determination (KeepAtLeast<m>, m >= 1), so
     // no sample a formula can name is empty. The guards stay, for the next
     // sample source: a mean over none is a division by zero and a range a

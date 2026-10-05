@@ -8,6 +8,8 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
+#include "fifty_readings.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
@@ -103,7 +105,7 @@ TEST_CASE("the order the points are listed in does not change the fit", "[least-
 {
     // Through compute directly: a curve refuses a domain listed out of order
     // as its own NotAscending failure. Same four pairs, listed
-    // 4, 1, 7, 2 s: identical coefficients (defect class 6).
+    // 4, 1, 7, 2 s: identical coefficients.
     constexpr std::array<formula::Rational, 4> shuffledTimes { rat(4), rat(1), rat(7), rat(2) };
     constexpr std::array<formula::Rational, 4> shuffledLengths {
         rat(121, 10'000), rat(102, 10'000), rat(143, 10'000), rat(109, 10'000)
@@ -230,8 +232,8 @@ TEST_CASE("two points give the exact line through them", "[least-squares]")
 namespace
 {
 // Point k at ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) mm): a different
-// denominator on every point, the spike's shape that overflows from 27
-// points (step 3). Invented, and ascending, as a curve's points must be.
+// denominator on every point, a shape that overflows at 27 points, as the
+// test below pins. Invented, and ascending, as a curve's points must be.
 template <std::size_t N>
 [[nodiscard]] auto distinct_denominators()
 {
@@ -1279,25 +1281,13 @@ TEST_CASE("a line through observations in double agrees with the exact line", "[
 
 namespace
 {
-// Fifty readings at four decimals: t_k = k + 1 + (7919 k mod 997) / 10^4 s,
-// L_k = 2410 + 3.17 k + ((3217 k mod 1009) - 504) / 10^4 mm. At eight, each
-// gains (1237 k mod 10^4) / 10^8 s and (4111 k mod 10^4) / 10^8 mm.
-// Reference values computed with Python's fractions.
+// The fifty readings of examples/fifty_readings.hpp, at four decimals or, with
+// morePlaces 10'000, at eight. Reference values computed with Python's fractions.
 [[nodiscard]] auto fifty_readings(std::int64_t const morePlaces = 1)
 {
-    std::array<formula::Rational, 50> times;
-    std::array<formula::Rational, 50> lengths;
-    for (std::size_t at = 0; at < 50; ++at)
-    {
-        auto const position = static_cast<std::int64_t>(at);
-        times[at] = rat((10'000 * (position + 1) + (7919 * position) % 997) * morePlaces + (1237 * position) % morePlaces,
-                        10'000 * morePlaces);
-        lengths[at] = rat((24'100'000 + 31'700 * position + (3217 * position) % 1009 - 504) * morePlaces
-                              + (4111 * position) % morePlaces,
-                          10'000 * morePlaces);
-    }
-    return formula::environment(*formula::MeasuredObservations<Elapsed, 64>::from(times),
-                                *formula::MeasuredObservations<Length, 64>::from(lengths));
+    formula_examples::FiftyReadings const made = formula_examples::fifty_readings(morePlaces);
+    return formula::environment(*formula::MeasuredObservations<Elapsed, 64>::from(made.seconds),
+                                *formula::MeasuredObservations<Length, 64>::from(made.millimetres));
 }
 
 constexpr auto fiftyFit = formula::linear_least_squares(
@@ -1383,6 +1373,30 @@ TEST_CASE("a line through fifty readings at eight decimals overflows exactly and
         fifty);
     REQUIRE(fitQuality.has_value());
     CHECK(fitQuality->measurement().value() == rat(249999, 250'000));
+}
+
+TEST_CASE("a line through fifty readings at eight decimals: how wide each exact output is",
+          "[least-squares][observations]")
+{
+    // The widths docs/opaque-and-retry.md quotes. In coherent units -- seconds and metres -- as the fit sees
+    // them, each output reduced to lowest terms as a Rational would hold it: the intercept and the slope fit
+    // 127 bits, R^2 does not, so the call answers Overflow for all its outputs.
+    formula_examples::FiftyReadings const atEight = formula_examples::fifty_readings(10'000);
+    std::array<formula::Rational, 50> metres {};
+    for (std::size_t at = 0; at < metres.size(); ++at)
+        metres[at] =
+            formula::Rational { atEight.millimetres[at].numerator(), atEight.millimetres[at].denominator() * 1000 };
+    auto const exact = formula::LinearLeastSquaresOfObservations::compute_exact(
+        std::span<formula::Rational const> { atEight.seconds }, std::span<formula::Rational const> { metres });
+    REQUIRE(exact.has_value());
+    auto const bitsOf = [&exact](std::size_t outputAt) {
+        auto const lowest = formula::detail::reduced((*exact)[outputAt]);
+        return std::array<std::size_t, 2> { lowest.numerator.bit_length(), lowest.denominator.bit_length() };
+    };
+    // intercept, slope, r squared: numerator bits, then denominator bits.
+    CHECK(bitsOf(0) == std::array<std::size_t, 2> { 93, 91 });
+    CHECK(bitsOf(1) == std::array<std::size_t, 2> { 65, 73 });
+    CHECK(bitsOf(2) == std::array<std::size_t, 2> { 130, 130 });
 }
 
 TEST_CASE("an observation that fails to convert fails the fit at that observation", "[least-squares][observations][trace]")

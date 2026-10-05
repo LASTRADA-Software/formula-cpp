@@ -10,6 +10,7 @@
 
 #include <concepts>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace formula
@@ -89,9 +90,9 @@ namespace formula
 ///
 /// **There is no dimension parameter.** A `Unit` already carries its dimension,
 /// so passing both would state it twice and let the two contradict each other.
-/// A spike compiled that spelling with `dim::Mass` against `unit::Litre` and all
-/// three compilers accepted it in silence. `dimension` below is derived, so the
-/// contradiction cannot be written.
+/// That spelling, with `dim::Mass` against `unit::Litre`, compiled without a
+/// diagnostic on every compiler it was tried on. `dimension` below is derived,
+/// so the contradiction cannot be written.
 template <typename Tag, detail::FixedString Symbol, detail::FixedString Description, Unit U>
 struct Quantity
 {
@@ -220,8 +221,24 @@ concept Described = requires {
 template <typename T>
 concept DescribesConsistentDimension = Described<T> && Describe<T>::dimension == Describe<T>::unit.dimension;
 
-/// Fails to compile, in our own words, when `T` declares no metadata, or
-/// declares metadata whose `dimension` contradicts its own `unit`.
+namespace detail
+{
+    /// `RequireNamedScaledScalar` of a described type's unit, asked only once the type is described: an
+    /// undescribed type has no unit to ask about, and is already refused, in full, by `RequireDescribed`.
+    template <typename T, bool IsDescribed = Described<T>>
+    struct RequireDescribedUnitNamesItsScale: std::true_type
+    {
+    };
+
+    template <typename T>
+    struct RequireDescribedUnitNamesItsScale<T, true>: RequireNamedScaledScalar<Describe<T>::unit>
+    {
+    };
+} // namespace detail
+
+/// Fails to compile, in our own words, when `T` declares no metadata,
+/// declares metadata whose `dimension` contradicts its own `unit`, or declares
+/// it in a dimensionless unit with a scale and no symbol.
 ///
 /// The counterpart to `Describe` being silent: somewhere has to say what to do
 /// about it, and a bare "no member named 'symbol'" does not. Same shape as
@@ -246,8 +263,9 @@ struct RequireDescribed
                   "A quantity's unit already carries a dimension; declaring a second one that "
                   "disagrees mislabels every value read through it -- derive Describe<T>::dimension "
                   "from Describe<T>::unit.dimension instead of stating it independently");
+    static_assert(detail::RequireDescribedUnitNamesItsScale<T>::value);
 
-    /// Always `true` once reached -- both `static_assert`s above already failed
+    /// Always `true` once reached -- the `static_assert`s above already failed
     /// compilation otherwise. Present so `::value` is the spelling that
     /// instantiates the class template; see the class comment for why that
     /// spelling matters.

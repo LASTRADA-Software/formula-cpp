@@ -28,8 +28,8 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
     return formula::Rational { numerator, denominator };
 }
 
-// The shared fixture's quantities (see the phase 12 plan): an invented screen
-// analysis, and the percentage passing each screen.
+// The shared fixture's quantities: an invented screen analysis, and the
+// percentage passing each screen.
 struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
 {
 };

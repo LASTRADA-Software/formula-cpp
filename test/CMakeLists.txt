@@ -109,6 +109,9 @@ add_executable(formula-cpp-tests
     yields_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
+# The fifty readings examples/opaque_and_retry.cpp fits a line through, whose
+# figures the least-squares tests pin (examples/fifty_readings.hpp).
+target_include_directories(formula-cpp-tests PRIVATE "${PROJECT_SOURCE_DIR}/examples")
 formula_apply_warnings(formula-cpp-tests)
 
 catch_discover_tests(formula-cpp-tests)
@@ -338,6 +341,19 @@ formula_add_negative_test(unit_dimension_mismatch
 formula_add_negative_test(unit_currency_mismatch
     "formula: these two units measure different dimensions" EXPECT_COUNT 1)
 
+# A dimensionless unit with a scale and no symbol: refused where a quantity
+# declared in it is read or measured, where a constant is stated in it, and
+# where a table is keyed in it -- once each.
+formula_add_negative_test(scaled_scalar_unit_without_symbol_var
+    "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1)
+formula_add_negative_test(scaled_scalar_unit_without_symbol_measured
+    "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1)
+formula_add_negative_test(scaled_scalar_unit_without_symbol_constant
+    "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1)
+formula_add_negative_test(scaled_scalar_unit_without_symbol_snap
+    "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1
+    REJECT "key unit does not measure" "breakpoints do not strictly ascend")
+
 # A conversion between measured quantities of different dimensions is refused where
 # it is written, with or without a value, and once.
 formula_add_negative_test(measured_convert_dimension_mismatch
@@ -534,6 +550,16 @@ formula_add_negative_test(trace_of_si_series_as_single
     REJECT "no matching")
 formula_add_negative_test(yields_series_explain
     "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 3
+    REJECT "no matching")
+# A bare series handed to explain or checked_explain, which trace a single
+# value: refused in the library's words, pointing at explain_series, the
+# verb that gives a series' derivation, rather than as an overload nobody
+# matched. trace_of and the bound forms above keep their own message.
+formula_add_negative_test(explain_series_as_single
+    "this expression is a series, not a single value; explain it with explain_series" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(checked_explain_series_as_single
+    "this expression is a series, not a single value; explain it with explain_series" EXPECT_COUNT 1
     REJECT "no matching")
 formula_add_negative_test(yields_rejection_evaluate
     "formula: this is a rejection of outliers, not a single value; evaluate it with checked_evaluate_rejection" EXPECT_COUNT 6
@@ -1077,8 +1103,8 @@ formula_add_negative_test(sample_mean_overlay_constant_on_sample
     "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "overrides a quantity that no variant or constraint of the method uses" "cannot see inside")
 
-# The same check sees through phase 12's series kinds: a placeholder added to
-# every element of a series a nested level sums.
+# The same check sees through the series kinds: a placeholder added to every
+# element of a series a nested level sums.
 formula_add_negative_test(precision_level_in_nested_level_through_series
     "formula: this precision_limit's level expression reads precision_level"
     REJECT "precision_level is meaningful only inside")
@@ -1445,8 +1471,7 @@ formula_add_negative_test(interpolating_lookup_malformed_breakpoint
 #
 # The guard lives in `Variants`'s class body rather than in `variants()`, so
 # this one case covers the no-factory route too -- declaring a `Variants<...>`
-# directly completes the same class. That is measured, not assumed; the task
-# report records the build that showed it.
+# directly completes the same class. That is measured, not assumed.
 formula_add_negative_test(method_variants_disagree
     "formula: two variants of this method measure different dimensions")
 
@@ -2135,7 +2160,7 @@ formula_add_negative_test(render_node_without_vocabulary
 # compile.
 formula_add_negative_test(vocabulary_symbol_not_static "a constant expression")
 
-# Phase 14: records and the context. Each case's own comment says why its
+# Records and the context. Each case's own comment says why its
 # mistake is the only thing wrong with it.
 formula_add_negative_test(record_context_duplicate_role
     "formula: this record_context binds the same role to more than one record"
@@ -2313,8 +2338,8 @@ formula_add_negative_test(record_series_through_refused_record
     EXPECT_COUNT 1
     REJECT "get_series")
 # The same refusal, rendered, documented and overlaid: every walk answers the
-# refused scope, as phase 12's walks answer a refused series, so each stays
-# one message. cl stops at the first failed static_assert, so only the
+# refused scope, as the walks answer a refused series, so each stays one
+# message. cl stops at the first failed static_assert, so only the
 # overlay's REJECT -- a library static_assert of its own -- can fire there;
 # g++, clang++ and clang-cl see all three.
 formula_add_negative_test(record_scope_of_series_rendered
@@ -2369,7 +2394,7 @@ formula_add_negative_test(opaque_unknown_output
     "formula: this opaque operation has no output of that name; the operation and the name asked for appear in this diagnostic as the template arguments of RequireOpaqueOutputNamed"
     REJECT "this result quantity does not measure the dimension")
 # g++ 14.2 followed the noexcept refusal with seven errors of its own when the
-# evaluator's body was not gated (phase 15's spike, step 7): the REJECTs.
+# evaluator's body was not gated: the REJECTs.
 formula_add_negative_test(opaque_throwing_compute
     "formula: an opaque operation's compute must be noexcept; evaluation cannot throw, and an exception escaping it would end the program"
     REJECT "~expected" "flows off the end")

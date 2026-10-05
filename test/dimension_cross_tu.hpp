@@ -2,16 +2,16 @@
 #pragma once
 
 /// Cross-translation-unit identity for a Dimension used as a non-type template
-/// parameter. Phase 1 established that the equivalent trick with
-/// `decltype([]{})` gives each TU its OWN type and fails at link time with a
-/// message that never names the cause. This test exists so that a future change
-/// to Dimension cannot reintroduce that failure silently: the functions below
-/// are DEFINED in dimension_cross_tu_b.cpp and CALLED from dimension_tests.cpp
-/// with an equal but differently spelled dimension. If the two spellings are not
-/// the same type, this does not link. The two that carry named base dimensions
-/// are also defined with a spelling different from their declaration here, so
-/// that the declaration, the definition and the call each work out the named
-/// bases' canonical order for themselves.
+/// parameter. The equivalent trick with `decltype([]{})` gives each TU its OWN
+/// type and fails at link time with a message that never names the cause. This
+/// test exists so that a future change to Dimension cannot reintroduce that
+/// failure silently: the functions below are DEFINED in
+/// dimension_cross_tu_b.cpp and CALLED from dimension_tests.cpp with an equal
+/// but differently spelled dimension. If the two spellings are not the same
+/// type, this does not link. The two that carry named base dimensions are also
+/// defined with a spelling different from their declaration here, so that the
+/// declaration, the definition and the call each work out the named bases'
+/// canonical order for themselves.
 
 #include <formula-cpp/dimension.hpp>
 

@@ -42,17 +42,6 @@
 namespace formula
 {
 
-/// The coherent unit of a dimension: magnitude one, offset zero, no symbol --
-/// the SI unit, times one of each named base dimension it has: the unit named
-/// after a base, which by convention has magnitude one.
-///
-/// Every `Unit` already states its own exact conversion to this one, so it is
-/// the single scale on which values from different units can meet.
-[[nodiscard]] constexpr Unit coherent(Dimension dimensionOfUnit) noexcept
-{
-    return Unit { .dimension = dimensionOfUnit };
-}
-
 /// How arithmetic is done for one representation.
 ///
 /// The primary template is deliberately undefined: a representation that has
@@ -196,6 +185,24 @@ namespace detail
             !SeriesNode<Expression> || requires { requires detail::refused_already<Expression>(); },
             "formula: this expression is a series, not a single value; evaluate it with "
             "checked_evaluate_series, or reduce it to one value first (sum, interpolate_at)");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a series (`series.hpp`) is handed to a verb that
+    /// traces one value -- `explain` or `checked_explain` (`trace.hpp`). The
+    /// tracing counterpart of `RequireSingleValueExpression`: a caller who
+    /// asked for a derivation is pointed at `explain_series`, the series verb
+    /// that gives one. Named so the expression prints.
+    template <typename Expression>
+    struct RequireSingleValueTraced
+    {
+        // A series already refused (`refused`, `series.hpp`) is not asked
+        // again: its own refusal is the one message for the mistake.
+        static_assert(
+            !SeriesNode<Expression> || requires { requires detail::refused_already<Expression>(); },
+            "formula: this expression is a series, not a single value; explain it with "
+            "explain_series, or reduce it to one value first (sum, interpolate_at)");
 
         static constexpr bool value = true;
     };

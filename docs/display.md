@@ -265,7 +265,11 @@ the dish's mass in its declared grams: ≈4.2 g
 constant (the moisture trace's line 5, `25.5 g`), a table's bound or row, a
 permitted value, a limit. Rounding it would print a number nobody wrote. The
 dish's typed 1/3 has no exact decimal, and even the rounding style writes it
-`1/3` (line 3 above).
+`1/3` (line 3 above). Every number a formula declares in a dimensioned
+unit with no symbol is written in the coherent unit, exact, as its trace
+writes it: a constant `3/1000 kg`, a per-element constant
+`values(3/1000 kg, 1/200 kg)`, a table's band `1/4 to under 1/2 kg`, a limit
+`at least 3/4 kg`.
 
 **Nor is either side of a comparison that a trace line states beside its
 verdict.** Two specimens' moisture contents, checked against a limit of at
@@ -432,7 +436,7 @@ and writes exactly what [`checked_round`](numbers.md#rounding) rounds to. Both l
 `number_text.hpp`, which `formula.hpp` includes, and both:
 
 - need **no `<format>`** and no `<string>`: the result is a `NumberText`, a
-  fixed 64-byte buffer, so they **allocate nothing**;
+  fixed 128-byte buffer, so they **allocate nothing**;
 - are **`constexpr`**, so a spelling can be checked at compile time:
 
 ```cpp
@@ -461,6 +465,16 @@ two places:   11.31
 A `Measured` value that is absent -- here one constructed with nothing, `{}`
 -- reads `(not measured)`, in every style.
 
+A `Measured` value in a dimensioned unit with no symbol is written as a
+trace writes it: moved exactly into the coherent unit and followed by that
+unit's spelling, since a unit with no symbol cannot say what scale its
+number is on. 3 of a unit of 1/1000 kg reads `3/1000 kg` as a fraction and
+`0.003 kg` as a decimal, never a bare `3`. Its places are read as a trace
+reads them: the coherent unit's 3 are a default nobody chose, so they are
+never padded to, and never round a value that is not zero to `≈0` -- 1/3 of
+that unit reads `≈0.0003 kg`. `std::format` writes it the same way. A value
+in a dimensionless unit with no symbol is a bare number.
+
 A `NumberText`'s characters are read through `view()`, a `std::string_view`,
 on a named object -- `view()` on a temporary does not compile, since the view
 would outlive the buffer. The example prints each one so:
@@ -475,7 +489,12 @@ std::println("two places:   {}\n", twoPlaces.view());
 `ArithmeticException` for more than 18 places, and where rounding to whole
 tens or thousands overflows. `number_text` throws it where its rounding
 overflows so, and for a padded or approximating style in a unit whose
-declared decimals lie outside -18 to 18. Each has a `checked_` form,
+declared decimals lie outside -18 to 18: a `Rational` in any unit you pass,
+or a `Measured` whose unit has a symbol or is dimensionless. A `Measured` in
+a dimensioned unit with no symbol is shown in the coherent unit, at that
+unit's places, so its unit's declared decimals are never read; it throws
+instead where its value cannot move into the coherent unit, and where that
+unit's spelling does not fit the buffer. Each has a `checked_` form,
 `checked_decimal_text` and `checked_number_text`, that returns the
 `ArithmeticError` in a `std::expected` instead of throwing. A trace never
 throws for a number: a line whose value its style cannot spell reads

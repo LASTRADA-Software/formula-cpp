@@ -89,7 +89,7 @@ static_assert(unit::Celsius.offsetNumerator == 27315 && unit::Celsius.offsetDeno
 static_assert(unit::Fahrenheit.offsetNumerator == 45967 && unit::Fahrenheit.offsetDenominator == 180);
 static_assert(unit::Fahrenheit.magnitudeNumerator == 5 && unit::Fahrenheit.magnitudeDenominator == 9);
 
-// ---- a Unit is a template argument, which is what phase 4 needs ----
+// ---- a Unit is a template argument, which is what Quantity needs ----
 
 template <Unit U>
 struct Measured
@@ -997,8 +997,8 @@ TEST_CASE("a unit template argument has the same identity in every translation u
     // field-by-field rather than named from unit::Litre -- so this linking at
     // all is the assertion, mirroring dimension_tests.cpp's cross-TU case for
     // Dimension. Unit nests Symbol and Bounds inside the NTTP, a strictly
-    // richer mangling than Dimension's, and phase 4's Quantity<Unit> is the
-    // consumer that will depend on it.
+    // richer mangling than Dimension's, and `Quantity<…, Unit>` is the
+    // consumer that depends on it.
     constexpr Unit LitreRebuilt { .dimension = dim::Volume,
                                   .magnitudeNumerator = 1,
                                   .magnitudeDenominator = 1000,
@@ -1087,4 +1087,29 @@ TEST_CASE("a unit carrying a named base dimension has the same identity in every
                                    .decimals = 4 };
     static_assert(TariffRebuilt == EuroPerKilowattHour);
     CHECK(formula_test::consume_tariff_unit(formula_test::TaggedUnit<TariffRebuilt> { 20 }) == 22);
+}
+
+TEST_CASE("a dimensionless unit with a scale and no symbol is the one a declaration refuses", "[unit]")
+{
+    // Hundredths with no symbol: one half would read 50, in a scale nothing names.
+    constexpr Unit unlabelledHundredth { .dimension = dim::Scalar, .magnitudeNumerator = 1, .magnitudeDenominator = 100 };
+    // The same scale with an offset only.
+    constexpr Unit unlabelledShifted { .dimension = dim::Scalar, .offsetNumerator = 1, .offsetDenominator = 2 };
+    // Scale 1 written as 7/7: still scale 1.
+    constexpr Unit unlabelledSevenSevenths { .dimension = dim::Scalar, .magnitudeNumerator = 7, .magnitudeDenominator = 7 };
+    // A dimensioned unit with no symbol is shown in the coherent unit instead, and is not refused.
+    constexpr Unit unlabelledGram { .dimension = dim::Mass, .magnitudeNumerator = 1, .magnitudeDenominator = 1000 };
+
+    STATIC_REQUIRE(formula::detail::unnamed_scaled_scalar(unlabelledHundredth));
+    STATIC_REQUIRE(formula::detail::unnamed_scaled_scalar(unlabelledShifted));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unlabelledSevenSevenths));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unlabelledGram));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::One));
+    // Every shipped scaled dimensionless unit has a symbol.
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::Percent));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::PerMille));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::PartsPerMillion));
+    STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::MilligramPerKilogram));
+    STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::Percent>::value);
+    STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::One>::value);
 }

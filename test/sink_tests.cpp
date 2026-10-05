@@ -113,8 +113,8 @@ TEST_CASE("NullSink changes neither the answer nor whether one is produced", "[s
 
 namespace
 {
-/// A consumer's own node, written against the extension point as phase 5
-/// published it: two parameters, no knowledge of sinks.
+/// A consumer's own node, written against the extension point as first
+/// published: two parameters, no knowledge of sinks.
 struct LegacyNode: formula::NodeBase
 {
     static constexpr formula::Dimension dimension = formula::dim::Mass;
@@ -187,10 +187,10 @@ TEST_CASE("trace_of_si traces a two-parameter extension-point node at the root, 
 // Constant evaluation
 //
 // `evaluate` and `checked_evaluate` must remain usable in a constant
-// expression. Threading a sink through every overload in phase 7 could have
-// cost that -- a single non-constexpr step anywhere in the walk would -- and
-// nothing in the suite would have noticed, because every other test calls
-// them at runtime.
+// expression. Threading a sink through every overload could have cost that
+// -- a single non-constexpr step anywhere in the walk would -- and nothing in
+// the suite would have noticed, because every other test calls them at
+// runtime.
 //
 // These are `static_assert`s rather than `CHECK`s deliberately: the claim is
 // that the computation happens during translation, and a runtime assertion
@@ -222,8 +222,8 @@ static_assert(evaluatedAtCompileTime.is_value(), "formula: evaluate must work in
 static_assert(evaluatedAtCompileTime.measurement().value() == formula::Rational { 2 });
 
 // The sink-carrying walk itself, with a sink named explicitly rather than
-// defaulted, so this covers the parameter phase 7 added and not just the
-// defaulted call.
+// defaulted, so this covers the sink parameter and not just the defaulted
+// call.
 constexpr auto tracedAtCompileTime = [] {
     formula::NullSink sink {};
     return formula::checked_evaluate_si<formula::Rational>(densityFormula, constantEnvironment, sink);

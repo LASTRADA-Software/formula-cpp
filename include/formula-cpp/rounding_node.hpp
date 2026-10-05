@@ -49,6 +49,7 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
 struct RoundNode: NodeBase
 {
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The expression being rounded.
     ///
@@ -75,6 +76,7 @@ template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
 struct RoundSignificantNode: NodeBase
 {
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The expression being rounded.
     ///

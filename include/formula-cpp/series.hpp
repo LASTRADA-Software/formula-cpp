@@ -70,6 +70,7 @@ struct SeriesVarNode: SeriesNodeBase
                   "formula: this quantity describes a dimension its own unit does not measure, so "
                   "no formula containing it can be trusted; the quantity appears in this "
                   "diagnostic as the template argument of SeriesVarNode");
+    static_assert(detail::RequireNamedScaledScalar<Describe<Q>::unit>::value);
     static_assert(N > 0,
                   "formula: this series has no elements; a series is a value at each point of a method's domain, "
                   "and a domain of no points has nothing to sum, round or trace -- the quantity appears in this "
@@ -130,8 +131,8 @@ namespace detail
 /// (`lookup.hpp`). `series_constant` with no values is refused in words
 /// already, so no author's spelling reaches the compiler's.
 ///
-/// No `{}` default member initialiser, deliberately (defect class 4): a
-/// constant must state its contents.
+/// No `{}` default member initialiser, deliberately: a constant must state
+/// its contents.
 template <std::size_t N>
 struct Elements
 {
@@ -179,6 +180,7 @@ struct SeriesConstantNode: SeriesNodeBase
                   "formula: this series constant has no elements; a series is a value at each point of a method's "
                   "domain, and a domain of no points has nothing to sum, round or trace -- give it at least one "
                   "value");
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The values. No `{}` initialiser, deliberately: see `Elements`.
     Elements<N> elements;
@@ -495,6 +497,7 @@ struct ElementwiseRoundNode: SeriesNodeBase
     static_assert(std::conditional_t<!operandRefused && countMatches,
                                      detail::RequireRoundingUnitMatches<U, S>,
                                      std::true_type>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The series rounded. No `{}` initialiser, deliberately: see
     /// `Corrections` (`lookup.hpp`).
@@ -655,10 +658,9 @@ namespace detail
     /// What a refused `cumulative` of a single value stands for: a series,
     /// already refused (`refused`), so that nothing built over it -- a `sum`,
     /// another `cumulative`, an elementwise operator, `checked_evaluate` or
-    /// `checked_evaluate_series` -- reports the one mistake a second time
-    /// (defect class 2). It evaluates to a `DomainError` with no position and
-    /// tells no sink: a program holding one never compiles, so neither is
-    /// ever seen.
+    /// `checked_evaluate_series` -- reports the one mistake a second time. It
+    /// evaluates to a `DomainError` with no position and tells no sink: a
+    /// program holding one never compiles, so neither is ever seen.
     template <Dimension D>
     struct RefusedSeries: SeriesNodeBase
     {

@@ -323,16 +323,17 @@ the four.
 
 ### When the exact fractions do not fit
 
-An exact fit through fifty readings at eight decimals does not fit
-`Rational`. Computed with Python's fractions, the slope is a fraction of 65
-and 73 bits and the intercept of 93 and 91, which fit, but R² needs 130 bits
-over 130. `opaque_output` then answers `Overflow` -- for every
-output of the call, since its outputs answer or fail together. A formula
-that declares the precision it reports a coefficient at -- a unit, decimal
-places and a rounding mode, as `rounded<>` does -- gets the correctly
-rounded decimal instead, as long as the fit stays within the wide integers
-the kernel computes in (`detail/least_squares_kernel.hpp`; beyond them the
-answer is `Overflow` again, and the
+An exact fit through fifty readings at eight decimals does not fit `Rational`.
+The slope is a fraction of 65 and 73 bits and the intercept of 93 and 91,
+which fit, but R² needs 130 bits over 130 (`test/least_squares_tests.cpp`, "a
+line through fifty readings at eight decimals: how wide each exact output
+is"). `opaque_output` then answers `Overflow` -- for every output of the call,
+since its outputs answer or fail together. A formula that declares the
+precision it reports a coefficient at -- a unit, decimal places and a rounding
+mode, as `rounded<>` does -- gets the correctly rounded decimal instead, as
+long as the fit stays within the wide integers the kernel computes in
+(`detail/least_squares_kernel.hpp`; beyond them the answer is `Overflow`
+again, and the
 [numeric headroom](numeric-headroom.md#regression-over-observations-realistic-and-one-stress-control)
 page measures where). [Displaying numbers](display.md#values-the-exact-layer-cannot-hold)
 explains values the exact layer cannot hold. The example declares the slope

@@ -608,9 +608,9 @@ enum class OperandSide : std::uint8_t
 /// relaying it" -- and a renderer reading such a step alone would emit
 /// something true-sounding and useless ("lookup failed: argument outside the
 /// domain of the operation") for a case where nothing was outside any domain.
-/// Phase 9 refused `bool satisfied()` for exactly this shape of defect: a
-/// surface that must answer something for a case it cannot distinguish, where
-/// the plausible answer is a lie.
+/// Constraints refuse a `bool satisfied()` (`constraint.hpp`) for exactly
+/// this shape of defect: a surface that must answer something for a case it
+/// cannot distinguish, where the plausible answer is a lie.
 ///
 /// `ArithmeticError::Overflow` is ambiguous the same way and **is not the
 /// same case**: only the interpolating lookup computes anything, so only it
@@ -1053,9 +1053,9 @@ struct Step
     /// The whole `ConstraintOutcome` rather than a kind plus a separate label
     /// and a separate error field of its own: `ConstraintOutcome` already
     /// carries exactly those three things behind one safe interface, and
-    /// splitting it back out here would be the identical duplication phase 8
-    /// undid when it removed the member it had added to `WhenNode` to expose
-    /// a comparison already reachable another way. `check()` (`constraint.hpp`)
+    /// splitting it back out here would be the identical duplication once
+    /// undone by removing a member added to `WhenNode` to expose a comparison
+    /// already reachable another way. `check()` (`constraint.hpp`)
     /// hands this to `RecordingSink::constraint_produced` verbatim.
     ///
     /// Default-constructs to `ConstraintOutcomeKind::NotChecked` -- see
@@ -1122,7 +1122,7 @@ struct Step
     /// `declared_number_text` before printing, so a row typed `14/4` reads
     /// `7/2` in a derivation -- deliberately, because `render()` prints `7/2`
     /// for that same row and a trace disagreeing with the formula it derives
-    /// is the defect this phase exists to refuse. An auditor reconciling
+    /// is a defect this library refuses. An auditor reconciling
     /// *values* against a published curve therefore matches; one reconciling
     /// the *literal spelling* an author typed needs this field, which is where
     /// the unreduced pair survives for a programmatic consumer to read.
@@ -3828,9 +3828,11 @@ class RecordingSink
     /// Records the pass-1 step, claiming the level expression's step as its
     /// operand, and binds the level for the limit expression that follows.
     ///
-    /// Its value is in @p levelUnit, the unit of the quantity the limit's
-    /// placeholders name, so that the level reads as the results do; its
-    /// dimension is the level expression's.
+    /// It reads in the unit of the step it restates when that unit has a
+    /// symbol and holds exactly its value (`detail::restated_unit_or`), as
+    /// pass 2 does; otherwise in @p levelUnit, the unit of the quantity the
+    /// limit's placeholders name, so that the level reads as the results do.
+    /// Its dimension is the level expression's.
     void precision_level_produced(PrecisionKind precisionKind, Unit levelUnit, Evaluated<Rep> const& produced)
     {
         // Told without `precision_level_entered`, or after a second sink
@@ -3857,6 +3859,12 @@ class RecordingSink
             levelStep.error = produced.error();
         else if (produced->has_value())
             levelStep.value = **produced;
+        // Pass 1 restates the level expression's value, so it reads in the
+        // unit of the step it restates, as pass 2 and a conditional do: a
+        // level constant in grams reads in grams on both lines. The unit the
+        // types give stays the answer when nothing can be borrowed.
+        levelStep.unit = detail::restated_unit_or(_trace->steps, levelStep.operands, levelStep.dimension,
+                                                  levelStep.value, levelUnit);
 
         std::size_t const levelIndex = _trace->steps.size();
         std::size_t const recordIndex = _trace->precisionRecords.size();
@@ -4464,8 +4472,8 @@ class RecordingSink
     /// curve's, raw observations', a constraint's, a conformity check's, a
     /// variant selection's, an acceptance check's, a precision level's first
     /// pass and a rejection's passes, rejections and verdict -- so that a
-    /// recording path added later, as phase 12's series paths and phase 13's
-    /// statistics paths were, has one rule to follow rather than one to
+    /// recording path added later, as the series paths and the statistics
+    /// paths were, has one rule to follow rather than one to
     /// forget. Outside every scope it sets nothing.
     ///
     /// **The rule for every recording path, present and future:** a path
@@ -4601,6 +4609,17 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
     RecordingSink<Rep, V> recordingSink { explained.trace, vocabulary };
     explained.outcome = evaluate<Result>(expression, environment, recordingSink);
     return explained;
+}
+
+/// A series handed to `explain`: fails to compile, in this library's words,
+/// pointing at `explain_series`, which gives a series' outcome and its
+/// derivation. The body is the refusal and nothing else; what it returns is
+/// never seen.
+template <Described Result, typename Rep = Rational, SeriesNode Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Explained<Result, Rep> explain(Expression const&, Env const&, V const& = V {})
+{
+    static_assert(detail::RequireSingleValueTraced<Expression>::value);
+    return Explained<Result, Rep> {};
 }
 
 /// `explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary)`,
@@ -4741,6 +4760,17 @@ checked_explain(Expression const& expression, Env const& environment, V const& v
     if (!checked.has_value())
         return std::unexpected { CheckedExplainFailure<Rep> { checked.error(), std::move(recorded) } };
     return Explained<Result, Rep> { *checked, std::move(recorded) };
+}
+
+/// A series handed to `checked_explain`: refused as `explain` refuses it,
+/// pointing at `explain_series`. The body is the refusal and nothing else;
+/// what it returns is never seen.
+template <Described Result, typename Rep = Rational, SeriesNode Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::expected<Explained<Result, Rep>, CheckedExplainFailure<Rep>>
+checked_explain(Expression const&, Env const&, V const& = V {})
+{
+    static_assert(detail::RequireSingleValueTraced<Expression>::value);
+    return Explained<Result, Rep> {};
 }
 
 /// `checked_explain<Q, Rep>(boundFormula.expression, environmentGiven,

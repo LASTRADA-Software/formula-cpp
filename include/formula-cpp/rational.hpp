@@ -10,8 +10,8 @@
 /// as 0.45 m3 and rendered back is not reliably 450.
 ///
 /// This type carries no decimal-place tag. Declared precision belongs to the
-/// unit and quantity layer; rounding is an explicit operation (rounding.hpp) and,
-/// from spec phase 8 on, a node in the expression tree.
+/// unit and quantity layer; rounding is an explicit operation (rounding.hpp) and
+/// a node in the expression tree.
 
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/error.hpp>
@@ -705,8 +705,8 @@ namespace detail
     // root, -2, both exists and is representable -- it is only the magnitude
     // of the intermediate numerator that is not. Reworking the search onto an
     // unsigned magnitude to rescue this one input would add new numeric code
-    // at the end of a phase to save a single edge case, which risks a worse
-    // bug than the one it fixes.
+    // to save a single edge case, which risks a worse bug than the one it
+    // fixes.
     if (radicand.numerator() == std::numeric_limits<Rational::Int>::min())
         return std::unexpected { ArithmeticError::Overflow };
 

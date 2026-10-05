@@ -163,11 +163,11 @@ TEST_CASE("the expression a variant was given is the expression it stores", "[me
     // It kills no mutation uniquely, and that is characteristic of the kind
     // rather than a defect in this one: dropping the expression in `variant()`
     // leaves its parameter unreferenced and `/W4 /WX` rejects the build before
-    // any test runs. What a reachability probe catches is ABSENCE -- phase 9
-    // shipped an overload that worked, was tested, and no user could call;
-    // phase 10 shipped a `document()` walk that compiled for nothing. The
-    // spike compiled this pack and never ran it, so nothing until now had
-    // established that a stored variant still evaluates at all.
+    // any test runs. What a reachability probe catches is ABSENCE: an overload
+    // that works and is tested but that no user can call, or a `document()`
+    // walk that compiles for nothing. Compiling this pack proves nothing about
+    // running it, so this establishes that a stored variant still evaluates at
+    // all.
     //
     // `ConstantNode` because it is the node with runtime state reachable from
     // the operators THIS fixture uses: a `VarNode` holds no bytes, and a
@@ -384,7 +384,7 @@ TEST_CASE("a sink is told whose constraints they are around the checks, or not a
     CHECK(half == "cc");
 }
 
-// ------------------------------------------- phase 13: a precision check
+// ----------------------------------------------------- a precision check
 
 namespace
 {

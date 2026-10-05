@@ -13,8 +13,7 @@
 ///   that rounding's decimal places and `from_decimal`'s exponent span, the
 ///   `_r` literal's mantissa, and narrowing a value to the 64-bit fields of
 ///   `Band`, `Breakpoint` and a `Unit`'s magnitude (a rounded root's unit
-///   scale, a trace's unit quotient), or to the transcendental kernel's
-///   64-bit words (`narrow_to_int64`). MSVC has no __builtin_*_overflow, and
+///   scale, a trace's unit quotient). MSVC has no __builtin_*_overflow, and
 ///   its <intrin.h> equivalents are not constexpr, so these checks are
 ///   written in portable C++ and used on every compiler. Optimisers
 ///   recognise these idioms.
@@ -32,13 +31,18 @@
 /// `census_record`, which the census program defines
 /// (`support/census_tally.cpp`), so that it can say how many of the bits
 /// `Rational::Int` holds real formulas use (`docs/numeric-headroom.md`). A
-/// constant evaluation reports nothing. Without the macro -- every build but
-/// the census's -- `FORMULA_CENSUS_NOTE` expands to nothing, its arguments
-/// are never evaluated, and none of the census's names exist: no call, no
-/// symbol, no cost.
+/// computation in wide integers that reports itself -- the exact curve fit,
+/// `LinearLeastSquares::compute_exact` -- tells `census_record_width`, which
+/// the census program defines too, the bits each of its intermediates used,
+/// through `FORMULA_CENSUS_NOTE_WIDTH`. A constant evaluation reports
+/// nothing. Without the macro -- every build but the census's --
+/// `FORMULA_CENSUS_NOTE` and `FORMULA_CENSUS_NOTE_WIDTH` expand to nothing,
+/// their arguments are never evaluated, and none of the census's names
+/// exist: no call, no symbol, no cost.
 
 #include <formula-cpp/int128.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
@@ -68,14 +72,17 @@ inline constexpr Int IntMin = -IntMax - 1;
 
 #if defined(FORMULA_OVERFLOW_CENSUS)
 /// What an integer the overflow census is told of was: a numerator or a
-/// denominator handed to `Rational::make`, any other signed intermediate, or
-/// an unsigned one (`rounded_sqrt`'s, which has 128 bits to use).
+/// denominator handed to `Rational::make`, any other signed intermediate, an
+/// unsigned one (`rounded_sqrt`'s, which has 128 bits to use), or an
+/// intermediate of a computation in wide integers (`detail/wide_int.hpp`),
+/// told as the bits it used.
 enum class CensusRole : std::uint8_t
 {
     Numerator,
     Denominator,
     Intermediate,
     Unsigned,
+    Wide,
 };
 
 /// Told the magnitude of an integer formed at run time, as 128 bits. Declared
@@ -98,13 +105,34 @@ constexpr void census_note(CensusRole role, std::uint64_t magnitudeSeen) noexcep
     census_note(role, UInt128::from_u64(magnitudeSeen));
 }
 
+/// Told how many bits an intermediate of a computation in wide integers used,
+/// formed at run time: how near it came to its width. Declared here and
+/// defined only by the census program, never by the library.
+void census_record_width(CensusRole role, std::size_t bitsUsed) noexcept;
+
+/// Tells the overflow census that a wide intermediate used @p bitsUsed bits,
+/// unless this is a constant evaluation.
+constexpr void census_note_width(CensusRole role, std::size_t bitsUsed) noexcept
+{
+    if !consteval
+    {
+        census_record_width(role, bitsUsed);
+    }
+}
+
     /// Tells the overflow census that an integer of @p magnitudeSeen was formed
     /// in @p role (a `CensusRole` enumerator's name). See the file comment.
     #define FORMULA_CENSUS_NOTE(role, magnitudeSeen) \
         ::formula::detail::census_note(::formula::detail::CensusRole::role, (magnitudeSeen))
+    /// Tells the overflow census that a wide intermediate in @p role (a
+    /// `CensusRole` enumerator's name) used @p bitsUsed bits.
+    #define FORMULA_CENSUS_NOTE_WIDTH(role, bitsUsed) \
+        ::formula::detail::census_note_width(::formula::detail::CensusRole::role, (bitsUsed))
 #else
     /// Nothing: this is not a census build. The arguments are not evaluated.
     #define FORMULA_CENSUS_NOTE(role, magnitudeSeen) static_cast<void>(0)
+    /// Nothing: this is not a census build. The arguments are not evaluated.
+    #define FORMULA_CENSUS_NOTE_WIDTH(role, bitsUsed) static_cast<void>(0)
 #endif
 
 /// True when `leftOperand + rightOperand` is not representable.

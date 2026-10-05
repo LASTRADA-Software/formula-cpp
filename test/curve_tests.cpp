@@ -36,8 +36,7 @@ struct Opening: formula::Quantity<Opening, "d", "screen opening", unit::Metre>
 struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", unit::Percent>
 {
 };
-// A share as a plain fraction, for the LaTeX renderings: `%` is emitted bare
-// there, a tracked follow-up this phase does not fix.
+// A share as a plain fraction, for the LaTeX renderings.
 struct Share: formula::Quantity<Share, "s", "share passing a screen", unit::One>
 {
 };

@@ -45,6 +45,37 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::
 {
 };
 
+// Units with no symbol, which a rounding clause names by their size in the coherent unit.
+inline constexpr formula::Unit UnlabelledGram { .dimension = formula::dim::Mass,
+                                                .magnitudeNumerator = 1,
+                                                .magnitudeDenominator = 1000 };
+inline constexpr formula::Unit UnlabelledCelsius { .dimension = formula::dim::Temperature,
+                                                   .offsetNumerator = 27315,
+                                                   .offsetDenominator = 100 };
+inline constexpr formula::Unit UnlabelledPerGram { .dimension = formula::dim::Scalar / formula::dim::Mass,
+                                                   .magnitudeNumerator = 1000 };
+struct UnlabelledWeight: formula::Quantity<UnlabelledWeight, "w", "a mass in an unnamed unit", UnlabelledGram>
+{
+};
+struct UnlabelledReading: formula::Quantity<UnlabelledReading, "t", "a reading on an unnamed scale", UnlabelledCelsius>
+{
+};
+struct UnlabelledLoading: formula::Quantity<UnlabelledLoading, "q", "a count per unnamed gram", UnlabelledPerGram>
+{
+};
+// A mass unit of magnitude 1 with no symbol: the kilogram's size under no name.
+inline constexpr formula::Unit UnlabelledKilogram { .dimension = formula::dim::Mass };
+struct UnlabelledHeft:
+    formula::Quantity<UnlabelledHeft, "h", "a mass in an unnamed unit of one kilogram", UnlabelledKilogram>
+{
+};
+// A mass unit of a whole thousand kilograms with no symbol.
+inline constexpr formula::Unit UnlabelledTonne { .dimension = formula::dim::Mass, .magnitudeNumerator = 1000 };
+struct UnlabelledLoad:
+    formula::Quantity<UnlabelledLoad, "L", "a mass in an unnamed unit of a thousand kilograms", UnlabelledTonne>
+{
+};
+
 /// A gram squared, for a variance of masses in grams.
 inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
                                              .magnitudeNumerator = 1,
@@ -419,17 +450,16 @@ TEST_CASE("render: a dimensionless constant as the base of a power needs no brac
     CHECK(formula::render(formula::pow<2>(formula::constant<formula::unit::One>(rat(5)))) == "5^2");
 }
 
-// ------------------------------------------------------- phase 8: rounding
+// ---------------------------------------------------------------- rounding
 
 TEST_CASE("render: a decimal-places rounding node renders as round(..., to N dp of unit)", "[render][rounding]")
 {
     // The granularity is a comma-separated second argument, operand first --
     // see the comment on RoundNode's render_node for why: a trailing suffix
-    // with nothing between it and the operand (round(... to 1 dp of mm),
-    // fixed in review round 1) let it misattach to a WhenNode operand's else
-    // branch, and a `[...]` prefix right against the operand's own
-    // parentheses (round[to 1 dp of mm](...), the round-1 fix itself) read as
-    // a CommonMark link in Markdown, fixed in review round 3.
+    // with nothing between it and the operand (round(... to 1 dp of mm)) once
+    // let it misattach to a WhenNode operand's else branch, and a `[...]`
+    // prefix right against the operand's own parentheses (round[to 1 dp of
+    // mm](...), the first fix itself) read as a CommonMark link in Markdown.
     constexpr auto rounded =
         formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Diameter>);
@@ -471,6 +501,80 @@ TEST_CASE("render: a significant-digits rounding node renders as round(..., to N
     CHECK(formula::render<Dialect::LaTeX>(rounded) == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{mm}}(d)");
 }
 
+TEST_CASE("render: a rounding in a unit with no symbol names that unit by its size", "[render][rounding]")
+{
+    constexpr auto toHundredths =
+        formula::rounded<UnlabelledGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+            var<UnlabelledWeight>);
+    CHECK(formula::render<Dialect::Plain>(toHundredths) == "round(w, to 2 dp of 1/1000 kg)");
+    // In LaTeX the size is grouped, so that it cannot read as the mixed
+    // number 2 1/1000, and the unit is set upright with its powers raised.
+    CHECK(formula::render<Dialect::LaTeX>(toHundredths) == "\\operatorname{round}_{2\\,(1/1000\\,\\mathrm{kg})}(w)");
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded_to_digits<UnlabelledGram, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledWeight>))
+          == "round(w, to 3 sf of 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(
+              formula::rounded_to_digits<UnlabelledGram, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledWeight>))
+          == "\\operatorname{round}_{3\\mathrm{sf},\\,(1/1000\\,\\mathrm{kg})}(w)");
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<UnlabelledCelsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledReading>))
+          == "round(t, to 1 dp of 1 K from 5463/20 K)");
+    CHECK(formula::render<Dialect::LaTeX>(
+              formula::rounded<UnlabelledCelsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledReading>))
+          == "\\operatorname{round}_{1\\,(1\\,\\mathrm{K}\\text{ from }5463/20\\,\\mathrm{K})}(t)");
+    constexpr auto perGramToUnits =
+        formula::rounded<UnlabelledPerGram, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+            var<UnlabelledLoading>);
+    CHECK(formula::render<Dialect::Plain>(perGramToUnits) == "round(q, to 0 dp of 1000 kg^-1)");
+    CHECK(formula::render<Dialect::LaTeX>(perGramToUnits) == "\\operatorname{round}_{0\\,(1000\\,\\mathrm{kg}^{-1})}(q)");
+    // A unit of a whole number of kilograms is named by that number.
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<UnlabelledTonne, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledLoad>))
+          == "round(L, to 2 dp of 1000 kg)");
+    // A rounded root and a rounding of each element name the unit the same way.
+    constexpr auto rootToHundredths =
+        formula::rounded_sqrt<UnlabelledGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+            var<UnlabelledWeight> * var<UnlabelledWeight>);
+    CHECK(formula::render<Dialect::Plain>(rootToHundredths) == "round(sqrt(w * w), to 2 dp of 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(rootToHundredths)
+          == "\\operatorname{round}_{2\\,(1/1000\\,\\mathrm{kg})}(\\sqrt{w \\cdot w})");
+    constexpr formula::PlacesTable<2> elementPlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 2 } };
+    constexpr auto eachToPlaces =
+        formula::rounded_elementwise<UnlabelledGram, elementPlaces, formula::RoundingMode::HalfEven>(
+            formula::series<UnlabelledWeight, 2>);
+    CHECK(formula::render<Dialect::Plain>(eachToPlaces) == "round(w(i), to 0/2 dp of 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(eachToPlaces) == "\\operatorname{round}_{0/2\\,(1/1000\\,\\mathrm{kg})}({w}_{i})");
+    // A dimensioned unit of magnitude 1 with no symbol is still named by its
+    // size, never bare and never "of kg" alone: the reader cannot tell it from
+    // the coherent unit otherwise.
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<UnlabelledKilogram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                  var<UnlabelledHeft>))
+          == "round(h, to 2 dp of 1 kg)");
+    // A dimensionless unit at scale 1 still writes no clause.
+    CHECK(formula::render<Dialect::Plain>(
+              formula::rounded<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+                  formula::number(formula::Rational { 1, 3 })))
+          == "round(1/3, to 2 dp)");
+
+    // A numeric value and a constant in such a unit, in LaTeX: the size
+    // grouped after the quotient's slash, and the coherent unit set upright.
+    constexpr auto bareWeight =
+        formula::numeric_value_of<UnlabelledGram, "the table is in unnamed grams">(var<UnlabelledWeight>);
+    CHECK(formula::render<Dialect::Plain>(bareWeight) == "numeric(w, in 1/1000 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(bareWeight) == "\\{w/(1/1000\\,\\mathrm{kg})\\}");
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<UnlabelledGram>(formula::Rational { 3 }))
+          == "3/1000\\,\\mathrm{kg}");
+    CHECK(formula::render<Dialect::Plain>(formula::constant<UnlabelledPerGram>(formula::Rational { 2 })) == "2000 kg^-1");
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<UnlabelledPerGram>(formula::Rational { 2 }))
+          == "2000\\,\\mathrm{kg}^{-1}");
+}
+
 TEST_CASE("render: a significant-digits rounding node inside a power and inside a product keeps no extra bracket",
           "[render][rounding]")
 {
@@ -488,7 +592,7 @@ TEST_CASE("render: a significant-digits rounding node inside a power and inside 
           == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{mm}}(d) \\cdot 2");
 }
 
-// --------------------------------------------------- phase 8: predicates
+// ------------------------------------------------------------ predicates
 
 TEST_CASE("render: a predicate renders as lhs comparison rhs", "[render][predicate]")
 {
@@ -546,7 +650,7 @@ TEST_CASE("render: a conditional nested as a predicate's operand keeps its brack
     CHECK(formula::render(guarded) == "(if f > 473/10 MPa then f else f * 2) > 137/10 MPa");
 }
 
-// --------------------------------------------------- phase 8: conditionals
+// ------------------------------------------------------------ conditionals
 
 TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases block", "[render][conditional]")
 {
@@ -558,8 +662,8 @@ TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases b
     CHECK(formula::render<Dialect::LaTeX>(chosen)
           == "\\begin{cases} f \\cdot 2 & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
              "\\end{cases}");
-    // RoundingMode is not the only thing this phase deliberately keeps out of
-    // the rendered text -- WhenNode has no state to omit, but note that its
+    // RoundingMode is not the only thing the renderer deliberately keeps out
+    // of the rendered text -- WhenNode has no state to omit, but note that its
     // predicate's operands are plain quantities and constants here on
     // purpose: the brackets a nested conditional needs are covered below,
     // not in this standalone case.
@@ -567,7 +671,7 @@ TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases b
 
 TEST_CASE("render: a conditional inside a power keeps its bracket", "[render][conditional]")
 {
-    // This is the case phase 6's two rendering bugs generalise to: a node
+    // This is the case two earlier rendering bugs generalise to: a node
     // whose *text* binds looser than arithmetic must bracket as the base of
     // a power, exactly as a negative or unit-bearing constant does.
     constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
@@ -583,7 +687,7 @@ TEST_CASE("render: a conditional inside a power keeps its bracket", "[render][co
 
 TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][conditional]")
 {
-    // The exact scenario named in the task: when(p, a, b) * 2 must not read
+    // The exact scenario this guards: when(p, a, b) * 2 must not read
     // as when(p, a, b * 2), which is a different formula.
     constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
     constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));
@@ -596,17 +700,16 @@ TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][
              "\\cdot 2");
 }
 
-// ------------------------------------------------- phase 8: numeric_value_of
+// ---------------------------------------------------------- numeric_value_of
 
 TEST_CASE("render: a numeric-value escape hatch renders as numeric(..., in unit)", "[render][escape]")
 {
     // The unit is a comma-separated second argument, operand first -- see the
     // comment on NumericValueNode's render_node for why: a trailing suffix
-    // with nothing between it and the operand (numeric(... in MPa), fixed in
-    // review round 1) let it misattach to a WhenNode operand's else branch,
-    // and a `[...]` prefix right against the operand's own parentheses
-    // (numeric[in MPa](...), the round-1 fix itself) read as a CommonMark
-    // link in Markdown, fixed in review round 3.
+    // with nothing between it and the operand (numeric(... in MPa)) once let
+    // it misattach to a WhenNode operand's else branch, and a `[...]` prefix
+    // right against the operand's own parentheses (numeric[in MPa](...), the
+    // first fix itself) read as a CommonMark link in Markdown.
     constexpr auto numeric =
         formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(var<Strength>);
 
@@ -635,15 +738,14 @@ TEST_CASE("render: a numeric-value escape hatch inside a power and inside a prod
     CHECK(formula::render<Dialect::LaTeX>(numeric * rat(2)) == "\\{f/\\mathrm{MPa}\\} \\cdot 2");
 }
 
-// ----------------------------- phase 8 fix round 1: nesting a new kind
-// inside another new kind, in every dialect. This is the exact axis review
-// round 1 found untested -- and where the trailing-suffix bug (findings 1-2
-// of that review) was hiding.
+// ---------------------------------------- nesting one node kind inside
+// another, in every dialect. This is the exact axis a review once found
+// untested -- and where the trailing-suffix bug was hiding.
 
 TEST_CASE("render: a rounding node wrapping a conditional keeps the granularity from misattaching to a branch",
           "[render][rounding][conditional]")
 {
-    // Before review round 1's fix, this rendered in Plain as "round(if f > 473/10
+    // Before the fix, this rendered in Plain as "round(if f > 473/10
     // MPa then d * 2 else d * 3 to 1 dp of mm)" -- a reader parses "d * 3 to
     // 1 dp of mm" as one phrase, rounding the else branch alone. The
     // granularity is now a comma-separated second argument, so nothing can
@@ -668,8 +770,8 @@ TEST_CASE("render: a rounding node wrapping a conditional keeps the granularity 
 TEST_CASE("render: a numeric-value escape hatch wrapping a conditional keeps the unit from misattaching to a branch",
           "[render][escape][conditional]")
 {
-    // The exact shape of must-fix finding 2 in review round 1: before the
-    // fix, this rendered in Plain as "numeric(if f > 473/10 MPa then f * 2 else f
+    // The exact shape of the trailing-suffix bug: before the fix, this
+    // rendered in Plain as "numeric(if f > 473/10 MPa then f * 2 else f
     // * 4 in MPa)", reading as if "in MPa" (and therefore the whole escape
     // hatch) applied to the else branch alone.
     constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
@@ -764,7 +866,7 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
              "\\end{cases} & \\text{otherwise} \\end{cases}");
 }
 
-// --------------------------------------------------- phase 9: constraints
+// ------------------------------------------------------------ constraints
 
 TEST_CASE("render: a constraint renders as its rule, never its verdict", "[render][constraint]")
 {
@@ -822,7 +924,7 @@ TEST_CASE("render: a constraint's predicate brackets a nested conditional exactl
     CHECK(formula::render(rule) == "require (if f > 473/10 MPa then f else f * 2) > 137/10 MPa");
 }
 
-// ------------------------------------------------------- phase 10: lookups
+// ----------------------------------------------------------------- lookups
 
 namespace
 {
@@ -1175,7 +1277,7 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
     // All three empty tables are valid and all three always miss (`band.hpp`,
     // `lookup.hpp`). `lookup(d)` would show a reader a complete-looking call
     // with the whole table silently absent, which is the same class of lie as
-    // the operand a published page dropped in phase 8.
+    // the operand a published page once dropped.
     CHECK(formula::render(banded_lookup<unit::Millimetre, NoBands, unit::One>(var<Diameter>, {}))
           == "lookup(d, no rows)");
     CHECK(formula::render(exact_lookup<NoShapes, unit::One>(MouldShape::Beam, {}))
@@ -1357,7 +1459,7 @@ TEST_CASE("render: every character either dialect escapes in a key's name is esc
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")
 {
     // A citation is documentation, not arithmetic -- `document()` surfaces it.
-    // Worth one case per phase that adds node kinds, because `DocumentedNode`
+    // Worth one case per family of node kinds, because `DocumentedNode`
     // is the wrapper `documented()` puts round a table's identity, and a table
     // is the part of a method that carries a source.
     constexpr auto cited = formula::documented(bandedLookup(), { .title = "Invented Method 7, table 2" });
@@ -1427,9 +1529,9 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
 {
     // THE cross-surface test. Every other case in this section asserts one
     // dialect's output against a literal, and a set of such cases cannot catch
-    // two dialects drifting apart -- that is the whole lesson of phase 8,
-    // where two renderers each had passing tests and each was internally
-    // consistent, and a human reading a published page found the disagreement.
+    // two dialects drifting apart -- that is the whole lesson of the time two
+    // renderers each had passing tests and each was internally consistent,
+    // and a human reading a published page found the disagreement.
     //
     // So this compares the dialects **against each other**, and locates what
     // it compares by POSITION -- the field index inside the rendered call --
@@ -1469,13 +1571,12 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
     dialectsAgree(curveLookup(), 4);
 }
 
-// --------------------------------------------- phase 8 fix round 3: guard
-// against the whole class of bug review round 3 found, not just this one
-// instance. `"](" `is CommonMark's inline-link syntax -- a Markdown renderer
-// displays only the link's label, silently dropping whatever the destination
-// held, so string equality between two Markdown-dialect strings is blind to
-// this: two strings can be equal to each other and still both be wrong in
-// the same way. Only checking the actual character sequence a Markdown
+// ------------------------- guard against the whole class of bug, not just
+// one instance of it. `"](" `is CommonMark's inline-link syntax -- a Markdown
+// renderer displays only the link's label, silently dropping whatever the
+// destination held, so string equality between two Markdown-dialect strings is
+// blind to this: two strings can be equal to each other and still both be wrong
+// in the same way. Only checking the actual character sequence a Markdown
 // parser treats specially catches it, which is what this test does instead.
 
 namespace
@@ -1552,23 +1653,23 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         // A bare "[" alone is not risky by itself, but nothing this library
         // writes has any legitimate reason to contain one either -- so the
         // stronger check costs nothing and catches a "[...]" reference-style
-        // link too, not only the inline "[...](...)" shape review round 3
-        // found. A backslash-escaped `\[` is inert, and is exactly how a key's
+        // link too, not only the inline "[...](...)" shape that once reached a
+        // page. A backslash-escaped `\[` is inert, and is exactly how a key's
         // author-supplied name carries one (`detail::literal_words_in_dialect`).
         CHECK(unescapedPositions(text, '[').empty());
 
-        // Phase 13: a bare `|`. Inside a Markdown table cell it ends the
-        // cell, silently -- a spike measured a row whose formula held an
-        // absolute value in bars render as one cell holding only the text
-        // before the first bar (python-markdown 3.10.3, pymdown-extensions
-        // 12.1). No plain or Markdown spelling in this library writes one:
-        // an absolute value is `abs(...)` there, and bars are LaTeX's alone.
+        // A bare `|`. Inside a Markdown table cell it ends the cell, silently
+        // -- measured: a row whose formula held an absolute value in bars
+        // renders as one cell holding only the text before the first bar
+        // (python-markdown 3.10.3, pymdown-extensions 12.1). No plain or
+        // Markdown spelling in this library writes one: an absolute value is
+        // `abs(...)` there, and bars are LaTeX's alone.
         CHECK(unescapedPositions(text, '|').empty());
 
-        // Phase 10 round 2: an asterisk. A bare `*` CANNOT be forbidden the
-        // way `[` is, because one node kind emits it legitimately --
-        // `render_node(BinaryNode)` spells multiplication ` * ` in Plain and
-        // Markdown alike, and always will.
+        // An asterisk. A bare `*` CANNOT be forbidden the way `[` is, because
+        // one node kind emits it legitimately -- `render_node(BinaryNode)`
+        // spells multiplication ` * ` in Plain and Markdown alike, and always
+        // will.
         //
         // But every asterisk this library emits has a space on BOTH sides,
         // and that is exactly what makes it safe: CommonMark's flanking rules
@@ -1665,7 +1766,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         formula::rounded_elementwise<formula::unit::Megapascal, guardPlaces, formula::RoundingMode::HalfEven>(
             formula::series<Strength, 3>))); // ElementwiseRoundNode
 
-    // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
+    // The three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
     // three lines are the reason `render.hpp` rules that a half-open interval
     // is spelled `103 to under 197` instead, and the thing that fails if anyone
@@ -1681,7 +1782,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(
         exact_lookup<MarkingKeys, formula::unit::One>(MouldMarking::Stamped, { rat(1127, 1000) })));
 
-    // Phase 14: a read from another record, alone and compound, and one whose
+    // A read from another record, alone and compound, and one whose
     // role's published name is underscored. A role's name is identifier-like
     // (`RequireIdentifierLikeRoleName`), so Markdown's link syntax, asterisks
     // and backticks cannot reach it; this guard does not check underscores,
@@ -1693,11 +1794,11 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
 
     // And a formula nesting several of the above, since a guard that only
     // ever sees one node kind in isolation could still miss an interaction
-    // between two -- which is exactly how review round 3's defect hid from
-    // both the mutation testing and the "read it as a person would" pass in
-    // fix round 1: neither ever combined a rounding/escape node with a
-    // conditional operand under Dialect::Markdown and looked at the raw
-    // character sequence rather than the string as a whole.
+    // between two -- which is exactly how the `](` defect once hid from both
+    // mutation testing and a "read it as a person would" pass: neither ever
+    // combined a rounding/escape node with a conditional operand under
+    // Dialect::Markdown and looked at the raw character sequence rather than
+    // the string as a whole.
     constexpr auto deep =
         formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(formula::when(
             overThreshold, var<Strength> * rat(2), var<Strength> * rat(4)));
@@ -1712,7 +1813,8 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
             { rat(863, 1000), rat(1381, 1000), rat(1043, 1000) }))));
 }
 
-TEST_CASE("render: a rounding or a numeric value in a unit with no symbol adds no unit clause", "[render][rounding]")
+TEST_CASE("render: a rounding or a numeric value in a dimensionless unit with no symbol adds no unit clause",
+          "[render][rounding]")
 {
     // `unit::One`'s symbol is empty, and the clause once read `to 2 dp of )`
     // and `numeric(..., in )`. A value with no unit is shown with none, as a
@@ -1833,7 +1935,7 @@ TEST_CASE("render: a lookup key's name is set in math mode, where the site's Mat
     CHECK(formula::detail::latex_math_words("key fit_2") == "key\\ fit\\_2");
 }
 
-// ---- A series variable, marked as a series in the formula itself (phase 12) ----
+// ---- A series variable, marked as a series in the formula itself ---------------
 
 namespace
 {
@@ -1864,7 +1966,7 @@ TEST_CASE("a series variable is marked as a series in the formula itself, in eve
     // The marker wraps the jurisdiction's symbol, never the declared one.
     CHECK(formula::render(formula::series<Retained, 5>) == "m_r(i)");
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>) == "{m_r}_{i}");
-    // A symbol with a braced subscript still groups (typeset clean in a spike).
+    // A symbol with a braced subscript still groups (measured to typeset clean).
     constexpr auto braced = formula::vocabulary(formula::renames<Retained>("f_{c}"));
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, braced) == "{f_{c}}_{i}");
     // The known limit, pinned so it is a decision and not an accident: a
@@ -2424,4 +2526,122 @@ TEST_CASE("render: a calculation's typed numbers follow RenderOptions, never rou
     constexpr formula::RenderOptions exactPadded { .numbers = formula::NumberStyle::exact_decimal(
                                                        formula::DecimalPadding::Padded) };
     CHECK(formula::render(withFee, formula::DefaultVocabulary {}, exactPadded) == "total = subtotal + 5 EUR");
+}
+
+namespace
+{
+/// Invented bounds and rows in the unnamed gram, 250, 500 and 750 of it:
+/// written in that scale, they would be numbers a thousand times those of the
+/// kilograms written after them.
+inline constexpr BandTable<2> UnlabelledGramBands { band(250, 1, 500, 1), band(500, 1, 750, 1) };
+inline constexpr BreakpointTable<2> UnlabelledGramRows { breakpoint(250), breakpoint(500) };
+constexpr formula::Envelope<2> unlabelledGramEnvelope {
+    formula::LimitRow { formula::limit(rat(250)), formula::limit(rat(500)) },
+    formula::LimitRow { formula::limit(rat(750)), formula::unbounded },
+};
+/// A unit with no symbol whose offset makes moving 1/(2^63 - 1) of it into the
+/// coherent unit overflow: times a magnitude of 1/(2^63 - 25), plus an offset
+/// of 1/(2^63 - 165).
+inline constexpr formula::Unit WideOffsetGram { .dimension = formula::dim::Mass,
+                                                .magnitudeNumerator = 1,
+                                                .magnitudeDenominator = INT64_MAX - 24,
+                                                .offsetNumerator = 1,
+                                                .offsetDenominator = INT64_MAX - 164 };
+/// A point and a limit of 1/(2^63 - 1) of that unit, which no coherent unit can hold.
+inline constexpr BreakpointTable<1> WideOffsetPoints { breakpoint(1, INT64_MAX) };
+constexpr formula::Envelope<1> wideOffsetEnvelope { formula::LimitRow {
+    formula::limit(formula::Rational { 1, INT64_MAX }), formula::unbounded } };
+/// One invented band in a per-gram unit with no symbol, whose coherent unit
+/// has a power: 1 to under 2 per gram is 1000 to under 2000 per kilogram.
+inline constexpr BandTable<1> UnlabelledPerGramBands { band(1, 1, 2, 1) };
+} // namespace
+
+TEST_CASE("render: every number a formula declares in a unit with no symbol is in the coherent unit",
+          "[render][shown-unit]")
+{
+    // A per-element constant's values, as a constant's: 3 and 5 of the
+    // unnamed gram.
+    constexpr auto unlabelledValues = formula::series_constant<UnlabelledGram>(rat(3), rat(5));
+    CHECK(formula::render(unlabelledValues) == "values(3/1000 kg, 1/200 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledValues)
+          == "\\operatorname{values}(3/1000\\,\\mathrm{kg},\\allowbreak 1/200\\,\\mathrm{kg})");
+    // A value the coherent unit cannot hold says so, with no unit after it,
+    // as a constant does.
+    CHECK(formula::render(formula::series_constant<WideOffsetGram>(formula::Rational { 1, INT64_MAX }))
+          == "values((not shown: overflow in exact arithmetic))");
+
+    // A lookup's bands, and the rows it gives.
+    constexpr auto unlabelledBanded = banded_lookup<UnlabelledGram, UnlabelledGramBands, unit::Percent>(
+        var<UnlabelledWeight>, { rat(10), rat(20) });
+    CHECK(formula::render(unlabelledBanded) == "lookup(w, 1/4 to under 1/2 kg gives 10 %, 1/2 to under 3/4 kg gives 20 %)");
+    // In LaTeX the coherent unit is set outside the row's words, as a
+    // constant's is, so that a power is raised rather than escaped.
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledBanded)
+          == "\\operatorname{lookup}(w,\\allowbreak \\mathrm{1/4\\ to\\ under\\ 1/2}\\,\\mathrm{kg}"
+             "\\mathrm{\\ gives\\ 10\\ \\%},\\allowbreak \\mathrm{1/2\\ to\\ under\\ 3/4}\\,\\mathrm{kg}"
+             "\\mathrm{\\ gives\\ 20\\ \\%})");
+    constexpr auto perGramBanded =
+        banded_lookup<UnlabelledPerGram, UnlabelledPerGramBands, unit::Percent>(var<UnlabelledLoading>, { rat(10) });
+    CHECK(formula::render(perGramBanded) == "lookup(q, 1000 to under 2000 kg^-1 gives 10 %)");
+    CHECK(formula::render<Dialect::LaTeX>(perGramBanded)
+          == "\\operatorname{lookup}(q,\\allowbreak \\mathrm{1000\\ to\\ under\\ 2000}\\,\\mathrm{kg}^{-1}"
+             "\\mathrm{\\ gives\\ 10\\ \\%})");
+    constexpr auto unlabelledKeyed =
+        exact_lookup<ShapeKeys, UnlabelledGram>(MouldShape::Cylinder, { rat(250), rat(500), rat(750) });
+    CHECK(formula::render(unlabelledKeyed)
+          == "lookup(key Cylinder, key Cube gives 1/4 kg, key Cylinder gives 1/2 kg, key Prism gives 3/4 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledKeyed)
+          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak "
+             "\\mathrm{key\\ Cube\\ gives\\ 1/4}\\,\\mathrm{kg},\\allowbreak "
+             "\\mathrm{key\\ Cylinder\\ gives\\ 1/2}\\,\\mathrm{kg},\\allowbreak "
+             "\\mathrm{key\\ Prism\\ gives\\ 3/4}\\,\\mathrm{kg})");
+
+    // An interpolating lookup's rows, and the values it states at them.
+    CHECK(formula::render(interpolating_lookup<UnlabelledGram, UnlabelledGramRows, UnlabelledGram>(var<UnlabelledWeight>,
+                                                                                                   { rat(3), rat(5) }))
+          == "interpolate(w, at 1/4 kg gives 3/1000 kg, at 1/2 kg gives 1/200 kg)");
+
+    // A snap's permitted values, a declared domain's points and a binning's
+    // classes.
+    CHECK(formula::render(formula::snapped<UnlabelledGram, UnlabelledGramRows, formula::SnapTie::TowardLower>(
+              var<UnlabelledWeight>))
+          == "snap(w, to 1/4, 1/2 kg)");
+    CHECK(formula::render(formula::domain<UnlabelledGram, UnlabelledGramRows>) == "domain(1/4, 1/2 kg)");
+    CHECK(formula::render(formula::binned<UnlabelledGram, UnlabelledGramBands>(formula::observations<UnlabelledWeight, 3>))
+          == "bin(w(i), 1/4 to under 1/2 kg, 1/2 to under 3/4 kg)");
+
+    // An envelope's limits.
+    constexpr auto unlabelledLimits = formula::conformity<UnlabelledGram>(
+        formula::series<UnlabelledWeight, 2>, unlabelledGramEnvelope, formula::Verdict { "reject the specimen" });
+    CHECK(formula::render(unlabelledLimits) == "conform(w(i), from 1/4 to 1/2 kg, at least 3/4 kg)");
+    CHECK(formula::render<Dialect::LaTeX>(unlabelledLimits)
+          == "\\operatorname{conform}({w}_{i},\\allowbreak \\mathrm{from\\ 1/4\\ to\\ 1/2}\\,\\mathrm{kg},"
+             "\\allowbreak \\mathrm{at\\ least\\ 3/4}\\,\\mathrm{kg})");
+
+    // A point or a limit the coherent unit cannot hold says so, as a trace
+    // does: a point in its list, with the unit after the list, and a limit
+    // for its whole row.
+    CHECK(formula::render(formula::domain<WideOffsetGram, WideOffsetPoints>)
+          == "domain((not shown: overflow in exact arithmetic) kg)");
+    CHECK(formula::render(formula::snapped<WideOffsetGram, WideOffsetPoints, formula::SnapTie::TowardLower>(
+              var<UnlabelledWeight>))
+          == "snap(w, to (not shown: overflow in exact arithmetic) kg)");
+    CHECK(formula::render(formula::conformity<WideOffsetGram>(
+              formula::series<UnlabelledWeight, 1>, wideOffsetEnvelope, formula::Verdict { "reject the specimen" }))
+          == "conform(w(i), (not shown: overflow in exact arithmetic))");
+
+    // A unit with a symbol is never converted: the same tables in grams.
+    CHECK(formula::render(formula::series_constant<unit::Gram>(rat(3), rat(5))) == "values(3 g, 5 g)");
+    CHECK(formula::render<Dialect::LaTeX>(formula::series_constant<unit::Gram>(rat(3), rat(5)))
+          == "\\operatorname{values}(3\\,\\mathrm{g},\\allowbreak 5\\,\\mathrm{g})");
+    CHECK(formula::render(banded_lookup<unit::Gram, UnlabelledGramBands, unit::Gram>(var<UnlabelledWeight>,
+                                                                                    { rat(3), rat(5) }))
+          == "lookup(w, 250 to under 500 g gives 3 g, 500 to under 750 g gives 5 g)");
+    CHECK(formula::render<Dialect::LaTeX>(banded_lookup<unit::Gram, UnlabelledGramBands, unit::Gram>(var<UnlabelledWeight>,
+                                                                                                     { rat(3), rat(5) }))
+          == "\\operatorname{lookup}(w,\\allowbreak \\mathrm{250\\ to\\ under\\ 500\\ g\\ gives\\ 3\\ g},"
+             "\\allowbreak \\mathrm{500\\ to\\ under\\ 750\\ g\\ gives\\ 5\\ g})");
+    CHECK(formula::render(formula::conformity<unit::Gram>(
+              formula::series<UnlabelledWeight, 2>, unlabelledGramEnvelope, formula::Verdict { "reject the specimen" }))
+          == "conform(w(i), from 250 to 500 g, at least 750 g)");
 }

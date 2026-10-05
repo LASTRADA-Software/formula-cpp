@@ -67,22 +67,22 @@ the repository, on MSVC's `cl.exe` (19.51, from Visual Studio's `cl-debug`
 preset):
 
 ```
-include\formula-cpp/expression.hpp(186): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
-include\formula-cpp/expression.hpp(186): note: the template instantiation context (the oldest one first) is
+include\formula-cpp/expression.hpp(189): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
+include\formula-cpp/expression.hpp(189): note: the template instantiation context (the oldest one first) is
 test\negative\quantity_alias_add_dimension_mismatch.cpp(12): note: see reference to function template instantiation 'auto formula::operator +<formula::VarNode<Volume>,formula::VarNode<Length>>(Left,Right) noexcept' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-include\formula-cpp/expression.hpp(271): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
-include\formula-cpp/expression.hpp(244): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
+include\formula-cpp/expression.hpp(274): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
+include\formula-cpp/expression.hpp(247): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-include\formula-cpp/expression.hpp(203): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
+include\formula-cpp/expression.hpp(206): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
@@ -509,19 +509,22 @@ whose `lnAt` helper evaluates `rounded_ln<Places, Mode>` at the given ratio.)
 
 The places are the method's own, and at most 18; the result must fit a
 `Rational` there, which any logarithm does: the `log10` of 10^18 - 1 is
-reported to all 18 places. The integer kernel takes an argument whose
-numerator and denominator each fit 64 bits, the range it was built for: a
-wider argument, which a `Rational` can hold, is `Overflow`, as `log10` of
-2^70 is, and so is `exp` of more than 44. Two kinds of wide argument never
-reach the kernel: a power of ten, 10^19 up to 10^38 or one over it, is
+reported to all 18 places. The integer kernel takes every argument a
+`Rational` holds: `ln` of 2^127 - 1 is 88.029691931113054295 at 18 places,
+under `Floor`. `exp` of more than 88.7 is `Overflow`, since e^x is then past
+the largest `Rational`; below that it answers wherever the result fits the
+declared places -- e^45 to 18 places, e^88 to whole units -- and is
+`Overflow` where it does not, as e^88.5 is at every places. Two kinds of
+argument never reach the kernel: a power of ten, 10^-38 up to 10^38, is
 answered exactly, so `log10` of 10^30 is 30; and `exp` of less than -43 is
 0, or one unit under `Ceiling` and `AwayFromZero`, whatever its width.
 Only ln 1, log10 10^k and
 exp 0 can tie, and the mode breaks the tie as `rounded<>` does: `log10` of
 10^15 at -1 places is 20, 10 or 20 under `HalfAwayFromZero`,
 `HalfTowardZero` and `HalfEven`. A rounding the computation cannot decide --
-a value within its width, under 2^-118 (relative, for `exp`), of a rounding
-boundary -- is `Overflow`, never a guess. `rounded<...>(ln(x))` is not
+a value within its width of a rounding boundary, under 2^-120 for a
+logarithm and under 2^-183 of the value for `exp` -- is `Overflow`, never a
+guess. `rounded<...>(ln(x))` is not
 `rounded_ln`: the plain logarithm fails before the rounding sees a value, as
 `rounded<...>(sqrt(x))` does.
 

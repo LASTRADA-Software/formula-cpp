@@ -143,6 +143,7 @@ struct BinnedNode: SeriesNodeBase
     static_assert(std::conditional_t<classesAreValid && !refused,
                                      detail::RequireBinnedKeyMatches<KeyUnit, Obs>,
                                      std::true_type>::value);
+    static_assert(detail::RequireNamedScaledScalar<KeyUnit>::value);
 
     /// The observations counted. No `{}` initialiser, deliberately: see
     /// `Corrections` (`lookup.hpp`).

@@ -6,7 +6,7 @@
 // and this placement is what tells that apart from its three likeliest
 // narrowings -- the first pair only (0,1), the last pair only (3,4), and
 // neighbours only -- each of which finds no repeat here and lets the pack
-// compile. One case kills all three; the task report records each.
+// compile. One case kills all three.
 //
 // The five variants agree in dimension, so the agreement rule has nothing to
 // say, and every tag is a plain class type, so the tag rule has nothing

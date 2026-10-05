@@ -2,9 +2,9 @@
 // EXPECT: formula: a banded lookup node can only be evaluated with Rep = Rational
 //
 // `checked_evaluate_si<double>` on a banded lookup. The exact lookup's own
-// `Rep` guard gained a negative case in the same round, and leaving this one
-// untested would put the two halves of one rule in different states -- one
-// pinned, one free to drift -- which is the failure this phase keeps finding.
+// `Rep` guard has a negative case (`exact_lookup_rep_not_rational.cpp`), and
+// leaving this one untested would put the two halves of one rule in different
+// states -- one pinned, one free to drift -- a failure met more than once.
 // Unlike the exact lookup's, this message's reason is literally true: deciding
 // which band a value falls in IS arithmetic, and a value a few ULPs off an
 // intended boundary picks the wrong band silently. This must not compile.

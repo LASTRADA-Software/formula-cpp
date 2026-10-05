@@ -4,8 +4,8 @@
 # The FILE_SET is a hand-written list, deliberately: installing a header is a
 # decision about the published surface, and a glob makes that decision silently
 # on someone's behalf. The cost of writing it by hand is that it can be
-# forgotten -- and it was. Phase 7 added sink.hpp, trace.hpp and
-# trace_render.hpp and listed none of them, so `find_package(formula-cpp)`
+# forgotten -- and it was: sink.hpp, trace.hpp and trace_render.hpp were once
+# added and listed nowhere, so `find_package(formula-cpp)`
 # produced a package that did not compile at all: evaluate.hpp includes
 # sink.hpp, and sink.hpp was not there.
 #

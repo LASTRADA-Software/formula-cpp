@@ -227,6 +227,11 @@ was typed in rather than derived leaves `trace` empty, as it does for
 `double` is traced by calling its `checked_evaluate_si<double>` with your own
 `RecordingSink<double>`.
 
+A series handed to `explain` or `checked_explain` does not compile: both
+trace a single value, and they say so in the library's words, pointing at
+`explain_series`. Reduce the series to one value first (`sum`,
+`interpolate_at`) to trace that value instead.
+
 ## Just the trace
 
 Code that only shows how a number was reached has no use for the outcome, and
@@ -372,12 +377,17 @@ order"`.) `kg^2` and `kg^2/m^3` are no symbols anyone declared. `coherent()`
 (`evaluate.hpp`) hands a computed step a `Unit` with no symbol at all, and the
 renderer spells such a unit from the SI base units -- `m`, `kg`, `s`, `A`, `K`,
 `mol`, `cd` -- with the name of each named base dimension ahead of them:
-`kg/(m s^2)` for a pressure, `EUR` for a price per kilowatt-hour times an
-energy. A computed mass reads `kg`, a computed length `m`. Only a
-dimensionless value is a bare number: `#1 / #2` above, a ratio of two volumes,
-reads `3/5`. A value declared in a unit of the author's own that has no symbol
-reads in the coherent unit too, converted, since its number alone could not
-say what scale it is on.
+`kg/(m s^2)` for a pressure, `s^-1` for a frequency, `EUR` for a price per
+kilowatt-hour times an energy. A unit with nothing above the slash is written
+with negative exponents. So `20000/413 kg^-1` cannot read as a fraction
+divided again, as `20000/413 1/kg` would. A computed mass reads `kg`, a
+computed length `m`. Only a dimensionless value is a bare number: `#1 / #2`
+above, a ratio of two volumes, reads `3/5`. A value declared in a unit of the
+author's own that has no symbol reads in the coherent unit too, converted,
+since its number alone could not say what scale it is on. A dimensionless
+unit with a scale must have a symbol, so a bare number is always a value at
+scale 1. A rounding in a unit with no symbol names that unit by its size in
+the coherent unit: `round(#1, to 2 dp of 1/1000 kg) = 157/50000 kg`.
 
 A computed step borrows its unit off the steps it read in these cases:
 
@@ -390,7 +400,9 @@ A computed step borrows its unit off the steps it read in these cases:
   their two precisions.
 - A negation and an absolute value read in their operand's unit, and a
   conditional in its chosen branch's: `if #1 > #2 then #3 = 60 MPa`. A
-  precision limit reads in its second pass's.
+  precision limit reads in its second pass's, and its first pass in the unit
+  of the level it restates: a level constant in grams reads in grams on both
+  lines.
 - A value that is a point on its operand's scale -- a mean, a pass's mean, a
   rejected determination -- reads in that operand's unit when it has a
   symbol, offset or not: a mean of Celsius readings is a Celsius reading.

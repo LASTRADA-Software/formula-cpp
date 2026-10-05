@@ -8,6 +8,7 @@ file(GLOB_RECURSE sources
     "${SOURCE_DIR}/test/*.hpp"
     "${SOURCE_DIR}/test/*CMakeLists.txt"
     "${SOURCE_DIR}/examples/*.cpp"
+    "${SOURCE_DIR}/examples/*.hpp"
     "${SOURCE_DIR}/examples/*CMakeLists.txt"
     "${SOURCE_DIR}/cmake/*.cmake"
     "${SOURCE_DIR}/cmake/*.cmake.in")

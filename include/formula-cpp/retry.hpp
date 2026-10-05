@@ -141,7 +141,7 @@ inline constexpr bool formats_by_describe<RetryEnd> = true;
 /// repeat a step a few times; a larger count is almost always a typo, and 64
 /// attempts of a five-node attempt with a four-node judgement fit one
 /// constant evaluation on cl 19.51, clang-cl and clang++ 22.1.3, g++ 13.3 and
-/// g++ 14.2 (measured in phase 15's spike, step 5).
+/// g++ 14.2, as measured.
 ///
 /// The cap bounds the count, not the numbers: an exact fixpoint as simple as
 /// `6.08 g + w(k-1) / 2` doubles its denominator every attempt and passes
@@ -150,8 +150,8 @@ inline constexpr bool formats_by_describe<RetryEnd> = true;
 inline constexpr std::size_t retryAttemptCap = 64;
 
 /// Attempt 0's value: what `previous_attempt` reads at the first attempt.
-/// No `{}` initialiser on the expression, deliberately (defect class 4): see
-/// `Corrections` (`lookup.hpp`).
+/// No `{}` initialiser on the expression, deliberately: see `Corrections`
+/// (`lookup.hpp`).
 template <Node E>
 struct StartingValue
 {
@@ -1064,7 +1064,7 @@ namespace detail
 /// class body, so one built as an aggregate is checked too. Not a `Node`.
 ///
 /// No `{}` initialiser on the start, the attempt or the acceptance,
-/// deliberately (defect class 4): see `Corrections` (`lookup.hpp`).
+/// deliberately: see `Corrections` (`lookup.hpp`).
 template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
 struct Retry
 {
@@ -1220,7 +1220,7 @@ namespace detail
 } // namespace detail
 /// How a retry ended, and in what. Built only by `checked_evaluate_retry`: no
 /// public constructor and no setters, so how it ended and where it was
-/// accepted are the library's to state (defect class 3).
+/// accepted are the library's to state.
 template <Described R>
 class RetryOutcome
 {

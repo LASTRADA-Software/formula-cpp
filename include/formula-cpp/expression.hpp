@@ -50,6 +50,7 @@ struct VarNode: NodeBase
                   "formula: this quantity describes a dimension its own unit does not measure, so "
                   "no formula containing it can be trusted; the quantity appears in this "
                   "diagnostic as the template argument of VarNode");
+    static_assert(detail::RequireNamedScaledScalar<Describe<Q>::unit>::value);
 
     /// The quantity this node names -- the key an `Environment` is asked with.
     using quantity = Q;
@@ -75,6 +76,8 @@ inline constexpr VarNode<Q> var {};
 template <Unit U>
 struct ConstantNode: NodeBase
 {
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
+
     /// The coefficient, in terms of `unit`.
     Rational number {};
 
@@ -142,7 +145,7 @@ namespace detail
     /// leaf, or a node kind that cannot be refused). A node over a refused
     /// operand asks no question of its own -- the operand's length and
     /// dimension are stand-ins taken after the refusal, and asking about them
-    /// would report the one mistake a second time (defect class 2).
+    /// would report the one mistake a second time.
     ///
     /// Declared here, beside `Node`, because every check that reads a node's
     /// dimension asks it: a series refused already (`series.hpp`), a curve

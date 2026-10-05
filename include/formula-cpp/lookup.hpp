@@ -18,14 +18,14 @@
 /// All three report a miss identically, split structure from contents
 /// identically, and share one `Corrections<N>` wrapper and one key-unit guard.
 /// Everything below about a miss, about `documented()` carrying a table's
-/// identity, and about what is left to a later task is written once and binds
-/// all three; the exact-lookup and interpolating-lookup sections near the end
-/// of this comment add only what is genuinely particular to each.
+/// identity, and about what is deliberately not built is written once and
+/// binds all three; the exact-lookup and interpolating-lookup sections near
+/// the end of this comment add only what is genuinely particular to each.
 ///
 /// A method's own algebra sometimes needs a coefficient no formula computes --
 /// a size-correction factor for a specimen's diameter, say -- that the
 /// method's procedure instead publishes as a table of intervals. `§16.1`
-/// bounds what this phase may contain: the table's *structure* (its bands)
+/// bounds what a lookup may contain: the table's *structure* (its bands)
 /// is part of the method and belongs in a formula's type; the table's
 /// *contents* (the correction each band selects) are master data that may be
 /// registered per customer, per region, per contract, and must be allowed to
@@ -33,11 +33,11 @@
 /// at once.
 ///
 /// **The join, stated explicitly, because two things separately verified do
-/// not verify their join.** A prior spike verified, separately, that
+/// not verify their join.** It was measured, separately, that
 /// `std::array<Band, N>` works as a non-type template parameter on all four
 /// compilers, and that a node can hold runtime state behind a compile-time
 /// shape (`ConstantNode` holds a runtime `Rational number` while `unit` and
-/// `dimension` live in its type). It explicitly did not build a node
+/// `dimension` live in its type). Neither measurement built a node
 /// combining both. `BandedLookupNode` is that combination:
 ///
 ///  - **In the type** (compile-time shape, part of what a formula *is*):
@@ -67,20 +67,19 @@
 /// falls in no band -- or an `ExactLookupNode` whose key names no row of its
 /// table -- has found nothing: not zero, not the nearest band, not the
 /// first row. There is no default-value parameter and no fallback of any
-/// kind: adding one would be phase 9's forbidden `bool satisfied()` in a new
-/// costume, an API that must answer *something* for the unresolved case,
-/// where every answer is a lie.
+/// kind: adding one would be the refused `bool satisfied()` of constraints
+/// (`constraint.hpp`) in a new costume, an API that must answer *something*
+/// for the unresolved case, where every answer is a lie.
 ///
-/// **How the miss is actually reported, and where this departs from the
-/// phase's own design-decisions note.** That note proposed reusing
-/// `Outcome`'s `Invalid` alternative and its `InvalidReason`. Reading the
-/// tree as it stands today (not as the note anticipated it) rules that out
-/// on two independent grounds, and the tree wins:
+/// **How the miss is actually reported, and why not through `Outcome`.**
+/// Reusing `Outcome`'s `Invalid` alternative and its `InvalidReason` was
+/// considered. The tree as it stands rules that out on two independent
+/// grounds:
 ///
-///   1. `checked_evaluate_si` -- the machinery this node rides, per this
-///      phase's own settled decision that a lookup is a `Node` needing none
-///      of `Constraint`'s separate entry points -- returns `Evaluated<Rep>`,
-///      an alias for `std::expected<std::optional<Rep>, ArithmeticError>`.
+///   1. `checked_evaluate_si` -- the machinery this node rides, because a
+///      lookup is a `Node` needing none of `Constraint`'s separate entry
+///      points -- returns `Evaluated<Rep>`, an alias for
+///      `std::expected<std::optional<Rep>, ArithmeticError>`.
 ///      There is no path from there to `Outcome<Result>::invalid(...)`:
 ///      `checked_evaluate` only ever builds `Outcome<Result>::empty()` or
 ///      `::%value(...)` itself, and an `ArithmeticError` returned by any node
@@ -89,13 +88,13 @@
 ///      `checked_evaluate_si` would mean widening `Evaluated<Rep>` for every
 ///      existing node kind to serve this one new caller -- a change far
 ///      beyond this header, and a much larger one than "add a node".
-///   2. A prior spike proved `InvalidReason::label` is a non-owning
+///   2. `InvalidReason::label` is, as measured, a non-owning
 ///      `std::string_view` that dangles the moment it is built from anything
-///      but a string literal -- it printed the pointer inside the
+///      but a string literal -- the measurement printed the pointer inside the
 ///      reason-building function and the one the caller received, identical,
 ///      with the string already destroyed. "Value 42 falls in no band" is
-///      exactly the generated-at-the-point-of-failure sentence that proof
-///      condemns.
+///      exactly the generated-at-the-point-of-failure sentence that
+///      measurement condemns.
 ///
 /// So the miss is reported the way `Evaluated<Rep>`'s existing error channel
 /// already reports every other kind of failure: `std::unexpected {
@@ -109,22 +108,22 @@
 /// `ArithmeticError` already does, with no new plumbing.
 ///
 /// **What "structured fields, never a composed sentence" means concretely
-/// here, and what is deliberately left to a later task.** The value that
-/// missed and the unit it is stated in are never lost -- they are the
-/// operand's own evaluated result, sitting with whichever caller dispatched
-/// it (and, once a lookup node is taught to a `RecordingSink`, recoverable
-/// from the operand's own step exactly as any other value is). The table's
-/// identity is available the same way every other node's provenance is
-/// available in this library: wrap the lookup in `documented(...)`
-/// (`citation.hpp`), which already carries a title, a reference, a section
-/// and a full text as separate fields -- never a composed sentence -- and
-/// already composes with any `Node`, lookups included, with no change needed
-/// here. Actually *rendering* a miss's structured fields into prose --
-/// giving `Step` a `StepKind::BandedLookup` and reading `KeyUnit`, `bands`
-/// and a wrapping `Citation` back out the way `trace_render.hpp` already
-/// does for every other kind -- is `trace.hpp`/`trace_render.hpp` work, and
-/// is deliberately outside this task's own file list; nothing here forecloses
-/// it, and nothing here composes a sentence that would make it harder.
+/// here.** The value that missed and the unit it is stated in are never lost --
+/// they are the operand's own evaluated result, sitting with whichever caller
+/// dispatched it (and, under a `RecordingSink`, recoverable from the operand's
+/// own step exactly as any other value is). The table's identity is available
+/// the same way every other node's provenance is available in this library:
+/// wrap the lookup in `documented(...)` (`citation.hpp`), which already carries
+/// a title, a reference, a section and a full text as separate fields -- never
+/// a composed sentence -- and already composes with any `Node`, lookups
+/// included, with no change needed here.
+///
+/// *Rendering* a miss's structured fields into prose -- the step's
+/// `StepKind::BandedLookup`, the interval the table covers
+/// (`Step::coveredRange`) and why it failed (`Step::lookupFailure`), read back
+/// out by `trace_render.hpp` as it does for every other kind -- is
+/// `trace.hpp`/`trace_render.hpp` work, not this file's; nothing here composes
+/// a sentence that would make it harder.
 ///
 /// **Bands are half-open, `[low, high)`, exactly as `band.hpp` declares them --
 /// see `band.hpp`'s file comment.** A value sitting exactly on a shared
@@ -146,11 +145,11 @@
 /// representation a consumer teaches it: `RepTraits` is a documented public
 /// extension point (`evaluate.hpp`), and a `RepBandSelection<Rep>` seam
 /// mirroring `RepRounding` would be the way to open the same door here.
-/// **Deliberately not built in this task** -- it is additive and this task
-/// should not absorb it -- so today every representation but `Rational` is
-/// closed, full stop, until that seam exists. `checked_evaluate<Result>` --
-/// the entry point every test in this file uses -- always computes in
-/// `Rational` internally, so this restriction is never reached from there.
+/// **Deliberately not built** -- it is additive -- so today every
+/// representation but `Rational` is closed, full stop, until that seam
+/// exists. `checked_evaluate<Result>` -- the entry point every test
+/// in this file uses -- always computes in `Rational` internally, so this
+/// restriction is never reached from there.
 ///
 /// ===========================================================================
 ///
@@ -166,7 +165,7 @@
 /// enumeration the method's author declares, and a table is
 /// `KeyTable<Shape, 3>` -- `std::array<Shape, 3>` -- as a non-type template
 /// parameter. The alternative considered, and rejected, was
-/// `detail::FixedString` (phase 4), which is equally usable as an NTTP. The
+/// `detail::FixedString`, which is equally usable as an NTTP. The
 /// deciding question is the one a method author will actually hit: **what
 /// happens when a key is absent.**
 ///
@@ -263,11 +262,11 @@
 /// aggregate, so that is one build per specimen, not one evaluation per
 /// specimen. **Giving `Environment` a categorical entry, so that a key could
 /// be supplied alongside the measurements, is deliberately not done here**:
-/// it is a change to `environment.hpp`, outside this task's files. Nothing
+/// it would be a change to `environment.hpp`, not to this file. Nothing
 /// here forecloses it -- `Environment`'s `detail::EntryTraits` is an open
 /// specialisation point, and this node's `checked_evaluate_si` already takes
 /// the environment -- but it is **a second node kind, not a field swap on
-/// this one**, and a later task should plan for that rather than the easier
+/// this one**, and should be planned as one rather than as the easier
 /// version. The reason is `key`'s own comment below: `KeyOf<Keys>{}` is a
 /// legitimate key that hits a row, so `ExactLookupNode` has no spelling for
 /// "no key yet, take it from the environment". Whatever reads a key from an
@@ -302,23 +301,23 @@
 /// `checked_evaluate<Result>` always computes in `Rational`, so this is never
 /// reached from the entry point every test here uses.
 ///
-/// **What a later task is owed, stated because the error channel cannot say
-/// it.** A miss carries `DomainError` and nothing more, so "which key missed
-/// which table" has to be rendered from the trace -- and for the exact lookup
-/// that is a harder obligation than for the banded one. A banded miss still
-/// leaves its evidence in the tree: the value that missed is the operand's
-/// own evaluated result, and once a lookup node is taught to a
-/// `RecordingSink` the operand contributes a step of its own carrying that
-/// value. **An exact lookup has no operand**, so the key that missed appears
-/// in no step at all unless `ExactLookupNode`'s own step records it. Nothing
-/// here loses the key -- it is a plain data member of the node the sink is
-/// handed, readable as `node.key`, and `Keys` is a compile-time property of
-/// the node's type -- but recovering it *does* require the later task to add
-/// a field for it, where the banded case can lean on a step that already
-/// exists. `detail::StepKindOf` (`trace.hpp`) has a specialisation for
-/// neither lookup node today, so both are equally untraceable right now; the
-/// asymmetry is written down here so the later task does not discover it
-/// after designing for the banded case alone.
+/// **Where a missed key is recorded, stated because the error channel cannot
+/// say it.** A miss carries `DomainError` and nothing more, so "which key
+/// missed which table" has to be rendered from the trace -- and for the exact
+/// lookup that asks more of the trace than the banded one does. A banded
+/// miss leaves its evidence in the tree: the value that missed is the
+/// operand's own evaluated result, and under a `RecordingSink` the operand
+/// contributes a step of its own carrying that value. **An exact lookup has
+/// no operand**, so the key that missed would appear in no step at all if
+/// `ExactLookupNode`'s own step did not record it. It does: the key is a
+/// plain data member of the node the sink is handed, readable as
+/// `node.key`, and the step keeps its value in `Step::lookupKey` and its
+/// name, when it has one, in `Step::lookupKeyName` (`trace.hpp`). A key that
+/// names no row has no name there, and its value is all that is left of it.
+/// The banded case needs no such field, because it leans on a step that
+/// already exists. The asymmetry is written down here so that a change to
+/// either kind does not assume the other records its miss the same way,
+/// or that the banded case's way would serve the exact one.
 ///
 /// ===========================================================================
 ///
@@ -436,15 +435,16 @@
 /// `checked_add` onto the lower row -- so
 /// `y0 + (x - x0)(y1 - y0)/(x1 - x0)` is computed with no rounding anywhere,
 /// and a result no finite decimal can hold (14/15, say) comes back as exactly
-/// 14/15. Nothing here reaches for phase 8's rounding, and nothing here loses
-/// precision silently: the *only* way the answer is not the exact rational the
-/// two rows imply is that some intermediate lies outside `Rational`'s
-/// representable range, and that is reported as `ArithmeticError::Overflow`
-/// through the same channel a miss uses, never approximated away -- asserted
-/// on a table whose exact answer genuinely does not fit, rather than only
-/// reasoned about. `x1 - x0` cannot be zero -- strictly ascending breakpoints
-/// are enforced at compile time -- so the division is guarded by the table's
-/// own validation rather than by a runtime test.
+/// 14/15. Nothing here reaches for rounding (`rounding.hpp`), and nothing here
+/// loses precision silently: the *only* way the answer is not the exact
+/// rational the two rows imply is that some intermediate lies outside
+/// `Rational`'s representable range, and that is reported as
+/// `ArithmeticError::Overflow` through the same channel a miss uses, never
+/// approximated away -- asserted on a table whose exact answer genuinely does
+/// not fit, rather than only reasoned about. `x1 - x0` cannot be zero --
+/// strictly ascending breakpoints are enforced at compile time -- so the
+/// division is guarded by the table's own validation rather than by a runtime
+/// test.
 ///
 /// **`Rep` is closed to `Rational`, and here the arithmetic reason is the true
 /// one.** The banded node's guard gives an arithmetic reason (band selection
@@ -453,22 +453,22 @@
 /// node's ground and one of its own that is stronger: locating the segment is
 /// the same comparison band selection is, and the answer is then *computed*, so
 /// a representation that rounds would hand back a number that is not the one
-/// the table's own rows imply -- the precise defect this task exists to avoid.
+/// the table's own rows imply -- the precise defect this node exists to avoid.
 /// As with both other kinds the message says "this representation" rather than
 /// naming a type the instantiation backtrace already names, and no
 /// `RepInterpolation<Rep>` seam is built, mirroring the decision not to build
 /// `RepBandSelection`.
 ///
-/// **What a later task is owed.** Everything the banded lookup's own note above
-/// says applies unchanged: a miss carries `DomainError` and nothing else, the
-/// value that missed is the operand's own evaluated result, and the table's
-/// identity comes from `documented()`. One thing is new, and belongs to the interpolating lookup
-/// rather than here: this node can produce `ArithmeticError::Overflow` *of its
-/// own*, from the interpolation, where the other two kinds only ever propagate
-/// one they were handed. A trace that wants to say "the interpolation
-/// overflowed" rather than "something below this overflowed" needs this node's
-/// own step to say so; nothing here loses the information, and nothing here
-/// composes a sentence that would make saying it harder.
+/// **What the trace needs from this node.** Everything the banded lookup's
+/// own note above says applies unchanged: a miss carries `DomainError` and
+/// nothing else, the value that missed is the operand's own evaluated result,
+/// and the table's identity comes from `documented()`. One thing is new, and
+/// belongs to the interpolating lookup alone: this node can produce
+/// `ArithmeticError::Overflow` *of its own*, from the interpolation, where the
+/// other two kinds only ever propagate one they were handed. A trace that says
+/// "the interpolation overflowed" rather than "something below this
+/// overflowed" needs this node's own step to say so, and it does:
+/// `Step::lookupFailure` is `LookupFailure::Computation` (`trace.hpp`).
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/enumerator.hpp>
@@ -556,14 +556,13 @@ namespace detail
     ///
     /// A linear scan, not a binary search, even though `band_table_is_well_
     /// formed`'s own proof (`band.hpp`) shows a well-formed table's bands are
-    /// strictly ascending, which would make a binary search valid. Phase 10
-    /// is the first thing in this codebase to need an interval search at
-    /// all; a method's own published table is rows, not big data, and an
-    /// obviously-correct O(N) scan is worth more here than O(log N) --
-    /// especially for the half-open, exactly-on-a-boundary case this type
-    /// exists to get right. `Bands` is compile-time state (see the file
-    /// comment); this is the one place its `int64` pairs are turned into
-    /// `Rational` for an exact comparison.
+    /// strictly ascending, which would make a binary search valid. A method's
+    /// own published table is rows, not big data, and an obviously-correct
+    /// O(N) scan is worth more here than O(log N) -- especially for the
+    /// half-open, exactly-on-a-boundary case this type exists to get right.
+    /// `Bands` is compile-time state (see the file comment); this is the one
+    /// place its `int64` pairs are turned into `Rational` for an exact
+    /// comparison.
     template <BandTable Bands>
     [[nodiscard]] constexpr std::optional<std::size_t> find_band(Rational value) noexcept
     {
@@ -767,6 +766,8 @@ struct BandedLookupNode: NodeBase
 {
     static_assert(RequireValidBandTable<Bands>::value);
     static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
+    static_assert(detail::RequireNamedScaledScalar<KeyUnit>::value);
+    static_assert(detail::RequireNamedScaledScalar<ResultUnit>::value);
 
     /// One correction per band, stated in `unit` -- the table's *contents*,
     /// runtime state for the same reason `ConstantNode::number` is. See the
@@ -903,8 +904,8 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
 
 /// A table of category keys, in the order their corrections are declared. An
 /// alias template over `std::array`, for the same reason `BandTable` is one
-/// (`band.hpp`): a spike compiled `template <KeyTable Keys>` with both `Key`
-/// and `N` deduced from the template argument, on cl, clang-cl, clang++ and
+/// (`band.hpp`): `template <KeyTable Keys>` compiles with both `Key` and `N`
+/// deduced from the template argument, measured on cl, clang-cl, clang++ and
 /// g++, so a wrapping struct would add a name to unwrap and nothing else.
 ///
 /// `Key` is a scoped enumeration -- enforced by `RequireScopedEnumKey` in
@@ -944,8 +945,8 @@ namespace detail
     /// Declared here, ahead of the predicates, because **every** public entry
     /// point that takes a key enforces it, not only the node. A validator that
     /// accepted an `std::array<int, N>` no node would ever take is two
-    /// surfaces disagreeing about the same question -- the defect this phase
-    /// keeps finding -- and a runtime loader of tables reaching for
+    /// surfaces disagreeing about the same question -- a defect this codebase
+    /// has met more than once -- and a runtime loader of tables reaching for
     /// `key_table_is_well_formed` is exactly where it would bite.
     template <typename Key>
     struct RequireScopedEnumKey
@@ -1173,6 +1174,7 @@ struct ExactLookupNode: NodeBase
 {
     static_assert(detail::RequireScopedEnumKey<KeyOf<Keys>>::value);
     static_assert(RequireValidKeyTable<Keys>::value);
+    static_assert(detail::RequireNamedScaledScalar<ResultUnit>::value);
 
     /// One correction per key, stated in `unit`, in the same order `keys`
     /// declares -- the table's *contents*, runtime state for the same reason
@@ -1186,7 +1188,7 @@ struct ExactLookupNode: NodeBase
     /// file comment gives at length; a key that names no row of `keys` is a
     /// miss, reported exactly as a value falling in no band is.
     ///
-    /// **There is no unset state, and a later task must not assume one.** The
+    /// **There is no unset state, and nothing may assume one.** The
     /// default member initialiser is `KeyOf<Keys>{}` -- the enumerator whose
     /// value is zero -- which for the ordinary table is a perfectly legitimate
     /// key that hits a row. It does not mean "no key yet" and cannot be made
@@ -1395,8 +1397,8 @@ template <typename N, typename D>
 
 /// A table of breakpoints, declared in strictly ascending order. An alias
 /// template over `std::array`, for the reason `BandTable` (`band.hpp`) and
-/// `KeyTable` above are: a spike compiled `template <BandTable Bands>` with
-/// both the element type and `N` deduced on all four compilers, so a wrapping
+/// `KeyTable` above are: `template <BandTable Bands>` compiles with both the
+/// element type and `N` deduced, measured on all four compilers, so a wrapping
 /// struct would add a name to unwrap and nothing else.
 template <std::size_t N>
 using BreakpointTable = std::array<Breakpoint, N>;
@@ -1728,7 +1730,7 @@ namespace detail
     /// say which two rows an answer came from would otherwise have to find
     /// them again with a second scan somewhere else. Two scans of one table
     /// against one rule is the pair-of-surfaces-that-must-agree defect this
-    /// phase keeps refusing; returning what is already known costs one
+    /// library keeps refusing; returning what is already known costs one
     /// `std::pair` and cannot drift from itself. `interpolate` just below
     /// drops the location for the evaluation path, which has no use for it.
     ///
@@ -1807,6 +1809,8 @@ struct InterpolatingLookupNode: NodeBase
 {
     static_assert(RequireValidBreakpointTable<Points>::value);
     static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
+    static_assert(detail::RequireNamedScaledScalar<KeyUnit>::value);
+    static_assert(detail::RequireNamedScaledScalar<ResultUnit>::value);
 
     /// The value this table states at each breakpoint, in `unit`, in the same
     /// order `breakpoints` declares -- the table's *contents*, runtime state

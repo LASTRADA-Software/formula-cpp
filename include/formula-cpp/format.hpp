@@ -109,12 +109,12 @@ namespace formula::detail
         "rounding mode (~ without .N only for a Measured value, whose unit declares the places)");
 }
 
-/// Refuses to write a value the format could not spell: `~Mode` on a
-/// `Measured` whose unit declares negative decimals, for a value it must
-/// round (one with no exact decimal of at most 18 places) that exact
-/// arithmetic cannot divide by 10^-decimals (see `formatter<Measured<Q>>`)
-/// -- the one case the parser's checks cannot see. Only `format` reaches it.
-/// @throws std::format_error always.
+/// Refuses to write a value the format could not spell, where the parser's
+/// checks cannot see it: `~Mode` on a `Measured` whose unit declares negative
+/// decimals, for a value with no exact decimal of 18 places or fewer that
+/// exact arithmetic cannot divide by 10^-decimals; or a `Measured` value that
+/// cannot move into the coherent unit its text names (`shown_number`). Only
+/// `format` reaches it. @throws std::format_error always.
 [[noreturn]] inline void number_format_failed(ArithmeticError spellingFailure)
 {
     if (spellingFailure == ArithmeticError::Overflow)
@@ -367,14 +367,19 @@ inline constexpr RoundingModeName RoundingModeNames[] {
     return specEnd;
 }
 
-/// @p shownValue, a number in @p shownIn, spelled as @p formatSpec's body
-/// asks -- the number alone, without the unit's symbol. Throws
-/// `std::format_error` when it cannot be spelled (`number_format_failed`).
+/// @p shownValue, a number declared in @p declaredIn that `shown_number` has
+/// already moved into the unit it is shown in, spelled as @p formatSpec's
+/// body asks -- the number alone, without the unit's text. `{}` and `~Mode`
+/// spell it as `number_text` does (`checked_shown_value_text`), so a value
+/// moved into the coherent unit reads as a trace line reads it; `~.N Mode`
+/// and `.N Mode` round at the N places they name. Throws `std::format_error`
+/// when it cannot be spelled (`number_format_failed`).
 [[nodiscard]] inline NumberText spell_formatted_number(Rational shownValue,
-                                                       Unit const& shownIn,
+                                                       Unit const& declaredIn,
                                                        NumberFormatSpec const& formatSpec)
 {
     auto const spelling = [&]() -> std::expected<NumberText, ArithmeticError> {
+        NumberStyle const approximating = NumberStyle::approximate_decimal(formatSpec.roundingMode);
         switch (formatSpec.body)
         {
             case NumberFormatBody::Fraction:
@@ -385,17 +390,16 @@ inline constexpr RoundingModeName RoundingModeNames[] {
                                             formatSpec.roundingMode,
                                             DecimalPadding::Padded);
             case NumberFormatBody::Approximated: {
-                Unit roundedIn = shownIn;
-                if (formatSpec.places.has_value())
-                    roundedIn.decimals = *formatSpec.places;
-                return checked_number_text(shownValue,
-                                           NumberStyle::approximate_decimal(formatSpec.roundingMode),
-                                           roundedIn);
+                if (!formatSpec.places.has_value())
+                    return checked_shown_value_text(shownValue, approximating, declaredIn);
+                Unit roundedIn = shown_unit_of(declaredIn, declaredIn.dimension);
+                roundedIn.decimals = *formatSpec.places;
+                return checked_number_text(shownValue, approximating, roundedIn);
             }
             case NumberFormatBody::ExactOrFraction:
                 break;
         }
-        return checked_number_text(shownValue, NumberStyle::exact_decimal(), shownIn);
+        return checked_shown_value_text(shownValue, NumberStyle::exact_decimal(), declaredIn);
     };
     std::expected<NumberText, ArithmeticError> const spelled = spelling();
     if (!spelled)
@@ -437,14 +441,14 @@ template <typename OutputIterator>
 
 /// Reads a `Measured<Q>` or `Outcome<Q>` replacement field's spec, as
 /// `parse_number_format_field` does, and refuses `~Mode` without `.N` when
-/// @p Q's unit declares decimals outside the -18 to 18 that `DecimalPlaces`
-/// spans.
+/// the unit @p Q's value is shown in (`shown_unit_of`) declares decimals
+/// outside the -18 to 18 that `DecimalPlaces` spans.
 template <Described Q>
 [[nodiscard]] constexpr std::format_parse_context::iterator parse_measured_format_field(
     std::format_parse_context& parseContext, NumberFormatSpec& parsed)
 {
     auto const specEnd = parse_number_format_field(parseContext, parsed);
-    constexpr int declaredPlaces = Describe<Q>::unit.decimals;
+    constexpr int declaredPlaces = shown_unit_of(Describe<Q>::unit, Describe<Q>::dimension).decimals;
     if (parsed.body == NumberFormatBody::Approximated && !parsed.places.has_value()
         && (declaredPlaces > 18 || declaredPlaces < -18))
         formula_number_format_places_out_of_range();
@@ -452,9 +456,11 @@ template <Described Q>
 }
 
 /// Writes @p shownMeasured to @p destination as @p formatSpec says: the
-/// number in @p Q's declared unit and its symbol, or `(not measured)` when it
-/// is absent. Throws `std::format_error` when the number cannot be spelled as
-/// asked (`spell_formatted_number`).
+/// number in @p Q's declared unit and its symbol -- or, for a dimensioned unit
+/// with no symbol, moved into the coherent unit and followed by its spelling,
+/// as `number_text` writes it (`shown_number`, `write_shown_unit`) -- or
+/// `(not measured)` when it is absent. Throws `std::format_error` when the
+/// number cannot be moved or spelled as asked (`number_format_failed`).
 template <Described Q, typename OutputIterator>
 [[nodiscard]] OutputIterator format_measured(Measured<Q> const& shownMeasured,
                                              NumberFormatSpec const& formatSpec,
@@ -462,9 +468,16 @@ template <Described Q, typename OutputIterator>
 {
     if (shownMeasured.is_absent())
         return write_formatted_number(NotMeasuredText, std::string_view {}, formatSpec, destination);
-    Unit const shownIn = Describe<Q>::unit;
-    NumberText const spelled = spell_formatted_number(*shownMeasured.stored(), shownIn, formatSpec);
-    return write_formatted_number(spelled.view(), view(shownIn.symbolText), formatSpec, destination);
+    Unit const declaredIn = Describe<Q>::unit;
+    std::expected<Rational, ArithmeticError> const shownValue =
+        shown_number(*shownMeasured.stored(), declaredIn, declaredIn.dimension);
+    if (!shownValue)
+        number_format_failed(shownValue.error());
+    NumberText const spelled = spell_formatted_number(*shownValue, declaredIn, formatSpec);
+    std::string unitText;
+    auto appendTo = [&unitText](std::string_view written) { unitText += written; };
+    write_shown_unit(appendTo, declaredIn);
+    return write_formatted_number(spelled.view(), unitText, formatSpec, destination);
 }
 
 /// @p shown's `describe()` words. Called from inside `formula::detail`, so
@@ -681,6 +694,16 @@ struct formatter<formula::Int128, char>
 /// `number_text(measured, NumberStyle::approximate_decimal(Mode))` does, and
 /// `~.N Mode` at N places instead; both write the exact decimal where the
 /// value has one, and mark a rounding `≈`.
+///
+/// **A dimensioned unit with no symbol** cannot say what scale its number is
+/// on, so the number is moved exactly into the coherent unit and followed by
+/// that unit's spelling, as `number_text` writes it: 3 of a unit of 1/1000 kg
+/// is `0.003 kg`, `{:/}` `3/1000 kg`. `{}` and `~Mode` then spell it as a
+/// trace line does: the coherent unit's 3 places are a default nobody chose,
+/// so they are never padded, and never round a value other than zero to `≈0`
+/// -- `{:~HalfEven}` of 1/3 of that unit is `≈0.0003 kg`. `.N Mode` and
+/// `~.N Mode` round at the N places of the coherent unit they name. A value
+/// that cannot be moved throws, never writing the number on the other scale.
 ///
 /// **The modes** are `RoundingMode`'s enumerators, spelled exactly as they
 /// are there. **There is no default mode**: the same number rounds

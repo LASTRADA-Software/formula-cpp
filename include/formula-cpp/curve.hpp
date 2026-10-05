@@ -108,6 +108,7 @@ struct DomainNode: SeriesNodeBase
 {
     static_assert(detail::RequireDomainNotEmpty<Points>::value);
     static_assert(RequireValidBreakpointTable<Points>::value);
+    static_assert(detail::RequireNamedScaledScalar<U>::value);
 
     /// The unit the points are declared in.
     static constexpr Unit unit = U;
@@ -160,8 +161,8 @@ namespace detail
 /// The domain series @p D paired with the value series @p V, element by
 /// element: value i is the curve's value at point i.
 ///
-/// No `{}` initialiser on either series, deliberately (defect class 4): see
-/// `Corrections` (`lookup.hpp`).
+/// No `{}` initialiser on either series, deliberately: see `Corrections`
+/// (`lookup.hpp`).
 template <SeriesNode D, SeriesNode V>
 struct CurveNode: CurveNodeBase
 {
@@ -329,7 +330,8 @@ namespace detail
 /// Two curves spliced into one: the sorted union of their points, values
 /// running as @p M says.
 ///
-/// No `{}` initialiser on either curve, deliberately (defect class 4).
+/// No `{}` initialiser on either curve, deliberately: see `Corrections`
+/// (`lookup.hpp`).
 template <Monotone M, CurveExpression A, CurveExpression B>
 struct SpliceNode: CurveNodeBase
 {
@@ -438,7 +440,8 @@ namespace detail
 /// The value of the curve @p C at the point @p At evaluates to: one value, and
 /// so a `Node`.
 ///
-/// No `{}` initialiser on either member, deliberately (defect class 4).
+/// No `{}` initialiser on either member, deliberately: see `Corrections`
+/// (`lookup.hpp`).
 template <CurveExpression C, Node At>
 struct InterpolateAlongNode: NodeBase
 {

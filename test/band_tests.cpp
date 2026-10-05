@@ -62,14 +62,13 @@ namespace
         band(173, 1, 277, 1), // overlap: band[2]'s low (173) < band[1]'s high (197)
     };
 
-    // ---- an inverted band (its own low is not below its own high) -- fix
-    // round 1's finding. Constructed so every adjacent pair still shares its
-    // boundary exactly (`bands_are_adjacent` alone would pass every one of
-    // these), isolating that only `band_is_well_formed` catches this defect.
-    // One inversion per position -- first, middle, last -- for the same
-    // reason gap and overlap each got a middle case and an end case: a check
-    // exercised at only one position can silently be one that only works
-    // there.
+    // ---- an inverted band (its own low is not below its own high).
+    // Constructed so every adjacent pair still shares its boundary exactly
+    // (`bands_are_adjacent` alone would pass every one of these), isolating
+    // that only `band_is_well_formed` catches this defect. One inversion per
+    // position -- first, middle, last -- for the same reason gap and overlap
+    // each got a middle case and an end case: a check exercised at only one
+    // position can silently be one that only works there.
 
     inline constexpr BandTable<3> InvertedFirstBand {
         band(103, 1, 0, 1), // inverted: low (103) is not below high (0)
@@ -252,8 +251,8 @@ TEST_CASE("a well-formed, adjacent table has its bands in ascending order -- imp
 // pinned instead by test/negative/band_gap.cpp, test/negative/band_overlap.cpp
 // and test/negative/band_inverted.cpp, which assert that each fails to
 // compile and that the failure names the offending band or pair. This test
-// only proves the success path is reachable the way phase 10 tasks 2-4 will
-// reach it.
+// only proves the success path is reachable the way the lookup nodes reach
+// it.
 
 TEST_CASE("RequireValidBandTable accepts a well-formed table", "[band]")
 {

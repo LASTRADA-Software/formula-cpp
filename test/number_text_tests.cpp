@@ -66,6 +66,47 @@ inline constexpr formula::Unit Tens { .dimension = dim::Scalar, .symbolText = fo
 inline constexpr formula::Unit TooFine { .dimension = dim::Scalar, .symbolText = formula::symbol("tf"), .decimals = 19 };
 inline constexpr formula::Unit TooCoarse { .dimension = dim::Scalar, .symbolText = formula::symbol("tc"), .decimals = -19 };
 
+/// A mass unit of a thousandth of a kilogram with no symbol: the gram's size
+/// under no name.
+inline constexpr formula::Unit UnnamedGram { .dimension = dim::Mass, .magnitudeDenominator = 1000 };
+struct UnnamedMass: formula::Quantity<UnnamedMass, "m_u", "a mass in an unnamed unit of a gram", UnnamedGram>
+{
+};
+
+/// A count per unnamed gram, a unit of 1000 kg^-1 with no symbol.
+inline constexpr formula::Unit UnnamedPerGram { .dimension = dim::Scalar / dim::Mass, .magnitudeNumerator = 1000 };
+struct UnnamedLoading: formula::Quantity<UnnamedLoading, "q_u", "a count per unnamed gram", UnnamedPerGram>
+{
+};
+
+/// The Celsius scale with no symbol: the kelvin's size, its zero at 273.15 K.
+inline constexpr formula::Unit UnnamedCelsius { .dimension = dim::Temperature,
+                                                .offsetNumerator = 27315,
+                                                .offsetDenominator = 100 };
+struct UnnamedReading: formula::Quantity<UnnamedReading, "T_u", "a reading on an unnamed scale", UnnamedCelsius>
+{
+};
+
+/// A mass in grams, with the gram's symbol.
+struct NamedMass: formula::Quantity<NamedMass, "m_g", "a mass in grams", unit::Gram>
+{
+};
+
+/// Four named bases with 15-byte names and every SI base, each to the power
+/// 11/13: a coherent unit whose spelling alone is longer than a `NumberText`
+/// holds.
+inline constexpr formula::Dimension Sprawling = formula::nth_root(
+    formula::power(formula::base_dimension("Aaaaaaaaaaaaaaa") * formula::base_dimension("Bbbbbbbbbbbbbbb")
+                       * formula::base_dimension("Ccccccccccccccc") * formula::base_dimension("Ddddddddddddddd")
+                       * dim::Length * dim::Mass * dim::Time * dim::Current * dim::Temperature * dim::Amount
+                       * dim::Luminosity,
+                   11),
+    13);
+inline constexpr formula::Unit UnnamedSprawl { .dimension = Sprawling, .magnitudeDenominator = 1000 };
+struct SprawlingReading: formula::Quantity<SprawlingReading, "s_u", "a reading in a sprawling unit", UnnamedSprawl>
+{
+};
+
 /// Whether `view()` can be called on a @p T.
 template <typename T>
 concept Viewable = requires(T&& spelled) { std::forward<T>(spelled).view(); };
@@ -505,6 +546,47 @@ TEST_CASE("a measured value is its number then its unit's symbol", "[number_text
     STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> {}, NumberStyle::exact_decimal()) == "(not measured)");
     STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> {}, NumberStyle::exact_decimal()) == formula::NotMeasuredText);
     STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> {}, evenApproximation).is_exact());
+}
+
+TEST_CASE("a measured value in a dimensioned unit with no symbol is shown in the coherent unit", "[number_text]")
+{
+    // 3 of a unit of 1/1000 kg is 3/1000 kg: the number is moved into the unit
+    // its text names, never left on a scale nothing after it states.
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 3 } }, NumberStyle::fraction()) == "3/1000 kg");
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 3 } }, NumberStyle::exact_decimal())
+                   == "0.003 kg");
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 3 } },
+                                        NumberStyle::approximate_decimal(RoundingMode::HalfEven))
+                   == "0.003 kg");
+    // The coherent unit's 3 places are a default nobody chose, as in a trace:
+    // never padded to, and never rounding a value that is not zero to `≈0`.
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 30 } },
+                                        NumberStyle::exact_decimal(DecimalPadding::Padded))
+                   == "0.03 kg");
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedMass> { Rational { 1, 3 } },
+                                        NumberStyle::approximate_decimal(RoundingMode::HalfEven))
+                   == "\xe2\x89\x88" "0.0003 kg");
+    // A unit with only a negative exponent is written with it, and no slash.
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedLoading> { Rational { 3 } }, NumberStyle::fraction())
+                   == "3000 kg^-1");
+    // A point on an offset scale moves to the coherent unit's: 21 on the
+    // unnamed Celsius scale is 294.15 K.
+    STATIC_REQUIRE(formula::number_text(Measured<UnnamedReading> { Rational { 21 } }, NumberStyle::exact_decimal())
+                   == "294.15 K");
+
+    // A unit with a symbol keeps the number in that unit, as before.
+    STATIC_REQUIRE(formula::number_text(Measured<NamedMass> { Rational { 3 } }, NumberStyle::fraction()) == "3 g");
+
+    // A move that fails is refused, never written in the declared unit's scale:
+    // the largest number on the unnamed Celsius scale has no place in kelvin.
+    STATIC_REQUIRE(formula::checked_number_text(Measured<UnnamedReading> { Rational { IntMax } }, NumberStyle::fraction())
+                       .error()
+                   == ArithmeticError::Overflow);
+    // A coherent unit's spelling that does not fit the buffer is refused as a
+    // number too long for it would be.
+    STATIC_REQUIRE(formula::checked_number_text(Measured<SprawlingReading> { Rational { 3 } }, NumberStyle::fraction())
+                       .error()
+                   == ArithmeticError::Overflow);
 }
 
 TEST_CASE("the longest text this library spells fits its buffer", "[number_text]")

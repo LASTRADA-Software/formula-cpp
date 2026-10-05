@@ -3,7 +3,7 @@
 //
 // `checked_evaluate_si<double>` on an exact lookup. The guard's message is
 // author-facing text and therefore tested API, like every other
-// `static_assert` in this phase -- and it is the ONLY place the reason for
+// `static_assert` of the lookups -- and it is the ONLY place the reason for
 // this refusal reaches a user, since nobody reads a header's file comment
 // when a build fails. It must say what the file comment says: every lookup
 // table in this library answers in one representation, NOT that selecting a

@@ -470,19 +470,18 @@ constexpr auto settledEstimate = formula::retry<IteratedEstimate, 4, formula::Fi
     formula::Verdict { "repeat the determination" },
     { .title = "Settled estimate", .reference = "Example Standard 12", .section = "6" });
 
-/// An exact rational as text: `4`, or `3/5` when it is not whole, as
-/// `formula::fraction_text` (`number_text.hpp`) spells it.
-[[nodiscard]] std::string exact_text(formula::Rational value)
-{
-    formula::NumberText const spelled = formula::fraction_text(value);
-    return std::string { spelled.view() };
-}
-
-/// A unit's symbol for a table cell, or a word for the one unit that has none.
+/// A unit for a table cell: its symbol; for a dimensioned unit with no symbol,
+/// its size in the coherent unit, `1/1000 kg`, as a rounding's clause names
+/// it (`rounding_unit_text`, `render.hpp`); and a word for a dimensionless
+/// unit with no symbol, which is a bare number.
 [[nodiscard]] std::string unit_cell(formula::Unit unitOfValue)
 {
-    std::string_view const symbolText = formula::view(unitOfValue.symbolText);
-    return symbolText.empty() ? std::string { "dimensionless" } : std::string { symbolText };
+    // A cell names a unit, not a value, so `number_text` and `std::format`,
+    // which write a value with its unit, do not fit, and the library has no
+    // public spelling of a unit by its size and zero. `rounding_unit_text` is
+    // its one spelling of that, so the cell uses it rather than a second copy.
+    std::string const unitText = formula::detail::rounding_unit_text(unitOfValue, formula::detail::verbatim_text);
+    return unitText.empty() ? std::string { "dimensionless" } : unitText;
 }
 
 /// Writes the symbol table for a section, or nothing when there are no symbols
@@ -520,7 +519,7 @@ void write_symbol_table(std::ofstream& out, std::vector<formula::SymbolEntry> co
 /// symbol table asks for `Dialect::Markdown` and the display form asks for
 /// `Dialect::LaTeX`, each the dialect it is actually for, rather than
 /// assuming today's `collect()` ignores `D` for the symbol table -- an
-/// assumption a later phase could quietly invalidate.
+/// assumption a later change could quietly invalidate.
 template <formula::Node N>
 void write_formula(std::ofstream& out, N const& node)
 {
@@ -695,12 +694,20 @@ int main(int argc, char** argv)
         std::println(stderr, "formula-cpp-gallery: the worked evaluation did not produce a value");
         return 1;
     }
-    formula::Rational const result = outcome->measurement().value();
+    // Spelled with its unit by `number_text`, which writes a value in a unit
+    // with no symbol in the coherent unit it names; this ratio has none.
+    auto const asFraction = formula::checked_number_text(outcome->measurement(), formula::NumberStyle::fraction());
+    auto const asDecimal = formula::checked_number_text(outcome->measurement(), formula::NumberStyle::exact_decimal());
+    if (!asFraction.has_value() || !asDecimal.has_value())
+    {
+        std::println(stderr, "formula-cpp-gallery: the worked evaluation's value could not be spelled");
+        return 1;
+    }
 
     write_worked_formula(out, waterCementRatio);
 
     out << "```\n";
-    out << "with V_w = 180 l and V_c = 300 l: " << exact_text(result) << " = " << result.to_double() << "\n";
+    out << "with V_w = 180 l and V_c = 300 l: " << asFraction->view() << " = " << asDecimal->view() << "\n";
     out << "```\n\n";
 
     // ---- A worked derivation, so the page shows how a number was reached, not only what it is ----
