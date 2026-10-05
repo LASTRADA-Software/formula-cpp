@@ -134,5 +134,6 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Decimals in traces, rendered formulas and `std::format` | shipped |
 | Calculations: definitions, dependency graph, incremental worksheets | shipped |
 | Short spellings: exact decimal literals, bound formulas, `number_of`, `trace_of`, `std::format` of results | shipped |
+| 128-bit exact numbers, and a unit named on every value a trace or formula writes | shipped |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).
