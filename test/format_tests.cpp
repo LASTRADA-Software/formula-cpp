@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -57,6 +58,20 @@ inline constexpr formula::Unit Coarse { .dimension = formula::dim::Length,
                                         .symbolText = formula::symbol("ku"),
                                         .decimals = -3 };
 struct CoarseLength: formula::Quantity<CoarseLength, "l_k", "a length in a coarse unit", Coarse>
+{
+};
+
+/// A mass unit of a thousandth of a kilogram with no symbol. Invented.
+inline constexpr formula::Unit UnnamedGram { .dimension = formula::dim::Mass, .magnitudeDenominator = 1000 };
+struct UnnamedMass: formula::Quantity<UnnamedMass, "m_u", "a mass in an unnamed unit of a gram", UnnamedGram>
+{
+};
+
+/// The Celsius scale with no symbol. Invented.
+inline constexpr formula::Unit UnnamedCelsius { .dimension = formula::dim::Temperature,
+                                                .offsetNumerator = 27315,
+                                                .offsetDenominator = 100 };
+struct UnnamedReading: formula::Quantity<UnnamedReading, "T_u", "a reading on an unnamed scale", UnnamedCelsius>
 {
 };
 
@@ -147,6 +162,23 @@ TEST_CASE("a Measured formats in its unit, with its symbol, or as not measured",
     // A unit with no symbol writes none, and no space.
     CHECK(std::format("{}", Measured<Share> { Rational { 3, 5 } }) == "0.6");
     CHECK(std::format("{:~HalfEven}", Measured<Share> { Rational { 1, 3 } }) == "\xe2\x89\x88" "0.333");
+}
+
+TEST_CASE("a Measured in a dimensioned unit with no symbol formats in the coherent unit", "[format]")
+{
+    // 3 of a unit of 1/1000 kg is written as 3/1000 kg, in every body, and
+    // the width counts the coherent unit's spelling.
+    Measured<UnnamedMass> const threeUnnamed { Rational { 3 } };
+    CHECK(std::format("{}", threeUnnamed) == "0.003 kg");
+    CHECK(std::format("{:/}", threeUnnamed) == "3/1000 kg");
+    CHECK(std::format("{:.4HalfEven}", threeUnnamed) == "0.0030 kg");
+    CHECK(std::format("{:>10}", threeUnnamed) == "  0.003 kg");
+    // The same text number_text writes.
+    formula::NumberText const fraction = formula::number_text(threeUnnamed, NumberStyle::fraction());
+    CHECK(std::format("{:/}", threeUnnamed) == fraction.view());
+    // A move that fails is refused, never written in the declared unit's scale.
+    CHECK(refusalOf("{}", Measured<UnnamedReading> { Rational { std::numeric_limits<Rational::Int>::max() } })
+              .starts_with("formula: this number cannot be spelled as the format asks"));
 }
 
 TEST_CASE("std::format and number_text spell one value in one style alike", "[format]")

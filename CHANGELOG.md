@@ -64,7 +64,8 @@ change is recorded here.
   `\operatorname{round}_{2\,(1/1000\,\mathrm{kg})}`, `2000\,\mathrm{kg}^{-1}`. Every other number a formula declares
   in such a unit renders in the coherent unit too, as its trace writes it: a per-element constant's values
   (`values(3/1000 kg, 1/200 kg)`), a lookup's bands, rows and the values it gives, a binning's classes, a snap's
-  permitted values, a domain's points and an envelope's limits.
+  permitted values, a domain's points and an envelope's limits. `number_text` and `std::format` of a `Measured`
+  value in such a unit write it the same way, `3/1000 kg` or `0.003 kg`, where they wrote a bare `3`.
 - A precision limit's first pass reads in the unit of the level step it restates, as its second pass already did:
   a level constant declared in grams reads `40 g` on both lines, where the first pass read `1/25 kg`. The unit the
   limit's quantities give is still used when the level's step has none to lend.

@@ -109,12 +109,12 @@ namespace formula::detail
         "rounding mode (~ without .N only for a Measured value, whose unit declares the places)");
 }
 
-/// Refuses to write a value the format could not spell: `~Mode` on a
-/// `Measured` whose unit declares negative decimals, for a value it must
-/// round (one with no exact decimal of at most 18 places) that exact
-/// arithmetic cannot divide by 10^-decimals (see `formatter<Measured<Q>>`)
-/// -- the one case the parser's checks cannot see. Only `format` reaches it.
-/// @throws std::format_error always.
+/// Refuses to write a value the format could not spell, where the parser's
+/// checks cannot see it: `~Mode` on a `Measured` whose unit declares negative
+/// decimals, for a value with no exact decimal of 18 places or fewer that
+/// exact arithmetic cannot divide by 10^-decimals; or a `Measured` value that
+/// cannot move into the coherent unit its text names (`shown_number`). Only
+/// `format` reaches it. @throws std::format_error always.
 [[noreturn]] inline void number_format_failed(ArithmeticError spellingFailure)
 {
     if (spellingFailure == ArithmeticError::Overflow)
@@ -437,14 +437,14 @@ template <typename OutputIterator>
 
 /// Reads a `Measured<Q>` or `Outcome<Q>` replacement field's spec, as
 /// `parse_number_format_field` does, and refuses `~Mode` without `.N` when
-/// @p Q's unit declares decimals outside the -18 to 18 that `DecimalPlaces`
-/// spans.
+/// the unit @p Q's value is shown in (`shown_unit_of`) declares decimals
+/// outside the -18 to 18 that `DecimalPlaces` spans.
 template <Described Q>
 [[nodiscard]] constexpr std::format_parse_context::iterator parse_measured_format_field(
     std::format_parse_context& parseContext, NumberFormatSpec& parsed)
 {
     auto const specEnd = parse_number_format_field(parseContext, parsed);
-    constexpr int declaredPlaces = Describe<Q>::unit.decimals;
+    constexpr int declaredPlaces = shown_unit_of(Describe<Q>::unit, Describe<Q>::dimension).decimals;
     if (parsed.body == NumberFormatBody::Approximated && !parsed.places.has_value()
         && (declaredPlaces > 18 || declaredPlaces < -18))
         formula_number_format_places_out_of_range();
@@ -452,9 +452,11 @@ template <Described Q>
 }
 
 /// Writes @p shownMeasured to @p destination as @p formatSpec says: the
-/// number in @p Q's declared unit and its symbol, or `(not measured)` when it
-/// is absent. Throws `std::format_error` when the number cannot be spelled as
-/// asked (`spell_formatted_number`).
+/// number in @p Q's declared unit and its symbol -- or, for a dimensioned unit
+/// with no symbol, moved into the coherent unit and followed by its spelling,
+/// as `number_text` writes it (`shown_number`, `write_shown_unit`) -- or
+/// `(not measured)` when it is absent. Throws `std::format_error` when the
+/// number cannot be moved or spelled as asked (`number_format_failed`).
 template <Described Q, typename OutputIterator>
 [[nodiscard]] OutputIterator format_measured(Measured<Q> const& shownMeasured,
                                              NumberFormatSpec const& formatSpec,
@@ -462,9 +464,17 @@ template <Described Q, typename OutputIterator>
 {
     if (shownMeasured.is_absent())
         return write_formatted_number(NotMeasuredText, std::string_view {}, formatSpec, destination);
-    Unit const shownIn = Describe<Q>::unit;
-    NumberText const spelled = spell_formatted_number(*shownMeasured.stored(), shownIn, formatSpec);
-    return write_formatted_number(spelled.view(), view(shownIn.symbolText), formatSpec, destination);
+    Unit const declaredIn = Describe<Q>::unit;
+    std::expected<Rational, ArithmeticError> const shownValue =
+        shown_number(*shownMeasured.stored(), declaredIn, declaredIn.dimension);
+    if (!shownValue)
+        number_format_failed(shownValue.error());
+    NumberText const spelled =
+        spell_formatted_number(*shownValue, shown_unit_of(declaredIn, declaredIn.dimension), formatSpec);
+    std::string unitText;
+    auto appendTo = [&unitText](std::string_view written) { unitText += written; };
+    write_shown_unit(appendTo, declaredIn);
+    return write_formatted_number(spelled.view(), unitText, formatSpec, destination);
 }
 
 /// @p shown's `describe()` words. Called from inside `formula::detail`, so
@@ -681,6 +691,13 @@ struct formatter<formula::Int128, char>
 /// `number_text(measured, NumberStyle::approximate_decimal(Mode))` does, and
 /// `~.N Mode` at N places instead; both write the exact decimal where the
 /// value has one, and mark a rounding `≈`.
+///
+/// **A dimensioned unit with no symbol** cannot say what scale its number is
+/// on, so the number is moved exactly into the coherent unit and followed by
+/// that unit's spelling, as `number_text` writes it: 3 of a unit of 1/1000 kg
+/// is `0.003 kg`, `{:/}` `3/1000 kg`. Every body, the decimals `~Mode` reads
+/// included, then applies to the number in the coherent unit. A value that
+/// cannot be moved throws, never writing the number on the other scale.
 ///
 /// **The modes** are `RoundingMode`'s enumerators, spelled exactly as they
 /// are there. **There is no default mode**: the same number rounds

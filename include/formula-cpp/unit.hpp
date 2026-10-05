@@ -579,6 +579,17 @@ namespace detail
     };
 } // namespace detail
 
+/// The coherent unit of a dimension: magnitude one, offset zero, no symbol --
+/// the SI unit, times one of each named base dimension it has: the unit named
+/// after a base, which by convention has magnitude one.
+///
+/// Every `Unit` already states its own exact conversion to this one, so it is
+/// the single scale on which values from different units can meet.
+[[nodiscard]] constexpr Unit coherent(Dimension dimensionOfUnit) noexcept
+{
+    return Unit { .dimension = dimensionOfUnit };
+}
+
 /// Converts @p magnitude from @p from into @p to, exactly.
 ///
 /// Applies integer factors by multiply-then-divide rather than a precomputed

@@ -210,42 +210,18 @@ namespace detail
         return PrecedenceOf<N>::value;
     }
 
-    /// Whether a value of @p dimension in @p declared is shown in the coherent
-    /// unit, spelt by `coherent_unit_spelling`, rather than in @p declared:
-    /// when @p declared has no symbol and @p dimension is not dimensionless. A
-    /// unit with no symbol cannot say what scale its number is on, so the
-    /// number is moved into the one scale its spelling names. The one rule
-    /// for every place a number is written with its unit: in a trace, a
-    /// step's value, a squared deviation and a derivation's header; and in a
-    /// trace and in `render()` alike, every number a formula declares -- a
-    /// constant, a per-element constant's values, a bound or a row a table, a
-    /// curve or a permitted set declared, a limit (`shown_number`,
-    /// `shown_bound_text`, `shown_limit_row`). So every number is in the unit
-    /// written after it.
-    ///
-    /// A dimensionless unit with no symbol is always at scale 1 here: one with
-    /// a scale is refused where it is written (`RequireNamedScaledScalar`,
-    /// `unit.hpp`), so its bare number is the value.
-    [[nodiscard]] constexpr bool spells_coherent_unit(Unit const& declared, Dimension dimension)
-    {
-        return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
-    }
-
     /// A constant's rendered text is not always an atom in two data-dependent
     /// ways the type does not carry: a negative number opens with a `-` that
     /// reads like a unary minus, and a unit with a symbol renders as *two*
     /// tokens ("150 mm") rather than one -- so `pow<2>` of it would otherwise
     /// read as `150 mm^2`, i.e. `150 * mm^2`, when the tree means `(150 mm)^2`.
     /// A dimensioned unit with no symbol writes a unit too, the coherent one
-    /// (`3/1000 kg`, `spells_coherent_unit`). Both cases must bracket exactly
+    /// (`3/1000 kg`, `writes_a_unit`). Both cases must bracket exactly
     /// where a `UnaryNode` would.
     template <Unit U>
     [[nodiscard]] constexpr Precedence precedence_of(ConstantNode<U> const& node) noexcept
     {
-        constexpr Unit declaredUnit = U;
-        bool const writesUnit =
-            !view(declaredUnit.symbolText).empty() || spells_coherent_unit(declaredUnit, declaredUnit.dimension);
-        return node.number.sign() < 0 || writesUnit ? Precedence::Unary : Precedence::Atom;
+        return node.number.sign() < 0 || writes_a_unit(U) ? Precedence::Unary : Precedence::Atom;
     }
 
     /// A wrapper's *type* answer forwards correctly (`PrecedenceOf` above),
@@ -508,14 +484,14 @@ namespace detail
     }
 
     /// The power a base unit's factor is raised to, as plain text and a trace
-    /// write it: `^-1`, `^(1/2)`, `^(-1/2)`, and nothing for a power of 1.
+    /// write it: `^-1`, `^(1/2)`, `^(-1/2)`, and nothing for a power of 1
+    /// (`write_plain_unit_power`, `number_text.hpp`).
     [[nodiscard]] inline std::string plain_unit_power(std::int32_t numeratorPart, std::int32_t denominatorPart)
     {
-        if (denominatorPart != 1)
-            return "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
-        if (numeratorPart != 1)
-            return "^" + std::to_string(numeratorPart);
-        return {};
+        std::string spelled;
+        auto appendTo = [&spelled](std::string_view written) { spelled += written; };
+        write_plain_unit_power(appendTo, numeratorPart, denominatorPart);
+        return spelled;
     }
 
     /// The same power as LaTeX sets it, a superscript: `^{-1}`, `^{1/2}`,
@@ -579,49 +555,38 @@ namespace detail
     /// Each factor, its power and the space between two are set in
     /// @p notation: as above by default, and in LaTeX
     /// `\mathrm{kg}/(\mathrm{m}\,\mathrm{s}^{2})` (`LatexUnitNotation`).
+    ///
+    /// The order and the shape are `put_coherent_unit`'s (`number_text.hpp`),
+    /// which a `Measured` value's text writes with too, so the two cannot
+    /// drift; this sets each piece it writes in @p notation.
     [[nodiscard]] inline std::string coherent_unit_spelling(Dimension dimension,
                                                             AuthorTextSpelling spellName,
                                                             UnitNotation const& notation = PlainUnitNotation)
     {
-        struct BaseUnit
+        // A `put_coherent_unit` sink that sets each piece in a notation.
+        struct NotationSink
         {
-            std::string_view symbol;
-            Exponent exponent;
-        };
-        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
-                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
-                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
-                                              BaseUnit { "cd", dimension.luminosity } };
-        auto const unitPower = [&](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
-            return notation.symbol(symbolText) + notation.power(numeratorPart, denominatorPart);
-        };
-        std::string const between { notation.between };
-        std::string above;
-        std::string below;
-        std::string inverse;
-        std::size_t belowCount = 0;
-        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
-            if (baseExponent.numerator > 0)
-                above += (above.empty() ? "" : between)
-                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
-            else if (baseExponent.numerator < 0)
+            std::string& spelledSoFar;
+            AuthorTextSpelling nameSpelling;
+            UnitNotation const& setIn;
+
+            void put(std::string_view written) { spelledSoFar += written; }
+
+            void between() { spelledSoFar += setIn.between; }
+
+            void factor(std::string_view symbolText,
+                        bool namedBase,
+                        std::int32_t numeratorPart,
+                        std::int32_t denominatorPart)
             {
-                below += (below.empty() ? "" : between)
-                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
-                inverse += (inverse.empty() ? "" : between)
-                           + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
-                ++belowCount;
+                spelledSoFar += namedBase ? setIn.symbol(nameSpelling(symbolText)) : setIn.symbol(symbolText);
+                spelledSoFar += setIn.power(numeratorPart, denominatorPart);
             }
         };
-        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
-            place(spellName(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
-        for (BaseUnit const& base: bases)
-            place(base.symbol, base.exponent);
-        if (below.empty())
-            return above;
-        if (above.empty())
-            return inverse;
-        return above + "/" + (belowCount > 1 ? "(" + below + ")" : below);
+        std::string spelled;
+        NotationSink notationSink { spelled, spellName, notation };
+        put_coherent_unit(dimension, notationSink);
+        return spelled;
     }
 
     /// The unit a rounding's places or digits count in, or a numeric value's
@@ -691,14 +656,6 @@ namespace detail
             return rounding_unit_text(roundedIn, verbatim_text);
     }
 
-    /// The unit a value of @p dimension declared in @p declared is shown in:
-    /// the coherent unit where `spells_coherent_unit` says so, @p declared
-    /// otherwise.
-    [[nodiscard]] inline Unit shown_unit_of(Unit const& declared, Dimension dimension)
-    {
-        return spells_coherent_unit(declared, dimension) ? coherent(dimension) : declared;
-    }
-
     /// A value no line can spell, and why: `(not shown: <reason>)`. The one
     /// spelling of it, for a value its unit cannot show and for a value its
     /// style cannot spell in that unit alike.
@@ -722,27 +679,6 @@ namespace detail
         if (spells_coherent_unit(declared, dimension))
             return coherent_unit_spelling(dimension, spellAuthorText, notation);
         return notation.symbol(spellAuthorText(view(declared.symbolText)));
-    }
-
-    /// @p declaredNumber, a number of @p dimension declared in @p declared,
-    /// moved exactly into the unit it is shown in (`shown_unit_of`): the
-    /// coherent unit for a dimensioned unit with no symbol, and @p declared,
-    /// unchanged, otherwise.
-    ///
-    /// **The one rule for every number written with its unit**, in a
-    /// formula's text and in its trace alike: a bound or a row a table
-    /// declares, a permitted value, a limit, a constant and a per-element
-    /// constant's values, so that no number is in a scale the text after it
-    /// does not name. Only the move can fail -- for a malformed unit, or a
-    /// unit with an offset whose sum overflows -- and the caller then writes
-    /// `not_shown_text`, never the number in the wrong scale.
-    [[nodiscard]] inline std::expected<Rational, ArithmeticError> shown_number(Rational declaredNumber,
-                                                                               Unit const& declared,
-                                                                               Dimension dimension)
-    {
-        if (!spells_coherent_unit(declared, dimension))
-            return declaredNumber;
-        return checked_convert(declaredNumber, declared, coherent(dimension));
     }
 
     /// @p declaredNumber, declared in @p declaredIn, as text: moved into the
