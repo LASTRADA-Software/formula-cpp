@@ -12,6 +12,7 @@
 #include <expected>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 
 namespace formula
 {
@@ -168,6 +169,52 @@ template <Described Result, Described Q, Described R, typename F>
     if (lhs.is_absent() || rhs.is_absent())
         return Measured<Result> {};
     return Measured<Result> { function(lhs.value(), rhs.value()) };
+}
+
+namespace detail
+{
+    /// Whether @p F, called with @p Arguments, returns exactly `std::expected<Rational, ArithmeticError>`.
+    template <typename F, typename... Arguments>
+    inline constexpr bool returns_checked_rational =
+        std::is_same_v<std::invoke_result_t<F&, Arguments...>, std::expected<Rational, ArithmeticError>>;
+} // namespace detail
+
+/// `transform` for a callback that can fail: @p function returns `std::expected<Rational, ArithmeticError>` --
+/// `checked_mul` and its siblings, say -- and its error is returned unchanged. An absent measurement stays absent
+/// without calling @p function. `noexcept` when @p function is, so one line of arithmetic on a measurement can be
+/// written under a no-throw rule.
+template <Described Q, typename F>
+[[nodiscard]] constexpr std::expected<Measured<Q>, ArithmeticError> checked_transform(Measured<Q> measured, F function)
+    noexcept(std::is_nothrow_invocable_v<F&, Rational>)
+{
+    static_assert(detail::returns_checked_rational<F, Rational>,
+                  "formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>; use "
+                  "transform for a callback that returns a Rational");
+    if (measured.is_absent())
+        return Measured<Q> {};
+    std::expected<Rational, ArithmeticError> const transformed = function(measured.value());
+    if (!transformed)
+        return std::unexpected { transformed.error() };
+    return Measured<Q> { *transformed };
+}
+
+/// `combine` for a callback that can fail, as `checked_transform` is for `transform`. Absent if either measurement
+/// is absent, without calling @p function.
+template <Described Result, Described Q, Described R, typename F>
+[[nodiscard]] constexpr std::expected<Measured<Result>, ArithmeticError> checked_combine(Measured<Q> lhs,
+                                                                                         Measured<R> rhs,
+                                                                                         F function)
+    noexcept(std::is_nothrow_invocable_v<F&, Rational, Rational>)
+{
+    static_assert(detail::returns_checked_rational<F, Rational, Rational>,
+                  "formula: a checked_combine callback must return std::expected<Rational, ArithmeticError>; use "
+                  "combine for a callback that returns a Rational");
+    if (lhs.is_absent() || rhs.is_absent())
+        return Measured<Result> {};
+    std::expected<Rational, ArithmeticError> const combined = function(lhs.value(), rhs.value());
+    if (!combined)
+        return std::unexpected { combined.error() };
+    return Measured<Result> { *combined };
 }
 
 namespace detail

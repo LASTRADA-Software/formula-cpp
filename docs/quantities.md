@@ -275,6 +275,26 @@ writes an absent `Measured`:
 a present volume combined with an absent mass: (not measured)
 ```
 
+`formula::checked_transform` and `formula::checked_combine<Result>` are the
+same two functions for a callback that can fail: the callback returns
+`std::expected<Rational, ArithmeticError>` -- `formula::checked_mul` and its
+siblings do -- and the result is a
+`std::expected<Measured<...>, ArithmeticError>` that carries the callback's
+error unchanged. Absence propagates exactly as above, and an absent input
+never reaches the callback. Both are `noexcept` when the callback is, so
+arithmetic on a measurement can be written under a no-throw rule. A
+tenfold dilution of a reading:
+
+```cpp
+auto const diluted = formula::checked_transform(
+    reading, [](Rational litres) noexcept { return formula::checked_mul(litres, Rational { 10 }); });
+if (!diluted)
+    return std::unexpected { diluted.error() }; // Overflow, say
+```
+
+A callback that returns a bare `Rational` does not compile with either: it
+cannot fail, so it belongs to `transform` or `combine`.
+
 `formula::checked_convert_to<R>` converts a `Measured<Q>` into a
 `Measured<R>` and keeps this rule too -- an absent input converts to an
 absent output. The two dimensions are checked where the call is written,

@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <expected>
 #include <limits>
 #include <type_traits>
 
@@ -516,4 +517,57 @@ TEST_CASE("the throwing twins throw the error their checked form returns", "[mea
     Measured<UnroundableReading> const unroundable { *Rational::make(1, 3) };
     CHECK_THROWS_AS(formula::round_to_declared(unroundable, formula::RoundingMode::HalfEven),
                     formula::ArithmeticException);
+}
+
+TEST_CASE("checked_transform: present, absent, and an error from the callback", "[measured][checked]")
+{
+    constexpr auto timesTen = [](Rational reading) noexcept { return formula::checked_mul(reading, Rational { 10 }); };
+    constexpr std::expected<Measured<WaterVolume>, ArithmeticError> diluted =
+        formula::checked_transform(Measured<WaterVolume> { Rational { 3, 2 } }, timesTen);
+    STATIC_REQUIRE(diluted.has_value());
+    STATIC_REQUIRE(diluted->value() == Rational { 15 });
+
+    int calls = 0;
+    auto const counting = [&calls](Rational reading) {
+        ++calls;
+        return std::expected<Rational, ArithmeticError> { reading };
+    };
+    std::expected<Measured<WaterVolume>, ArithmeticError> const absent =
+        formula::checked_transform(Measured<WaterVolume> {}, counting);
+    REQUIRE(absent.has_value());
+    REQUIRE(absent->is_absent());
+    REQUIRE(calls == 0);
+
+    constexpr auto overflowing = [](Rational) noexcept {
+        return std::expected<Rational, ArithmeticError> { std::unexpected { ArithmeticError::Overflow } };
+    };
+    constexpr std::expected<Measured<WaterVolume>, ArithmeticError> refused =
+        formula::checked_transform(Measured<WaterVolume> { Rational { 1 } }, overflowing);
+    STATIC_REQUIRE(refused.error() == ArithmeticError::Overflow);
+
+    STATIC_REQUIRE(noexcept(formula::checked_transform(Measured<WaterVolume> {}, timesTen)));
+    STATIC_REQUIRE(!noexcept(formula::checked_transform(Measured<WaterVolume> {}, counting)));
+}
+
+TEST_CASE("checked_combine: absent if either is absent; an error propagates", "[measured][checked]")
+{
+    constexpr auto multiply = [](Rational lhsReading, Rational rhsReading) noexcept {
+        return formula::checked_mul(lhsReading, rhsReading);
+    };
+    constexpr std::expected<Measured<Density>, ArithmeticError> product = formula::checked_combine<Density>(
+        Measured<WaterVolume> { Rational { 2 } }, Measured<SpecimenMass> { Rational { 3 } }, multiply);
+    STATIC_REQUIRE(product.has_value());
+    STATIC_REQUIRE(product->value() == Rational { 6 });
+    constexpr std::expected<Measured<Density>, ArithmeticError> oneAbsent = formula::checked_combine<Density>(
+        Measured<WaterVolume> {}, Measured<SpecimenMass> { Rational { 3 } }, multiply);
+    STATIC_REQUIRE(oneAbsent.has_value());
+    STATIC_REQUIRE(oneAbsent->is_absent());
+    constexpr auto dividing = [](Rational lhsReading, Rational rhsReading) noexcept {
+        return formula::checked_div(lhsReading, rhsReading);
+    };
+    constexpr std::expected<Measured<Density>, ArithmeticError> byZero = formula::checked_combine<Density>(
+        Measured<WaterVolume> { Rational { 2 } }, Measured<SpecimenMass> { Rational {} }, dividing);
+    STATIC_REQUIRE(byZero.error() == ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(
+        noexcept(formula::checked_combine<Density>(Measured<WaterVolume> {}, Measured<SpecimenMass> {}, multiply)));
 }

@@ -364,6 +364,13 @@ formula_add_negative_test(measured_convert_dimension_mismatch_absent
 formula_add_negative_test(measured_convert_currency_mismatch
     "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
 
+# A checked_transform or checked_combine callback reports failure through
+# std::expected; one returning a bare Rational belongs to transform or combine.
+formula_add_negative_test(checked_transform_plain_callback
+    "formula: a checked_transform callback must return std::expected")
+formula_add_negative_test(checked_combine_plain_callback
+    "formula: a checked_combine callback must return std::expected")
+
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately
 # non-`constexpr` sentinel rather than truncating it.

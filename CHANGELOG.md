@@ -18,6 +18,12 @@ change is recorded here.
   decimal (whitespace, a decimal comma, separators, `inf`, `nan`) is `DomainError`. Text beyond the parser's range
   is `Overflow`, for example digits above 2^127 - 1 in magnitude, or a scale outside 10^-38 to 10^38 once trailing
   zeros fold. The same parser reads `_r` literals.
+- `formula::checked_transform` and `formula::checked_combine<Result>` apply a callback that can fail to measured
+  values: it returns `std::expected<Rational, ArithmeticError>`, as `checked_mul` does, and its error comes back
+  unchanged. An absent value stays absent without calling it. Both are `noexcept` when the callback is, so
+  `checked_transform(reading, [](Rational litres) noexcept { return checked_mul(litres, Rational { 10 }); })` can be
+  written under a no-throw rule. A callback that returns a bare `Rational` does not compile; it belongs to
+  `transform` or `combine`.
 
 ### Changed
 
