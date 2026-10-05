@@ -126,8 +126,9 @@ TEST_CASE("a precision limit read from another record is stamped with that recor
           "[record-statistics]")
 {
     // `precision_tests.cpp`'s fixture P: the level is the pair's mean,
-    // 40.4525 g, and r = 0.1 g + level / 50 = 0.90905 g. The level's first pass is a step
-    // `precision_level_produced` records, and it is the reference's.
+    // 40.4525 g, and r = 0.1 g + level / 50 = 0.90905 g. The level's first
+    // pass is a step `precision_level_produced` records, and it is the
+    // reference's.
     constexpr auto limitThere = formula::from_record<Reference>(formula::precision_limit<formula::PrecisionKind::Repeatability>(
         (var<ResultA> + var<ResultB>) / rat(2),
         formula::constant<unit::Gram>(rat(1, 10)) + rat(1, 50) * formula::precision_level<ResultA>));

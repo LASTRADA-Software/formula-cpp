@@ -108,22 +108,22 @@
 /// `ArithmeticError` already does, with no new plumbing.
 ///
 /// **What "structured fields, never a composed sentence" means concretely
-/// here.** The value that missed and the unit it is stated in are never
-/// lost -- they are the operand's own evaluated result, sitting with
-/// whichever caller dispatched it (and, under a `RecordingSink`,
-/// recoverable from the operand's own step exactly as any other value
-/// is). The table's
-/// identity is available the same way every other node's provenance is
-/// available in this library: wrap the lookup in `documented(...)`
-/// (`citation.hpp`), which already carries a title, a reference, a section
-/// and a full text as separate fields -- never a composed sentence -- and
-/// already composes with any `Node`, lookups included, with no change needed
-/// here. *Rendering* a miss's structured fields into prose -- the step's
+/// here.** The value that missed and the unit it is stated in are never lost --
+/// they are the operand's own evaluated result, sitting with whichever caller
+/// dispatched it (and, under a `RecordingSink`, recoverable from the operand's
+/// own step exactly as any other value is). The table's identity is available
+/// the same way every other node's provenance is available in this library:
+/// wrap the lookup in `documented(...)` (`citation.hpp`), which already carries
+/// a title, a reference, a section and a full text as separate fields -- never
+/// a composed sentence -- and already composes with any `Node`, lookups
+/// included, with no change needed here.
+///
+/// *Rendering* a miss's structured fields into prose -- the step's
 /// `StepKind::BandedLookup`, the interval the table covers
-/// (`Step::coveredRange`) and why it failed (`Step::lookupFailure`), read
-/// back out by `trace_render.hpp` as it does for every other kind -- is
-/// `trace.hpp`/`trace_render.hpp` work, not this file's; nothing here
-/// composes a sentence that would make it harder.
+/// (`Step::coveredRange`) and why it failed (`Step::lookupFailure`), read back
+/// out by `trace_render.hpp` as it does for every other kind -- is
+/// `trace.hpp`/`trace_render.hpp` work, not this file's; nothing here composes
+/// a sentence that would make it harder.
 ///
 /// **Bands are half-open, `[low, high)`, exactly as `band.hpp` declares them --
 /// see `band.hpp`'s file comment.** A value sitting exactly on a shared
