@@ -1369,7 +1369,7 @@ namespace detail
     }
 
     /// What a citation says, in one bracketed clause:
-    /// `[Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]`.
+    /// `[Road gradient, Example Standard 1:2020, 5.4.2, (3)]`.
     ///
     /// Empty when the citation names nothing, so a `Documented` step with a
     /// blank citation adds no trailing noise. "Names nothing" means all four

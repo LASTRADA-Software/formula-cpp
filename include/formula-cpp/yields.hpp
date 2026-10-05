@@ -3,7 +3,7 @@
 
 /// @file
 /// A formula bound to the quantity it computes, named once where the formula
-/// is written: `constexpr auto ratio = yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);`
+/// is written: `constexpr auto ratio = yields<Gradient>(var<Rise> / var<Run>);`
 /// then `evaluate(ratio, environment)`. The author still names the result --
 /// nothing is deduced from the expression, whose dimension does not name a
 /// quantity (`evaluate.hpp`) -- but only once. A `Yields` is not a node: it is

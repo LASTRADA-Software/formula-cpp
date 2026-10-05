@@ -35,7 +35,7 @@ namespace formula
 /// designated initialiser cannot skip a field that has no default.
 struct Citation
 {
-    /// What the formula is called, in prose: "Water/cement ratio".
+    /// What the formula is called, in prose: "Road gradient".
     std::string_view title {};
     /// The document it comes from, however the citing organisation writes it.
     std::string_view reference {};

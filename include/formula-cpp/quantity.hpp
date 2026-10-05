@@ -22,27 +22,27 @@ namespace formula
 /// quantity is named, mixed in one formula if need be. The alias is the
 /// shorter, and the one the guides and examples lead with:
 ///
-///     using WaterVolume = formula::Quantity<struct WaterVolumeTag,  // a tag of its own
-///                                           "V_w",
-///                                           "volume of the effective mixing water",
-///                                           formula::unit::Litre>;
+///     using Rise = formula::Quantity<struct RiseTag,  // a tag of its own
+///                                    "h",
+///                                    "height gained",
+///                                    formula::unit::Millimetre>;
 ///
 /// The struct derives a type of its own, and gives that type's own name back
 /// to it as the tag:
 ///
-///     struct WaterVolume:
-///         formula::Quantity<WaterVolume, "V_w", "volume of the effective mixing water", formula::unit::Litre>
+///     struct Rise:
+///         formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 ///     {
 ///     };
 ///
 /// **The tag is what makes a quantity distinct.** Two quantities whose symbol,
 /// description and unit coincide are two types as long as their tags differ,
 /// and neither is accepted where the other is expected. In the alias form,
-/// `struct WaterVolumeTag` in the argument list declares the tag, an
+/// `struct RiseTag` in the argument list declares the tag, an
 /// incomplete class that is never defined and need not be, in the nearest
 /// enclosing namespace or block -- inside a class, that is the namespace
-/// around the class, not the class. `using WaterVolume =
-/// Quantity<WaterVolume, ...>` does not compile, since an alias cannot name
+/// around the class, not the class. `using Rise =
+/// Quantity<Rise, ...>` does not compile, since an alias cannot name
 /// itself: an alias needs a second name for its tag. In the struct form the
 /// type is its own tag, which also keeps the bases of two quantities distinct,
 /// so a function taking one quantity's base cannot accept another's.
@@ -51,10 +51,10 @@ namespace formula
 ///
 /// - **An alias cannot be forward-declared; a struct can.** A header that only
 ///   names a quantity -- a function declaration taking `Measured<Q>` -- can
-///   say `struct WaterVolume;` for a struct quantity, and must include the
+///   say `struct Rise;` for a struct quantity, and must include the
 ///   alias's declaration.
 /// - **Two aliases with all four arguments equal are one type.** `using A =
-///   Quantity<ATag, "V", "a volume", unit::Litre>;` and a `using B` with the
+///   Quantity<ATag, "L", "a length", unit::Millimetre>;` and a `using B` with the
 ///   same four arguments declare one quantity under two names, and nothing
 ///   can object: there is only one type, and naming it twice is not an error
 ///   anywhere in C++. Give every alias its own tag. Two structs never
@@ -79,11 +79,11 @@ namespace formula
 ///
 /// - **A diagnostic may name the specialisation rather than the alias.** g++
 ///   and clang print the whole specialisation, tag first --
-///   `Quantity<WaterVolumeTag, FixedString<4>{"V_w"}, ..., Unit{...}>`. cl
+///   `Quantity<RiseTag, FixedString<2>{"h"}, ..., Unit{...}>`. cl
 ///   usually keeps the alias's name where the alias was written, in the
 ///   library's own messages among them, but not always. All three print a
 ///   struct quantity's own name. Naming a tag after its quantity --
-///   `WaterVolumeTag` -- is what keeps such a diagnostic readable.
+///   `RiseTag` -- is what keeps such a diagnostic readable.
 ///
 /// Distinctness across translation units is verified by linking, for both
 /// spellings.
