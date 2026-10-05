@@ -237,7 +237,10 @@ either of its units declares one: micrometres per second are shown as `µm/s`
 and keyed `um/s`.
 
 The key is never displayed: `render()`, traces, `number_text` and
-`std::format` write `symbolText`.
+`std::format` write `symbolText`. It can still decide which unit a trace shows:
+when either unit declares a key, the quotient's key must fit a `Symbol` and
+hold no `/`. When it does not, the trace borrows no quotient of those two units,
+even where their symbols would fit, and falls back to the coherent unit.
 
 ### Comparing units
 

@@ -149,7 +149,7 @@ std::expected<formula::ParsedDecimal, formula::ArithmeticError> const parsed =
     formula::parse_decimal_text("2.400");
 if (!parsed)
 {
-    std::println("not a decimal: {}", formula::describe(parsed.error()));
+    std::println("could not read it: {}", formula::describe(parsed.error()));
     return;
 }
 // parsed->value is 12/5, parsed->places is 3

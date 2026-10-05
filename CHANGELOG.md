@@ -39,15 +39,15 @@ change is recorded here.
   still written in full. `same_unit(leftUnit, rightUnit)` says whether two units are the same unit -- the same
   dimension, factor and offset as declared, symbol and key (`view_ascii`) -- whatever their declared decimals and
   bounds, which `==`, comparing every member, does not answer. A factor of 2/2000 is not the same as 1/1000 there.
-- `formula::parse_decimal_text` reads decimal text that arrives at run time -- a CSV import, a form field, a
-  configuration value -- into a `ParsedDecimal`: its exact value and the places it was typed to, so `"2.400"` is 12/5
-  at 3 places and `"2.4"` is 12/5 at 1. `Rational::from_decimal_text` gives the value alone. Text that is not a
-  decimal (whitespace, a decimal comma, separators, `inf`, `nan`) is `DomainError`. Text beyond the parser's range
-  is `Overflow`, for example digits above 2^127 - 1 in magnitude, or a scale outside 10^-38 to 10^38 once trailing
-  zeros fold. The same parser reads `_r` literals.
-- `formula::checked_transform` and `formula::checked_combine<Result>` apply a callback that can fail to measured
-  values: it returns `std::expected<Rational, ArithmeticError>`, as `checked_mul` does, and its error comes back
-  unchanged. An absent value stays absent without calling it. Both are `noexcept` when the callback is, so
+- `parse_decimal_text` reads decimal text that arrives at run time -- a CSV import, a form field, a configuration
+  value -- into a `ParsedDecimal`: its exact value and the places it was typed to, so `"2.400"` is 12/5 at 3 places
+  and `"2.4"` is 12/5 at 1. `Rational::from_decimal_text` gives the value alone. Text that is not a decimal
+  (whitespace, a decimal comma, separators, `inf`, `nan`) is `DomainError`. Text beyond the parser's range is
+  `Overflow`, for example digits above 2^127 - 1 in magnitude, or a scale outside 10^-38 to 10^38 once trailing zeros
+  fold. The same parser reads `_r` literals.
+- `checked_transform` and `checked_combine<Result>` apply a callback that can fail to measured values: it returns
+  `std::expected<Rational, ArithmeticError>`, as `checked_mul` does, and its error comes back unchanged. An absent
+  value stays absent without calling it. Both are `noexcept` when the callback is, so
   `checked_transform(reading, [](Rational litres) noexcept { return checked_mul(litres, Rational { 10 }); })` can be
   written under a no-throw rule. A callback that returns a bare `Rational` does not compile; it belongs to
   `transform` or `combine`. Nor does one that cannot be called with a `Rational`, which is refused with
@@ -61,18 +61,21 @@ change is recorded here.
 - **Breaking:** `SymbolCapacity` is 32 bytes including the terminator, up from 16: a unit symbol or a named base's
   name holds 31 bytes, enough for compound laboratory units such as `µmol/(L·min·kg)` (18 bytes of UTF-8). `Symbol`
   is 16 bytes larger, and `Dimension` and `Unit`, which hold symbols, are larger with it; the longest text
-  `number_text` spells grows from 97 to 113 bytes, still within `NumberTextCapacity`.
+  `number_text` spells grows from 97 to 113 bytes, still within `NumberTextCapacity`. A trace shows an
+  `opaque_output` in the quotient of its inputs' units, `AcmeGrams/AcmeVials` for instance, when that quotient's
+  symbol is 16 to 31 bytes long, where it used to fall back to the coherent unit.
 - **Breaking:** a unit whose symbol is not ASCII must declare an ASCII key, `.asciiText = formula::symbol("ug/L")`
   for a symbol written `µg/L`, where the library takes it as a quantity's, constant's, rounding's, table's or other
   formula node's unit. Without one that use no longer compiles, with
   `formula: a unit whose symbol is not ASCII must declare an ASCII key`; a key that is itself not ASCII is refused
   the same way. `Unit` is larger by the new `Symbol` member, which follows `symbolText`: a `Unit` built with
-  positional initialisers, `Unit { dimension, 1, 1000, 0, 1, symbol, 2 }`, no longer compiles or puts its values in
-  the wrong members, while designated initialisers are unaffected. Unit equality compares `asciiText` too, so two
-  units that differ only in their key are no longer equal: a micrometre built at run time without a key is not
-  `unit::Micrometre`. To compare what a unit is, ignoring its decimals and bounds, use `same_unit`, which compares
-  keys through `view_ascii`: that micrometre, keyed `µm`, is not the same unit as `unit::Micrometre`, keyed `um`,
-  either.
+  positional initialisers no longer compiles or puts its values in the wrong members, while designated initialisers
+  are unaffected. `Unit { dimension, 1, 1000, 0, 1, symbol("g"), 2 }` still compiles, but the 2 meant for `decimals`
+  becomes the key's first byte, 0x02, which is not printable, so every use that checks the key refuses the unit, and
+  `decimals` is back at its default of 3. Unit equality compares `asciiText` too, so two units that differ only in
+  their key are no longer equal: a micrometre built at run time without a key is not `unit::Micrometre`. To compare
+  what a unit is, ignoring its decimals and bounds, use `same_unit`, which compares keys through `view_ascii`: that
+  micrometre, keyed `µm`, is not the same unit as `unit::Micrometre`, keyed `um`, either.
 - **Breaking:** `Bounds::present` is replaced by `lowPresent` and `highPresent`, one for each end, so a unit can
   declare a minimum or a maximum alone. Each is a `BoundsEnd`, which reads as a `bool` but takes nothing else, so a
   `Bounds` built with positional initialisers in the old order no longer compiles: in `{ true, 0, 1, 100, 1 }`, once
