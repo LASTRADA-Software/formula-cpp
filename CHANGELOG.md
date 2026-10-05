@@ -50,10 +50,13 @@ change is recorded here.
   units that differ only in their key are no longer equal: a micrometre built at run time without a key is not
   `unit::Micrometre`.
 - **Breaking:** `Bounds::present` is replaced by `lowPresent` and `highPresent`, one for each end, so a unit can
-  declare a minimum or a maximum alone. Both come before the four integer fields: a `Bounds` built with positional
-  initialisers, `{ true, 0, 1, 100, 1 }`, no longer compiles or puts its values in the wrong members, while
-  `bounds()` and designated initialisers are unaffected. Code that read `present` reads `lowPresent || highPresent`,
-  or each end on its own. A unit that declared bounds with `bounds()` gives the same answers as before.
+  declare a minimum or a maximum alone. Both come before the four integer fields, so a `Bounds` built with
+  positional initialisers changes meaning or stops compiling. One whose low numerator is a constant 0 or 1 still
+  compiles, with every value one member later: `{ true, 0, 1, 100, 1 }`, once a range of 0 to 100, now declares a
+  minimum of 1/100 and no maximum, so 0 is reported below the minimum and any value above 100 within bounds. Any
+  other positional list no longer compiles. Write `bounds()`, `at_least()`, `at_most()` or designated initialisers
+  instead, which are unaffected. Code that read `present` reads `lowPresent || highPresent`, or each end on its own.
+  A unit that declared bounds with `bounds()` gives the same answers as before.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.

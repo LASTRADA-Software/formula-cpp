@@ -14,6 +14,7 @@
 #include <formula-cpp/formula.hpp>
 
 #include <expected>
+#include <optional>
 #include <print>
 #include <string_view>
 
@@ -149,8 +150,22 @@ int main()
     // `{}` of a BoundsCheck writes its describe() words.
     std::println("unbounded unit (litre) reports: {}", *unboundedVerdict);
     std::println("bounded gauge at 42%: {}", *boundedVerdict);
-    bool const boundsBehaveAsDocumented =
-        *unboundedVerdict == BoundsCheck::NotChecked && *boundedVerdict == BoundsCheck::WithinBounds;
+
+    // Limits held at run time -- here a catalogue row with a minimum and no
+    // maximum -- need no unit to carry them, and either end may be absent.
+    std::optional<Rational> const catalogueMinimum = Rational { 25 };
+    Rational const gaugeReading = 42;
+    auto const catalogueVerdict = formula::checked_within(gaugeReading, catalogueMinimum, std::nullopt);
+    if (!catalogueVerdict)
+    {
+        std::println("checking the gauge against the catalogue: {}", catalogueVerdict.error());
+        return 1;
+    }
+    std::println("gauge at 42% against a catalogue minimum of 25%: {}", *catalogueVerdict);
+
+    bool const boundsBehaveAsDocumented = *unboundedVerdict == BoundsCheck::NotChecked
+                                          && *boundedVerdict == BoundsCheck::WithinBounds
+                                          && *catalogueVerdict == BoundsCheck::WithinBounds;
 
     // ---- 8. A base dimension the SI does not have: money ----
     //

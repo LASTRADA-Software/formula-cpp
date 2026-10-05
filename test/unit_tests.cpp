@@ -1090,6 +1090,30 @@ TEST_CASE("checked_within_bounds: a unit declared with at_least or at_most", "[u
     STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -1, 2 }, NonNegative) == BoundsCheck::BelowMinimum);
     STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -1'000'000 }, AtMostTwenty) == BoundsCheck::WithinBounds);
     STATIC_REQUIRE(*formula::checked_within_bounds(Rational { 41, 2 }, AtMostTwenty) == BoundsCheck::AboveMaximum);
+
+    // A declared end is built with Rational::make, so a zero denominator on a
+    // one-sided unit is refused as it is on a two-sided one.
+    constexpr formula::Unit ZeroDenominatorMinimum { .dimension = formula::dim::Scalar,
+                                                     .symbolText = formula::symbol("zmin"),
+                                                     .bounds = formula::at_least(1, 0) };
+    constexpr formula::Unit ZeroDenominatorMaximum { .dimension = formula::dim::Scalar,
+                                                     .symbolText = formula::symbol("zmax"),
+                                                     .bounds = formula::at_most(1, 0) };
+    STATIC_REQUIRE(formula::checked_within_bounds(Rational { 5 }, ZeroDenominatorMinimum).error()
+                   == formula::ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(formula::checked_within_bounds(Rational { 5 }, ZeroDenominatorMaximum).error()
+                   == formula::ArithmeticError::DivisionByZero);
+
+    // An undeclared end's fields are ignored: its zero denominator is never
+    // built, so the declared minimum alone answers.
+    constexpr formula::Unit UndeclaredMaximum { .dimension = formula::dim::Scalar,
+                                                .symbolText = formula::symbol("umax"),
+                                                .bounds = { .lowPresent = true,
+                                                            .lowNumerator = 0,
+                                                            .lowDenominator = 1,
+                                                            .highDenominator = 0 } };
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { 5 }, UndeclaredMaximum) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -5 }, UndeclaredMaximum) == BoundsCheck::BelowMinimum);
 }
 
 // ---- cross-translation-unit identity ----

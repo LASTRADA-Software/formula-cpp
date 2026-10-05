@@ -391,23 +391,31 @@ and `highPresent`, one for each end. `formula::bounds(lowNumerator,
 lowDenominator, highNumerator, highDenominator)` declares both,
 `formula::at_least(numerator, denominator)` a minimum only, and
 `formula::at_most(numerator, denominator)` a maximum only. Both ends are
-inclusive, and a unit that declares neither reports `NotChecked`.
+inclusive, and a unit that declares neither reports `NotChecked`. A `Bounds`
+written positionally before the two flags existed can change meaning without a
+compile error -- `{ true, 0, 1, 100, 1 }`, once 0 to 100, now declares a minimum
+of 1/100 and no maximum -- so write `bounds()`, `at_least()`, `at_most()` or
+designated initialisers.
 
 Limits known only at run time -- a specification row, a catalogue entry -- need
 no unit to carry them. `formula::checked_within(value, lowEnd, highEnd)` takes
 each end as a `std::optional<Rational>`, and either may be absent. Here a
-catalogue row gives a minimum and no maximum:
+catalogue row gives the gauge a minimum and no maximum:
 
-<!-- snippet: not from the example -->
 ```cpp
 std::optional<Rational> const catalogueMinimum = Rational { 25 };
-auto const strengthCheck = formula::checked_within(measuredStrength, catalogueMinimum, std::nullopt);
-if (!strengthCheck)
+Rational const gaugeReading = 42;
+auto const catalogueVerdict = formula::checked_within(gaugeReading, catalogueMinimum, std::nullopt);
+if (!catalogueVerdict)
 {
-    std::println("checking the strength: {}", strengthCheck.error());
+    std::println("checking the gauge against the catalogue: {}", catalogueVerdict.error());
     return 1;
 }
-std::println("strength: {}", *strengthCheck);
+std::println("gauge at 42% against a catalogue minimum of 25%: {}", *catalogueVerdict);
+```
+
+```text
+gauge at 42% against a catalogue minimum of 25%: within the declared bounds
 ```
 
 It answers by the rule `checked_within_bounds` applies to a unit's declared

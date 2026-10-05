@@ -740,23 +740,25 @@ namespace detail
     return detail::or_throw(checked_convert(magnitude, from, to));
 }
 
-/// The outcome of checking a value against its unit's declared bounds.
+/// The outcome of checking a value against bounds: those its unit declares (`checked_within_bounds`), or limits
+/// given at run time (`checked_within`).
 enum class BoundsCheck : std::uint8_t
 {
-    /// Bounds were declared and the value lies within them, inclusive.
+    /// There were bounds to check, and the value lies within them, inclusive.
     WithinBounds,
-    /// Below the declared minimum.
+    /// Below the minimum, declared by the unit or given at run time.
     BelowMinimum,
-    /// Above the declared maximum.
+    /// Above the maximum, declared by the unit or given at run time.
     AboveMaximum,
-    /// The unit declares no bounds, so nothing was checked. Deliberately NOT
-    /// the same as WithinBounds: a value that was never checked must not be
-    /// reported as one that was checked and passed.
+    /// There were no bounds -- the unit declares none, or neither end was
+    /// given at run time -- so nothing was checked. Deliberately NOT the same
+    /// as WithinBounds: a value that was never checked must not be reported as
+    /// one that was checked and passed.
     NotChecked,
-    /// There was no value to check. Distinct from NotChecked, which says the
-    /// unit declares no range: a measurement nobody took and a range nobody
-    /// declared are different facts, and a report that shows them as one is the
-    /// collapse NotChecked exists to prevent.
+    /// There was no value to check. Distinct from NotChecked, which says there
+    /// was no range: a measurement nobody took and a range nobody declared are
+    /// different facts, and a report that shows them as one is the collapse
+    /// NotChecked exists to prevent.
     NotMeasured,
 };
 
