@@ -1958,7 +1958,8 @@ TEST_CASE("a variant's tag and a lookup key's name are escaped", "[trace-render]
     CHECK(formula::render_trace(keyTrace, { .maxSteps = 10 }) == "1. lookup(key steel\\; y \\\\) = 863/1000\n");
 }
 
-TEST_CASE("a rounding or a numeric value in a unit with no symbol adds no unit clause to its line", "[trace-render]")
+TEST_CASE("a rounding or a numeric value in a dimensionless unit with no symbol adds no unit clause to its line",
+          "[trace-render]")
 {
     // `unit::One`'s symbol is empty, and a method's rounding step once read
     // `round(#4, in )`, a numeric value `numeric(#3, in )`. The clause is

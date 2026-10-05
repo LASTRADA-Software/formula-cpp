@@ -1809,7 +1809,8 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
             { rat(863, 1000), rat(1381, 1000), rat(1043, 1000) }))));
 }
 
-TEST_CASE("render: a rounding or a numeric value in a unit with no symbol adds no unit clause", "[render][rounding]")
+TEST_CASE("render: a rounding or a numeric value in a dimensionless unit with no symbol adds no unit clause",
+          "[render][rounding]")
 {
     // `unit::One`'s symbol is empty, and the clause once read `to 2 dp of )`
     // and `numeric(..., in )`. A value with no unit is shown with none, as a
