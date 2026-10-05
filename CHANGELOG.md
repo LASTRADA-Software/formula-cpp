@@ -6,6 +6,16 @@ change is recorded here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-05
+
+The fourth release. Exact numbers hold 128 bits: `Rational` stores a new `formula::Int128`, so realistic laboratory
+statistics that overflowed 64 bits now answer, and `rounded_ln`, `rounded_log10` and `rounded_exp` take every
+argument a `Rational` holds. Every value a trace, a rendered formula, `number_text` or `std::format` writes now names
+the unit its number is in: a computed value borrows its operand's unit or shows its coherent unit's spelling, a unit
+with no symbol is named by its size, and an inverse unit reads `kg^-1`. `explain` of a series is refused in the
+library's words. Some changes break code written for 0.3.0, among them a dimensionless unit with a scale and no
+symbol, which no longer compiles; each is listed under Changed.
+
 ### Added
 
 - **`formula::Int128`** (`int128.hpp`), a signed 128-bit integer with one API on every compiler: the compiler's own
@@ -751,7 +761,8 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   for 205.5 g, and so were a curve over it and a value read off that curve. Each now reads in the
   series' unit, `411/2 g`, when that unit has a symbol and no offset.
 
-[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.4.0
 [0.3.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.2.0
 [0.1.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.1.0
