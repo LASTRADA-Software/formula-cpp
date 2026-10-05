@@ -5,9 +5,9 @@
 // that the comparison this file exists to provoke is neither the first the
 // guard makes nor the last.
 //
-// The rule inherited from phase 10 is "put the defect in the middle, because
-// that defeats a first-only and a last-only sweep at once", and phase 10 read
-// "middle" as a middle PAIR of four rows, because a band table is checked
+// The rule for a band table is "put the defect in the middle, because that
+// defeats a first-only and a last-only sweep at once", and there "middle"
+// means a middle PAIR of four rows, because a band table is checked
 // pairwise between neighbours. This guard is not pairwise between neighbours:
 // it compares the first variant against each later one, so a pack of three
 // yields only the two comparisons (0,1) and (0,2), and there is no middle one

@@ -89,7 +89,7 @@ static_assert(unit::Celsius.offsetNumerator == 27315 && unit::Celsius.offsetDeno
 static_assert(unit::Fahrenheit.offsetNumerator == 45967 && unit::Fahrenheit.offsetDenominator == 180);
 static_assert(unit::Fahrenheit.magnitudeNumerator == 5 && unit::Fahrenheit.magnitudeDenominator == 9);
 
-// ---- a Unit is a template argument, which is what phase 4 needs ----
+// ---- a Unit is a template argument, which is what Quantity needs ----
 
 template <Unit U>
 struct Measured
@@ -997,8 +997,8 @@ TEST_CASE("a unit template argument has the same identity in every translation u
     // field-by-field rather than named from unit::Litre -- so this linking at
     // all is the assertion, mirroring dimension_tests.cpp's cross-TU case for
     // Dimension. Unit nests Symbol and Bounds inside the NTTP, a strictly
-    // richer mangling than Dimension's, and phase 4's Quantity<Unit> is the
-    // consumer that will depend on it.
+    // richer mangling than Dimension's, and `Quantity<…, Unit>` is the
+    // consumer that depends on it.
     constexpr Unit LitreRebuilt { .dimension = dim::Volume,
                                   .magnitudeNumerator = 1,
                                   .magnitudeDenominator = 1000,

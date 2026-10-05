@@ -520,7 +520,7 @@ void write_symbol_table(std::ofstream& out, std::vector<formula::SymbolEntry> co
 /// symbol table asks for `Dialect::Markdown` and the display form asks for
 /// `Dialect::LaTeX`, each the dialect it is actually for, rather than
 /// assuming today's `collect()` ignores `D` for the symbol table -- an
-/// assumption a later phase could quietly invalidate.
+/// assumption a later change could quietly invalidate.
 template <formula::Node N>
 void write_formula(std::ofstream& out, N const& node)
 {

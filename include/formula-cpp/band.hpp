@@ -23,7 +23,7 @@
 /// the same reason `Bounds`, a unit's validity range, is: `Rational` keeps its
 /// members private, so it is not a *structural* type and cannot be a
 /// non-type template parameter (dimension.hpp's comment on `Exponent` says so
-/// first, and a spike compiled the rejection on all four compilers). An
+/// first, and the rejection was measured on all four compilers). An
 /// aggregate of plain `std::int64_t` fields is structural, and so is
 /// `std::array<Band, N>` of them -- which is what makes it possible to
 /// validate a table's bands at compile time, with `static_assert`, rather
@@ -172,17 +172,17 @@ template <typename A, typename B, typename C, typename D>
 }
 
 /// A table of bands, declared in ascending order. An alias template, not a
-/// wrapping struct: a spike compiled `template <BandTable Bands>` directly,
-/// with alias-template deduction, on all four compilers, so a second type
-/// would add nothing but a name to unwrap. Consumers (phase 10 tasks 2-4)
-/// name a table either by giving `N` explicitly or by letting it deduce from
-/// a braced initialiser.
+/// wrapping struct: `template <BandTable Bands>` compiles directly, with
+/// alias-template deduction, as measured on all four compilers, so a second
+/// type would add nothing but a name to unwrap. Consumers name a table
+/// either by giving `N` explicitly or by letting it deduce from a braced
+/// initialiser.
 template <std::size_t N>
 using BandTable = std::array<Band, N>;
 
 /// One of the two predicates well-formedness validation is built on (the
 /// other is `band_is_well_formed` just below), used both by the
-/// `static_assert` wiring and by any runtime loader (phase 10 tasks 2-4) --
+/// `static_assert` wiring and by any runtime loader --
 /// so the two checks cannot drift the way this project's checks have four
 /// times before.
 ///

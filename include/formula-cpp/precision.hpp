@@ -54,7 +54,7 @@
 /// **What is not modelled:** reproducibility across laboratories changes only
 /// the name (`R` rather than `r`) and the trace's words, never the arithmetic.
 /// The other laboratory's result is an ordinary input here; reading another
-/// test's record is a later phase's.
+/// test's record is the job of records (`record.hpp`).
 
 #include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
@@ -113,7 +113,7 @@ struct AbsoluteValueNode: NodeBase
 
 /// The absolute value of `operand`: `abs(var<ResultA> - var<ResultB>)`.
 ///
-/// Named `abs` after a spike: beside `<cmath>` and `<cstdlib>`, under
+/// Named `abs` after measuring it: beside `<cmath>` and `<cstdlib>`, under
 /// `using namespace std;`, found by ADL and as a consumer's local name, it drew
 /// no ambiguity and no warning on cl 19.51, clang-cl and clang++ 22.1.3, or
 /// g++ 13.3 and 14.2.
@@ -338,7 +338,7 @@ namespace detail
     /// declared in namespace `formula` with no specialisation here is refused
     /// (`RequireLevelChildrenFor`), where a placeholder inside it would
     /// otherwise hide from every check below without a word -- as
-    /// `DerivedQuantityNode`, and then phase 12's `sum` and elementwise
+    /// `DerivedQuantityNode`, and then the series `sum` and elementwise
     /// nodes, once did. On a front end whose spelling of a type this cannot
     /// read, every kind reaching the primary is refused rather than passed as
     /// a consumer's. One divergence between those toolchains: a class
@@ -566,9 +566,9 @@ namespace detail
     {
     };
 
-    // Phase 12's series kinds. A series is not a `Node`, but a placeholder
-    // broadcast into one -- `series<M, 3> + precision_level<A>` under a
-    // `sum` -- is inside the level all the same.
+    // The series kinds (`series.hpp`). A series is not a `Node`, but a
+    // placeholder broadcast into one -- `series<M, 3> + precision_level<A>`
+    // under a `sum` -- is inside the level all the same.
     template <Described Q, std::size_t N>
     struct LevelChildren<SeriesVarNode<Q, N>>: LevelLeaf
     {
@@ -637,9 +637,9 @@ namespace detail
     {
     };
 
-    // Phase 14's snap and curves: a snap reads its operand, a curve its two
-    // series, a splice its two curves, an interpolation its curve and the
-    // point it is read at. A declared domain is a table of points.
+    // Snaps and curves (`snap.hpp`, `curve.hpp`): a snap reads its operand, a
+    // curve its two series, a splice its two curves, an interpolation its curve
+    // and the point it is read at. A declared domain is a table of points.
     template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
     struct LevelChildren<SnapNode<KeyUnit, Permitted, Tie, Operand>>: LevelParent<Operand>
     {
@@ -665,7 +665,7 @@ namespace detail
     {
     };
 
-    // Phase 12's raw observations, and the classes they are binned into.
+    // Raw observations, and the classes they are binned into.
     template <Described Q, std::size_t Capacity>
     struct LevelChildren<ObservationsVarNode<Q, Capacity>>: LevelLeaf
     {

@@ -353,7 +353,7 @@ struct formula::TagName<PunctuatedLot>
 
 TEST_CASE("a lineage attribute's name is escaped in the trace, as other author text is", "[lineage-trace]")
 {
-    // Phase 11's trace escape (`escaped_author_text`), applied to role and
+    // The trace's escape (`escaped_author_text`), applied to role and
     // attribute names through `tag_words`. A role's name is identifier-like,
     // so only an attribute's can hold these; unescaped, ";" would read as the
     // start of a new clause, and a "\" before it as escaping it.

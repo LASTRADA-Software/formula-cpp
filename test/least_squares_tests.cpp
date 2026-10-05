@@ -232,8 +232,8 @@ TEST_CASE("two points give the exact line through them", "[least-squares]")
 namespace
 {
 // Point k at ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) mm): a different
-// denominator on every point, the spike's shape that overflows from 27
-// points (step 3). Invented, and ascending, as a curve's points must be.
+// denominator on every point, a shape that overflows at 27 points, as the
+// test below pins. Invented, and ascending, as a curve's points must be.
 template <std::size_t N>
 [[nodiscard]] auto distinct_denominators()
 {

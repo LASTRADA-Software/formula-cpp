@@ -105,7 +105,7 @@ int main()
     std::println("no strength measured: {}", notChecked.kind());
     std::println("divides by zero: {} ({})", invalid.kind(), *invalid.error());
 
-    // The safety property this whole phase exists for, stated as code rather
+    // The safety property constraints exist for, stated as code rather
     // than only as a printed word: an unresolved check is neither satisfied
     // nor violated -- it is its own, honest, third thing.
     bool const notCheckedIsHonest = notChecked.is_not_checked() && !notChecked.is_satisfied() && !notChecked.is_violated();

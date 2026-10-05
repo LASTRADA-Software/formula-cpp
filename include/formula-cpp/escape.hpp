@@ -13,7 +13,7 @@
 /// number and the rule does not correct for that, because it was never meant
 /// to be evaluated in any other unit. This library cannot make a rule like
 /// that consistent, and silently dropping the unit to accommodate it would
-/// defeat the entire dimensional layer phases 3 and 4 exist for.
+/// defeat what the entire dimensional layer exists for.
 ///
 /// So the hole is explicit, narrow, and impossible to take quietly:
 ///

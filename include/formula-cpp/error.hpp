@@ -43,8 +43,8 @@ enum class ArithmeticError : std::uint8_t
 };
 
 /// A lowercase noun phrase with no trailing punctuation, so callers can embed it
-/// in a longer sentence. Spec phase 5 renders this into the `invalid` arm of the
-/// evaluation result.
+/// in a longer sentence. An evaluation result's `invalid` arm is written with
+/// it.
 [[nodiscard]] constexpr std::string_view describe(ArithmeticError cause) noexcept
 {
     switch (cause)

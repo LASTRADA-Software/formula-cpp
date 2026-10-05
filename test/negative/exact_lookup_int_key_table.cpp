@@ -6,7 +6,7 @@
 // types `ExactLookupNode` refuses: a validator that blessed an
 // `std::array<int, N>` would be certifying a table no node could ever be
 // built from -- two surfaces answering the same question differently, which
-// is the defect this phase keeps finding. Pinned separately from
+// is a defect this library has met more than once. Pinned separately from
 // `exact_lookup_keys_match_int_key.cpp` so that removing either guard alone
 // is caught; each file exercises exactly one entry point. This must not
 // compile.

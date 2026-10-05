@@ -455,9 +455,9 @@ TEST_CASE("a result entered by a person replaces an opaque output, which is not 
 TEST_CASE("an opaque call and its outputs survive a default-constructibility probe", "[opaque]")
 {
     // std::tuple asks whether its members are default-constructible; a `{}`
-    // initialiser on an expression member turned that question into a hard
-    // error on clang, g++-14 and libc++ in phase 11 (defect class 4). Here
-    // it must simply compile, and answer.
+    // initialiser on an expression member once turned that question into a
+    // hard error on clang, g++-14 and libc++. Here it must simply compile, and
+    // answer.
     using Output = decltype(formula::opaque_output<"span">(span_call));
     STATIC_REQUIRE(std::is_default_constructible_v<std::tuple<Output>> == std::is_default_constructible_v<Output>);
     STATIC_REQUIRE(std::is_default_constructible_v<std::tuple<decltype(span_call)>>

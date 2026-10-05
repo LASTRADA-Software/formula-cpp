@@ -90,9 +90,9 @@ namespace formula
 ///
 /// **There is no dimension parameter.** A `Unit` already carries its dimension,
 /// so passing both would state it twice and let the two contradict each other.
-/// A spike compiled that spelling with `dim::Mass` against `unit::Litre` and all
-/// three compilers accepted it in silence. `dimension` below is derived, so the
-/// contradiction cannot be written.
+/// That spelling, with `dim::Mass` against `unit::Litre`, compiled without a
+/// diagnostic on every compiler it was tried on. `dimension` below is derived,
+/// so the contradiction cannot be written.
 template <typename Tag, detail::FixedString Symbol, detail::FixedString Description, Unit U>
 struct Quantity
 {

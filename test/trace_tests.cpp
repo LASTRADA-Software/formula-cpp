@@ -49,7 +49,7 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
                                 formula::Measured<Volume> { formula::Rational { volume } });
 }
 
-// The predicate every phase-8 conditional test below shares: strength over an
+// The predicate the conditional tests below share: strength over an
 // invented 473/10 MPa. Kept at namespace scope so the mutation test (further
 // down) can name its exact type.
 constexpr auto overThreshold = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
@@ -364,7 +364,7 @@ TEST_CASE("explain returns an empty trace when the result is a manual override",
     CHECK(explained.trace.steps.size() == 0);
 }
 
-// --------------------------------------------------------------- phase 8
+// ----------------- rounding, logarithms, numeric values and conditionals
 
 TEST_CASE("a Round step records its own declared unit and granularity, and the pre-rounding value stays "
           "visible on its operand's own step",
@@ -745,7 +745,7 @@ TEST_CASE("a trace records one Constraint step per constraint checked via check_
     }
 }
 
-// ------------------------------------------------------- phase 10: lookups
+// ----------------------------------------------------------------- lookups
 
 namespace
 {
@@ -1805,7 +1805,7 @@ TEST_CASE("a branch told with no when() entered is dropped, never read off an em
     CHECK(trace.marks.empty());
 }
 
-// ---- A series on the trace (phase 12) ----
+// ---- A series on the trace ----
 
 namespace
 {

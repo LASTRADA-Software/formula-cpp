@@ -9,8 +9,8 @@
 /// does not link.
 ///
 /// Unit nests Symbol (a 16-byte char array) and Bounds inside the NTTP, a
-/// strictly richer mangling than Dimension's, and phase 4's Quantity<Unit> is
-/// the consumer that will depend on this holding.
+/// strictly richer mangling than Dimension's, and `Quantity<…, Unit>` is the
+/// consumer that depends on this holding.
 
 #include <formula-cpp/unit.hpp>
 

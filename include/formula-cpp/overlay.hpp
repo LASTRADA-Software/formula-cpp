@@ -13,7 +13,7 @@
 /// which yields a method.
 ///
 /// An overlay is applied at **compile time** and the method it yields is a new
-/// type. A spike that built both shapes settled it: the compile-time overlay met every one of section
+/// type. Both shapes were built and compared: the compile-time overlay met every one of section
 /// 16.7's demands and cost nothing at the call site, where a runtime overlay
 /// could not replace a formula without type erasure. The set of jurisdictions
 /// is closed and lives in the type; which one applies is a runtime choice made
@@ -2128,7 +2128,7 @@ namespace detail
     /// own bounds, verdict and citation: a jurisdiction's tolerance reaches
     /// the limit (`with_constant<Tolerance>`, §16.7), and a substitution for
     /// the sample's quantity is refused by the result check, as it is for any
-    /// series (phase 12's message).
+    /// series (`RequireConstantNotSeries`'s message).
     template <typename Sub, PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
     struct ConstantRewrite<Sub, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>
     {

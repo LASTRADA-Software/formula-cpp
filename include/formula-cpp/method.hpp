@@ -164,9 +164,9 @@ namespace detail
 /// aggregate, so a `VariantCase<...>` can be declared with no factory call.
 ///
 /// Deliberately not a `Node`. A variant does not stand where a number stands;
-/// it names one of the formulas a method chooses between. Phase 10 settled
-/// that test for lookups -- a lookup *is* a node because it produces a
-/// quantity -- and it comes out the other way here.
+/// it names one of the formulas a method chooses between. The same test makes
+/// a lookup a node, because a lookup produces a quantity, and it comes out the
+/// other way here.
 template <typename Tag, Node Expr>
 struct VariantCase
 {
@@ -913,7 +913,8 @@ namespace detail
 /// deliberately: this is a public aggregate with a public member, so a
 /// `Variants<...>` can be declared directly with no factory call anywhere,
 /// and a check placed only in the factory would let that route through. The
-/// same mistake was found, and fixed, in the lookup tables of phase 10.
+/// lookup tables were once open to the same mistake, and are checked the same
+/// way.
 template <typename... Cs>
 struct Variants
 {
@@ -1701,8 +1702,8 @@ namespace detail
 {
     /// Refuses a tag no variant declares. There is no fallback variant and no
     /// "first match wins": a specimen matching no variant has no result, the
-    /// same ruling phase 9 made for `bool satisfied()` and phase 10 made for a
-    /// lookup miss. An author who wants a catch-all writes one.
+    /// same ruling as for a constraint's `bool satisfied()` and a lookup miss.
+    /// An author who wants a catch-all writes one.
     template <typename Tag, typename... Cs>
     struct RequireVariantForTag
     {

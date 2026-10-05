@@ -8,8 +8,8 @@
 // whose left dimension is a stand-in (the opening's), asks nothing. One
 // message, counted by hand on cl 19.51, g++-14 and clang++-20. The scalar
 // operators' own chain, var<w> + var<m_r> + var<m_t>, still draws two on g++
-// and clang++ (measured): BinaryNode carries no such
-// flag, which is inherited and left for a later phase.
+// and clang++ (measured): BinaryNode carries no such flag, which is
+// inherited and left as it is.
 #include <formula-cpp/series.hpp>
 
 struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>

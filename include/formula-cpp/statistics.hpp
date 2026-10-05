@@ -7,8 +7,8 @@
 /// `sum` is for a series.
 ///
 /// **A sample** (`SampleSource`) is any source of repeated determinations of
-/// one quantity. That is a phase 12 series, `series<Q, N>` or any expression
-/// over one: a series expression is a sample, so
+/// one quantity. That is a series (`series.hpp`), `series<Q, N>` or any
+/// expression over one: a series expression is a sample, so
 /// `sample_mean(series<A, 3> / series<B, 3>)` is the mean of the per-element
 /// ratios. It is also raw observations, `observations<Q, Capacity>`, whose
 /// count is known only at run time: `Capacity` is a bound, not a count, and
@@ -68,13 +68,13 @@ namespace detail
     inline constexpr bool is_observations_sample<ObservationsVarNode<Q, Capacity>> = true;
 } // namespace detail
 
-/// A source of repeated determinations of one quantity: a phase 12 series,
-/// any expression over one, raw observations (`observations<Q, Capacity>`),
-/// or a rejection of outliers from any of these (`without_outliers`,
-/// `rejection.hpp`). Its dimension is `S::dimension`, and how many
-/// determinations it can hold is `detail::sample_capacity<S>` -- `N` for a
-/// series, `Capacity` for observations; how many it does hold is known when
-/// it is evaluated.
+/// A source of repeated determinations of one quantity: a series
+/// (`series.hpp`), any expression over one, raw observations
+/// (`observations<Q, Capacity>`), or a rejection of outliers from any of
+/// these (`without_outliers`, `rejection.hpp`). Its dimension is
+/// `S::dimension`, and how many determinations it can hold is
+/// `detail::sample_capacity<S>` -- `N` for a series, `Capacity` for
+/// observations; how many it does hold is known when it is evaluated.
 template <typename S>
 concept SampleSource = SeriesNode<S> || detail::is_observations_sample<std::remove_cvref_t<S>>
                        || detail::is_sample_transformer<std::remove_cvref_t<S>>;
@@ -111,9 +111,8 @@ namespace detail
 } // namespace detail
 
 /// The result of evaluating a sample: its values, absent as a whole when the
-/// sample is, or the failure that stopped it -- phase 12's
-/// `SeriesFailure`, whose `element` is empty when the failure belongs to no
-/// determination.
+/// sample is, or the failure that stopped it -- a series' `SeriesFailure`,
+/// whose `element` is empty when the failure belongs to no determination.
 template <typename Rep, std::size_t C>
 using EvaluatedSample = std::expected<std::optional<detail::SampleValue<Rep, C>>, SeriesFailure>;
 

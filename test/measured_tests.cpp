@@ -190,7 +190,7 @@ static_assert(formula::combine<Density>(Measured<WaterVolume> {}, Measured<Speci
 TEST_CASE("absence survives a conversion instead of becoming a number", "[measured]")
 {
     // 450 litres is exactly 9/20 of a cubic metre -- the same exact conversion
-    // phase 3 proved, now carrying a quantity's identity with it.
+    // `unit_tests.cpp` pins, now carrying a quantity's identity with it.
     auto const present = formula::checked_convert_to<VolumeInCubicMetres>(measured(450, 1));
     REQUIRE(present.has_value());
     REQUIRE(present->has_value());
@@ -285,7 +285,7 @@ TEST_CASE("rounding to declared precision leaves an absent value absent", "[meas
 
 // ---- an inner error is an ERROR, never silently reported as absence ----
 //
-// Three functions delegate to a phase-3 checked_ function and, until this
+// Three functions delegate to an underlying checked_ function and, until this
 // section, only ever exercised its success path. Turning the inner failure
 // into `return Measured<Q> {}` (or, for bounds, `NotMeasured`) instead of
 // propagating the error leaves every test above this comment green -- that

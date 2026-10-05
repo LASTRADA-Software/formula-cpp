@@ -366,8 +366,8 @@ constexpr bool answers_every_environment_member()
 {
     // Environment's public members, listed by hand at the branch point
     // (d09657e): provides, is_entered, is_entered_series, get, get_series,
-    // get_observations and source_of. If phase 14 or any later change adds a
-    // member nodes call, add it here and forward it.
+    // get_observations and source_of. If a change adds a member nodes call,
+    // add it here and forward it.
     return requires(AE const& wrapped) {
         { AE::template provides<Q> } -> std::convertible_to<bool>;
         { AE::template is_entered<Q> } -> std::convertible_to<bool>;

@@ -18,17 +18,17 @@
 /// **Ruling, decided here once and binding on every other surface: a
 /// half-open interval is spelled `<low> to under <high>`, never `[low,
 /// high)`.** A band really is `[103, 197)` (`band.hpp`), and that is exactly
-/// the character sequence CommonMark reads as a link label -- the defect
-/// phase 8 published, when `round[to 1 dp of mm](d)` reached a page with its
-/// operand silently dropped. The guard test in `render_tests.cpp` asserts
+/// the character sequence CommonMark reads as a link label -- a defect once
+/// published, when `round[to 1 dp of mm](d)` reached a page with its operand
+/// silently dropped. The guard test in `render_tests.cpp` asserts
 /// that no Markdown rendering contains `](` or a bare `[`, and a band written
 /// the mathematician's way would defeat it. `to under` is not a compromise
 /// spelling: it *says* the exclusion in words, where a reader has to know the
 /// bracket convention to see it, and it survives every Markdown flavour
 /// because it contains no punctuation at all. Whatever renders a band next --
 /// a trace, a `document()` walk, a guide, a gallery -- spells it this way,
-/// because two surfaces naming the same thing differently is the phase-8
-/// defect itself rather than a matter of taste.
+/// because two surfaces naming the same thing differently is that defect
+/// itself rather than a matter of taste.
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/binning.hpp>
@@ -96,8 +96,9 @@ namespace detail
     {
         /// A comparison or a `when()` -- binds looser than every arithmetic
         /// operator, so either one needs a bracket wherever it sits as the
-        /// operand of `+`, `-`, `*`, `/`, unary negation, or a power. Added in
-        /// spec phase 8; every other rung keeps its original number.
+        /// operand of `+`, `-`, `*`, `/`, unary negation, or a power. Added
+        /// later than the others, at 0; every other rung keeps its original
+        /// number.
         Conditional = 0,
         Additive = 1,
         Multiplicative = 2,
@@ -328,7 +329,7 @@ namespace detail
     ///
     /// **The one place the marker is spelled.** Every series node that names
     /// a quantity calls this, so the marker cannot drift between node kinds.
-    /// Chosen by the phase 12 spike: under MathJax 3.2.2 with the site's
+    /// Chosen by measurement: under MathJax 3.2.2 with the site's
     /// configuration and under tectonic 0.17.0 with `[OT1]{fontenc}`,
     /// `{x_m}_{i}`, `{R}_{i}` and `{f_{c}}_{i}` typeset, while `x_m_i` is a
     /// "Double subscript" error in both; python-markdown 3.10.3 keeps
@@ -349,8 +350,8 @@ namespace detail
     /// @p quantitySymbol -- already the jurisdiction's, through `symbol_of` --
     /// marked as a retry's value at attempt @p attemptIndex (`k`, `k-1` or
     /// `0`), in dialect @p D: `w(k-1)` in plain text, `` `w(k-1)` `` in
-    /// Markdown and `{w}_{k-1}` in LaTeX -- `series_marker`'s family, chosen
-    /// by phase 15's spike (step 9) for the same engines.
+    /// Markdown and `{w}_{k-1}` in LaTeX -- `series_marker`'s family,
+    /// measured under the same engines.
     ///
     /// **The one place the marker is spelled**, for the render, the document
     /// and the trace (`trace_render.hpp`) alike.
@@ -1636,9 +1637,9 @@ template <Dialect D, SampleSource S, Vocabulary V>
 }
 
 /// A sample's variance renders as a call on its sample,
-/// `sample_variance(m(i))`, and in LaTeX as `s^{2}({m}_{i})`, the spelling
-/// a spike typeset clean. The variance is one value and carries no series
-/// marker; its sample carries its own.
+/// `sample_variance(m(i))`, and in LaTeX as `s^{2}({m}_{i})`, a spelling
+/// measured to typeset clean under MathJax and tectonic. The variance is one
+/// value and carries no series marker; its sample carries its own.
 template <Dialect D, SampleSource S, Vocabulary V>
 [[nodiscard]] std::string render_node(SampleVarianceNode<S> const& node, V const& vocabulary)
 {
@@ -1954,7 +1955,7 @@ template <Dialect D, Node Expr, Vocabulary V>
     return render<D>(node.replacement(), vocabulary);
 }
 
-// ------------------------------------------------------- phase 10: lookups
+// ----------------------------------------------------------------- lookups
 //
 // Three node kinds, one shape: `<name>(<what is looked up>, <row>, <row>,
 // ...)`. See `detail::lookup_call` for why that is the existing call shape
@@ -2231,8 +2232,8 @@ template <Dialect D, SampleSizeTable Sizes, Unit ResultUnit, Node Count, Vocabul
 /// and as `\left\lvert <operand>\right\rvert` in LaTeX.
 ///
 /// **Never a `|`, in any dialect.** A bare vertical bar inside a Markdown table
-/// cell ends the cell, silently: a spike measured a row whose formula held an
-/// absolute value in bars render as a one-cell row holding only the text
+/// cell ends the cell, silently -- measured: a row whose formula held an
+/// absolute value in bars renders as a one-cell row holding only the text
 /// before the first bar (python-markdown 3.10.3, pymdown-extensions 12.1). A
 /// formula is quoted in exactly such tables -- a symbol table, a gallery row,
 /// a `document()` page -- so the plain and Markdown spellings are a call, and
@@ -2340,7 +2341,7 @@ template <Dialect D,
 /// `r(0.1 g + 1/50 * level; level = (x_A + x_B) / 2)`, `R(...)` for
 /// reproducibility, and in LaTeX
 /// `r\left(... \right)\Big\vert_{\text{level} = ...}`, the evaluation bar
-/// typeset clean under MathJax 3.2.2 and tectonic by a spike -- spelt
+/// measured to typeset clean under MathJax 3.2.2 and tectonic -- spelt
 /// `\vert`, not `|`, so that no `|` reaches a Markdown table cell (see the
 /// absolute value's `render_node`).
 ///
@@ -2418,10 +2419,10 @@ template <Dialect D, Described Q, Vocabulary V>
 /// code span as a series marker writes it; and in LaTeX
 /// `\text{linear least squares}({t}_{i}, {L}_{i})_{\text{slope}}`.
 ///
-/// The spellings are phase 15's spike's (step 9), measured under MathJax 3.2.2
-/// with the site's configuration, tectonic 0.17.0 with `[OT1]{fontenc}` and
-/// python-markdown 3.10.3. The names go in as written: an operation's name and
-/// output names hold only ASCII letters, digits and single spaces
+/// The spellings were measured under MathJax 3.2.2 with the site's
+/// configuration, tectonic 0.17.0 with `[OT1]{fontenc}` and python-markdown
+/// 3.10.3. The names go in as written: an operation's name and output names
+/// hold only ASCII letters, digits and single spaces
 /// (`RequireOpaqueNameReadable`), which every dialect shows as they are. The
 /// operation's name is its own text, like `numeric(...)`, and no vocabulary
 /// renames it; its inputs' symbols follow the vocabulary.
@@ -2679,12 +2680,12 @@ namespace detail
     /// waiting for the join with derived and replaced variants, and one no
     /// test that lacks such a node would see.
     ///
-    /// **A consumer's nodes** keep the extension point every earlier phase
+    /// **A consumer's nodes** keep the extension point the library has always
     /// published, `template <Dialect D> std::string render_node(TheirNode
     /// const&)`. Passing the vocabulary as a second argument would leave every
-    /// such overload unreachable -- measured by the phase-11 spike on clang++
-    /// 20.1.8 ("no matching function for call to 'render_node'"), and again on
-    /// cl 19.51 by deleting the fallback below (C2672). So, in order:
+    /// such overload unreachable -- measured on clang++ 20.1.8 ("no matching
+    /// function for call to 'render_node'"), and again on cl 19.51 by
+    /// deleting the fallback below (C2672). So, in order:
     ///
     ///  1. a two-argument overload that is not this library's -- the consumer
     ///     opted in -- is called with the vocabulary;

@@ -141,7 +141,7 @@ inline constexpr bool formats_by_describe<RetryEnd> = true;
 /// repeat a step a few times; a larger count is almost always a typo, and 64
 /// attempts of a five-node attempt with a four-node judgement fit one
 /// constant evaluation on cl 19.51, clang-cl and clang++ 22.1.3, g++ 13.3 and
-/// g++ 14.2 (measured in phase 15's spike, step 5).
+/// g++ 14.2, as measured.
 ///
 /// The cap bounds the count, not the numbers: an exact fixpoint as simple as
 /// `6.08 g + w(k-1) / 2` doubles its denominator every attempt and passes

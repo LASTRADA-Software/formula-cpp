@@ -448,17 +448,16 @@ TEST_CASE("render: a dimensionless constant as the base of a power needs no brac
     CHECK(formula::render(formula::pow<2>(formula::constant<formula::unit::One>(rat(5)))) == "5^2");
 }
 
-// ------------------------------------------------------- phase 8: rounding
+// ---------------------------------------------------------------- rounding
 
 TEST_CASE("render: a decimal-places rounding node renders as round(..., to N dp of unit)", "[render][rounding]")
 {
     // The granularity is a comma-separated second argument, operand first --
     // see the comment on RoundNode's render_node for why: a trailing suffix
-    // with nothing between it and the operand (round(... to 1 dp of mm),
-    // fixed in review round 1) let it misattach to a WhenNode operand's else
-    // branch, and a `[...]` prefix right against the operand's own
-    // parentheses (round[to 1 dp of mm](...), the round-1 fix itself) read as
-    // a CommonMark link in Markdown, fixed in review round 3.
+    // with nothing between it and the operand (round(... to 1 dp of mm)) once
+    // let it misattach to a WhenNode operand's else branch, and a `[...]`
+    // prefix right against the operand's own parentheses (round[to 1 dp of
+    // mm](...), the first fix itself) read as a CommonMark link in Markdown.
     constexpr auto rounded =
         formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Diameter>);
@@ -589,7 +588,7 @@ TEST_CASE("render: a significant-digits rounding node inside a power and inside 
           == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{mm}}(d) \\cdot 2");
 }
 
-// --------------------------------------------------- phase 8: predicates
+// ------------------------------------------------------------ predicates
 
 TEST_CASE("render: a predicate renders as lhs comparison rhs", "[render][predicate]")
 {
@@ -647,7 +646,7 @@ TEST_CASE("render: a conditional nested as a predicate's operand keeps its brack
     CHECK(formula::render(guarded) == "(if f > 473/10 MPa then f else f * 2) > 137/10 MPa");
 }
 
-// --------------------------------------------------- phase 8: conditionals
+// ------------------------------------------------------------ conditionals
 
 TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases block", "[render][conditional]")
 {
@@ -659,8 +658,8 @@ TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases b
     CHECK(formula::render<Dialect::LaTeX>(chosen)
           == "\\begin{cases} f \\cdot 2 & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
              "\\end{cases}");
-    // RoundingMode is not the only thing this phase deliberately keeps out of
-    // the rendered text -- WhenNode has no state to omit, but note that its
+    // RoundingMode is not the only thing the renderer deliberately keeps out
+    // of the rendered text -- WhenNode has no state to omit, but note that its
     // predicate's operands are plain quantities and constants here on
     // purpose: the brackets a nested conditional needs are covered below,
     // not in this standalone case.
@@ -668,7 +667,7 @@ TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases b
 
 TEST_CASE("render: a conditional inside a power keeps its bracket", "[render][conditional]")
 {
-    // This is the case phase 6's two rendering bugs generalise to: a node
+    // This is the case two earlier rendering bugs generalise to: a node
     // whose *text* binds looser than arithmetic must bracket as the base of
     // a power, exactly as a negative or unit-bearing constant does.
     constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
@@ -697,17 +696,16 @@ TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][
              "\\cdot 2");
 }
 
-// ------------------------------------------------- phase 8: numeric_value_of
+// ---------------------------------------------------------- numeric_value_of
 
 TEST_CASE("render: a numeric-value escape hatch renders as numeric(..., in unit)", "[render][escape]")
 {
     // The unit is a comma-separated second argument, operand first -- see the
     // comment on NumericValueNode's render_node for why: a trailing suffix
-    // with nothing between it and the operand (numeric(... in MPa), fixed in
-    // review round 1) let it misattach to a WhenNode operand's else branch,
-    // and a `[...]` prefix right against the operand's own parentheses
-    // (numeric[in MPa](...), the round-1 fix itself) read as a CommonMark
-    // link in Markdown, fixed in review round 3.
+    // with nothing between it and the operand (numeric(... in MPa)) once let
+    // it misattach to a WhenNode operand's else branch, and a `[...]` prefix
+    // right against the operand's own parentheses (numeric[in MPa](...), the
+    // first fix itself) read as a CommonMark link in Markdown.
     constexpr auto numeric =
         formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(var<Strength>);
 
@@ -736,15 +734,14 @@ TEST_CASE("render: a numeric-value escape hatch inside a power and inside a prod
     CHECK(formula::render<Dialect::LaTeX>(numeric * rat(2)) == "\\{f/\\mathrm{MPa}\\} \\cdot 2");
 }
 
-// ----------------------------- phase 8 fix round 1: nesting a new kind
-// inside another new kind, in every dialect. This is the exact axis review
-// round 1 found untested -- and where the trailing-suffix bug (findings 1-2
-// of that review) was hiding.
+// ---------------------------------------- nesting one node kind inside
+// another, in every dialect. This is the exact axis a review once found
+// untested -- and where the trailing-suffix bug was hiding.
 
 TEST_CASE("render: a rounding node wrapping a conditional keeps the granularity from misattaching to a branch",
           "[render][rounding][conditional]")
 {
-    // Before review round 1's fix, this rendered in Plain as "round(if f > 473/10
+    // Before the fix, this rendered in Plain as "round(if f > 473/10
     // MPa then d * 2 else d * 3 to 1 dp of mm)" -- a reader parses "d * 3 to
     // 1 dp of mm" as one phrase, rounding the else branch alone. The
     // granularity is now a comma-separated second argument, so nothing can
@@ -769,8 +766,8 @@ TEST_CASE("render: a rounding node wrapping a conditional keeps the granularity 
 TEST_CASE("render: a numeric-value escape hatch wrapping a conditional keeps the unit from misattaching to a branch",
           "[render][escape][conditional]")
 {
-    // The exact shape of must-fix finding 2 in review round 1: before the
-    // fix, this rendered in Plain as "numeric(if f > 473/10 MPa then f * 2 else f
+    // The exact shape of the trailing-suffix bug: before the fix, this
+    // rendered in Plain as "numeric(if f > 473/10 MPa then f * 2 else f
     // * 4 in MPa)", reading as if "in MPa" (and therefore the whole escape
     // hatch) applied to the else branch alone.
     constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
@@ -865,7 +862,7 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
              "\\end{cases} & \\text{otherwise} \\end{cases}");
 }
 
-// --------------------------------------------------- phase 9: constraints
+// ------------------------------------------------------------ constraints
 
 TEST_CASE("render: a constraint renders as its rule, never its verdict", "[render][constraint]")
 {
@@ -923,7 +920,7 @@ TEST_CASE("render: a constraint's predicate brackets a nested conditional exactl
     CHECK(formula::render(rule) == "require (if f > 473/10 MPa then f else f * 2) > 137/10 MPa");
 }
 
-// ------------------------------------------------------- phase 10: lookups
+// ----------------------------------------------------------------- lookups
 
 namespace
 {
@@ -1276,7 +1273,7 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
     // All three empty tables are valid and all three always miss (`band.hpp`,
     // `lookup.hpp`). `lookup(d)` would show a reader a complete-looking call
     // with the whole table silently absent, which is the same class of lie as
-    // the operand a published page dropped in phase 8.
+    // the operand a published page once dropped.
     CHECK(formula::render(banded_lookup<unit::Millimetre, NoBands, unit::One>(var<Diameter>, {}))
           == "lookup(d, no rows)");
     CHECK(formula::render(exact_lookup<NoShapes, unit::One>(MouldShape::Beam, {}))
@@ -1458,7 +1455,7 @@ TEST_CASE("render: every character either dialect escapes in a key's name is esc
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")
 {
     // A citation is documentation, not arithmetic -- `document()` surfaces it.
-    // Worth one case per phase that adds node kinds, because `DocumentedNode`
+    // Worth one case per family of node kinds, because `DocumentedNode`
     // is the wrapper `documented()` puts round a table's identity, and a table
     // is the part of a method that carries a source.
     constexpr auto cited = formula::documented(bandedLookup(), { .title = "Invented Method 7, table 2" });
@@ -1528,9 +1525,9 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
 {
     // THE cross-surface test. Every other case in this section asserts one
     // dialect's output against a literal, and a set of such cases cannot catch
-    // two dialects drifting apart -- that is the whole lesson of phase 8,
-    // where two renderers each had passing tests and each was internally
-    // consistent, and a human reading a published page found the disagreement.
+    // two dialects drifting apart -- that is the whole lesson of the time two
+    // renderers each had passing tests and each was internally consistent,
+    // and a human reading a published page found the disagreement.
     //
     // So this compares the dialects **against each other**, and locates what
     // it compares by POSITION -- the field index inside the rendered call --
@@ -1570,13 +1567,12 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
     dialectsAgree(curveLookup(), 4);
 }
 
-// --------------------------------------------- phase 8 fix round 3: guard
-// against the whole class of bug review round 3 found, not just this one
-// instance. `"](" `is CommonMark's inline-link syntax -- a Markdown renderer
-// displays only the link's label, silently dropping whatever the destination
-// held, so string equality between two Markdown-dialect strings is blind to
-// this: two strings can be equal to each other and still both be wrong in
-// the same way. Only checking the actual character sequence a Markdown
+// ------------------------- guard against the whole class of bug, not just
+// one instance of it. `"](" `is CommonMark's inline-link syntax -- a Markdown
+// renderer displays only the link's label, silently dropping whatever the
+// destination held, so string equality between two Markdown-dialect strings is
+// blind to this: two strings can be equal to each other and still both be wrong
+// in the same way. Only checking the actual character sequence a Markdown
 // parser treats specially catches it, which is what this test does instead.
 
 namespace
@@ -1653,23 +1649,23 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         // A bare "[" alone is not risky by itself, but nothing this library
         // writes has any legitimate reason to contain one either -- so the
         // stronger check costs nothing and catches a "[...]" reference-style
-        // link too, not only the inline "[...](...)" shape review round 3
-        // found. A backslash-escaped `\[` is inert, and is exactly how a key's
+        // link too, not only the inline "[...](...)" shape that once reached a
+        // page. A backslash-escaped `\[` is inert, and is exactly how a key's
         // author-supplied name carries one (`detail::literal_words_in_dialect`).
         CHECK(unescapedPositions(text, '[').empty());
 
-        // Phase 13: a bare `|`. Inside a Markdown table cell it ends the
-        // cell, silently -- a spike measured a row whose formula held an
-        // absolute value in bars render as one cell holding only the text
-        // before the first bar (python-markdown 3.10.3, pymdown-extensions
-        // 12.1). No plain or Markdown spelling in this library writes one:
-        // an absolute value is `abs(...)` there, and bars are LaTeX's alone.
+        // A bare `|`. Inside a Markdown table cell it ends the cell, silently
+        // -- measured: a row whose formula held an absolute value in bars
+        // renders as one cell holding only the text before the first bar
+        // (python-markdown 3.10.3, pymdown-extensions 12.1). No plain or
+        // Markdown spelling in this library writes one: an absolute value is
+        // `abs(...)` there, and bars are LaTeX's alone.
         CHECK(unescapedPositions(text, '|').empty());
 
-        // Phase 10 round 2: an asterisk. A bare `*` CANNOT be forbidden the
-        // way `[` is, because one node kind emits it legitimately --
-        // `render_node(BinaryNode)` spells multiplication ` * ` in Plain and
-        // Markdown alike, and always will.
+        // An asterisk. A bare `*` CANNOT be forbidden the way `[` is, because
+        // one node kind emits it legitimately -- `render_node(BinaryNode)`
+        // spells multiplication ` * ` in Plain and Markdown alike, and always
+        // will.
         //
         // But every asterisk this library emits has a space on BOTH sides,
         // and that is exactly what makes it safe: CommonMark's flanking rules
@@ -1766,7 +1762,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         formula::rounded_elementwise<formula::unit::Megapascal, guardPlaces, formula::RoundingMode::HalfEven>(
             formula::series<Strength, 3>))); // ElementwiseRoundNode
 
-    // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
+    // The three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
     // three lines are the reason `render.hpp` rules that a half-open interval
     // is spelled `103 to under 197` instead, and the thing that fails if anyone
@@ -1782,7 +1778,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(
         exact_lookup<MarkingKeys, formula::unit::One>(MouldMarking::Stamped, { rat(1127, 1000) })));
 
-    // Phase 14: a read from another record, alone and compound, and one whose
+    // A read from another record, alone and compound, and one whose
     // role's published name is underscored. A role's name is identifier-like
     // (`RequireIdentifierLikeRoleName`), so Markdown's link syntax, asterisks
     // and backticks cannot reach it; this guard does not check underscores,
@@ -1794,11 +1790,11 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
 
     // And a formula nesting several of the above, since a guard that only
     // ever sees one node kind in isolation could still miss an interaction
-    // between two -- which is exactly how review round 3's defect hid from
-    // both the mutation testing and the "read it as a person would" pass in
-    // fix round 1: neither ever combined a rounding/escape node with a
-    // conditional operand under Dialect::Markdown and looked at the raw
-    // character sequence rather than the string as a whole.
+    // between two -- which is exactly how the `](` defect once hid from both
+    // mutation testing and a "read it as a person would" pass: neither ever
+    // combined a rounding/escape node with a conditional operand under
+    // Dialect::Markdown and looked at the raw character sequence rather than
+    // the string as a whole.
     constexpr auto deep =
         formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(formula::when(
             overThreshold, var<Strength> * rat(2), var<Strength> * rat(4)));
@@ -1934,7 +1930,7 @@ TEST_CASE("render: a lookup key's name is set in math mode, where the site's Mat
     CHECK(formula::detail::latex_math_words("key fit_2") == "key\\ fit\\_2");
 }
 
-// ---- A series variable, marked as a series in the formula itself (phase 12) ----
+// ---- A series variable, marked as a series in the formula itself ---------------
 
 namespace
 {
@@ -1965,7 +1961,7 @@ TEST_CASE("a series variable is marked as a series in the formula itself, in eve
     // The marker wraps the jurisdiction's symbol, never the declared one.
     CHECK(formula::render(formula::series<Retained, 5>) == "m_r(i)");
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>) == "{m_r}_{i}");
-    // A symbol with a braced subscript still groups (typeset clean in a spike).
+    // A symbol with a braced subscript still groups (measured to typeset clean).
     constexpr auto braced = formula::vocabulary(formula::renames<Retained>("f_{c}"));
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, braced) == "{f_{c}}_{i}");
     // The known limit, pinned so it is a decision and not an accident: a

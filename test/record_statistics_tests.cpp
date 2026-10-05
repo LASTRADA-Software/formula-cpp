@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Phase 13's statistics, outlier rejections and precision limits, read from
+// Statistics, outlier rejections and precision limits, read from
 // another record. Each records steps of its own, on paths of its own -- a
 // rejection's passes and verdict through `push_rejection_step`, a precision
 // limit's level through `precision_level_produced` -- and every step read
@@ -46,7 +46,7 @@ constexpr formula::Measured<Mass> grams(formula::Rational value)
     return formula::Measured<Mass> { value };
 }
 
-// The reference holds phase 13's fixture A, 40.2, 39.8, 40.5, 44.0, 40.0 and
+// The reference holds the statistics fixture A, 40.2, 39.8, 40.5, 44.0, 40.0 and
 // 43.3 g, and fixture P's pair, 40 g and 40.905 g. This record holds other
 // values of each, so a step read from the wrong record gives another number.
 inline constexpr auto here = formula::environment(
@@ -100,7 +100,7 @@ TEST_CASE("a statistic read from another record is stamped with that record", "[
 TEST_CASE("an outlier rejection read from another record is stamped with that record, pass by pass",
           "[record-statistics]")
 {
-    // Phase 13's fixture A under a 6 % deviation from each pass's mean: pass
+    // The statistics fixture A under a 6 % deviation from each pass's mean: pass
     // 1 rejects 44.0 g, pass 2 rejects 43.3 g, pass 3 settles at 321/8 g.
     // Every pass, rejection and verdict is a step `push_rejection_step`
     // records, and each is the reference's.
@@ -124,7 +124,7 @@ TEST_CASE("an outlier rejection read from another record is stamped with that re
 TEST_CASE("a precision limit read from another record is stamped with that record, its level included",
           "[record-statistics]")
 {
-    // Phase 13's fixture P: the level is the pair's mean, 40.4525 g, and r =
+    // The statistics fixture P: the level is the pair's mean, 40.4525 g, and r =
     // 0.1 g + level / 50 = 0.90905 g. The level's first pass is a step
     // `precision_level_produced` records, and it is the reference's.
     constexpr auto limitThere = formula::from_record<Reference>(formula::precision_limit<formula::PrecisionKind::Repeatability>(

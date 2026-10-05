@@ -812,9 +812,9 @@ namespace detail
     /// clause the line would read `lookup(#1) = argument outside the domain of
     /// the operation` for a case where nothing was outside any domain and the
     /// real failure happened two levels down -- a plausible answer to a
-    /// question the line cannot otherwise answer, which is the defect phase 9
-    /// refused `bool satisfied()` over. `Step::lookupFailure` is what resolves
-    /// it, and `LookupFailure` (`trace.hpp`) records how.
+    /// question the line cannot otherwise answer, which is the defect a
+    /// constraint's `bool satisfied()` was refused over. `Step::lookupFailure`
+    /// is what resolves it, and `LookupFailure` (`trace.hpp`) records how.
     ///
     /// The same bracket `citation_suffix`, `rounding_mode_suffix` and
     /// `constraint_outcome_suffix` use, for the reason the last of those gives
@@ -1527,8 +1527,8 @@ namespace detail
     /// is.
     ///
     /// `selected by tag` names **how** the choice was made, not only that it
-    /// was: a tag is the only discriminator a method has in this phase, and
-    /// saying so now is what will keep this line true once there is a second.
+    /// was: a tag is the only discriminator a method has, and saying so now is
+    /// what will keep this line true once there is a second.
     ///
     /// The same bracket `citation_suffix` and `lookup_suffix` use, for the
     /// reason `lookup_suffix` gives: it is where a reader already looks for

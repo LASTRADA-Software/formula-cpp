@@ -7,9 +7,8 @@
 /// Norm methods state where rounding happens and which way it goes, and
 /// intermediate and final rounding routinely differ within one method. A library
 /// that rounds only on output produces wrong numbers, so rounding here is an
-/// operation over exact values that yields another exact value. From spec phase
-/// 8 on it is also a node in the expression tree, and the result carries into
-/// the trace.
+/// operation over exact values that yields another exact value. It is also a
+/// node in the expression tree, and the result carries into the trace.
 
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/rational.hpp>
@@ -181,7 +180,7 @@ struct SignificantDigits
 ///
 /// This is the primitive the decimal-place and significant-digit forms are built
 /// on, and it is also what snapping a computed sieve size onto a standard sieve
-/// series needs (spec phase 12).
+/// series needs (`snap.hpp`).
 ///
 /// @pre `increment` is strictly positive; otherwise DomainError.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_multiple(

@@ -13,8 +13,8 @@
 namespace
 {
 
-// The shared fixture's quantities (see the phase 12 plan): an invented screen
-// analysis, retained masses in grams.
+// The shared fixture's quantities: an invented screen analysis, retained
+// masses in grams.
 struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
 {
 };

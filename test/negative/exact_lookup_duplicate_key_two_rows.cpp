@@ -3,7 +3,7 @@
 // REJECT: must be initialized by a constant expression
 //
 // TWO rows, both the same key: the smallest table that can contain a
-// duplicate at all, and the case the rest of the phase never reaches. An
+// duplicate at all, and the case the other lookup tests never reach. An
 // empty table has no pair, a one-row table has no pair, and every other
 // duplicate case here uses five rows -- so the boundary between "no pair to
 // check" and "one pair to check" is checked by nothing else. Should the pair

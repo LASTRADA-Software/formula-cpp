@@ -25,7 +25,7 @@
 /// A method's own algebra sometimes needs a coefficient no formula computes --
 /// a size-correction factor for a specimen's diameter, say -- that the
 /// method's procedure instead publishes as a table of intervals. `§16.1`
-/// bounds what this phase may contain: the table's *structure* (its bands)
+/// bounds what a lookup may contain: the table's *structure* (its bands)
 /// is part of the method and belongs in a formula's type; the table's
 /// *contents* (the correction each band selects) are master data that may be
 /// registered per customer, per region, per contract, and must be allowed to
@@ -33,11 +33,11 @@
 /// at once.
 ///
 /// **The join, stated explicitly, because two things separately verified do
-/// not verify their join.** A prior spike verified, separately, that
+/// not verify their join.** It was measured, separately, that
 /// `std::array<Band, N>` works as a non-type template parameter on all four
 /// compilers, and that a node can hold runtime state behind a compile-time
 /// shape (`ConstantNode` holds a runtime `Rational number` while `unit` and
-/// `dimension` live in its type). It explicitly did not build a node
+/// `dimension` live in its type). Neither measurement built a node
 /// combining both. `BandedLookupNode` is that combination:
 ///
 ///  - **In the type** (compile-time shape, part of what a formula *is*):
@@ -67,20 +67,19 @@
 /// falls in no band -- or an `ExactLookupNode` whose key names no row of its
 /// table -- has found nothing: not zero, not the nearest band, not the
 /// first row. There is no default-value parameter and no fallback of any
-/// kind: adding one would be phase 9's forbidden `bool satisfied()` in a new
-/// costume, an API that must answer *something* for the unresolved case,
-/// where every answer is a lie.
+/// kind: adding one would be the refused `bool satisfied()` of constraints
+/// (`constraint.hpp`) in a new costume, an API that must answer *something*
+/// for the unresolved case, where every answer is a lie.
 ///
-/// **How the miss is actually reported, and where this departs from the
-/// phase's own design-decisions note.** That note proposed reusing
-/// `Outcome`'s `Invalid` alternative and its `InvalidReason`. Reading the
-/// tree as it stands today (not as the note anticipated it) rules that out
-/// on two independent grounds, and the tree wins:
+/// **How the miss is actually reported, and why not through `Outcome`.**
+/// Reusing `Outcome`'s `Invalid` alternative and its `InvalidReason` was
+/// considered. The tree as it stands rules that out on two independent
+/// grounds:
 ///
-///   1. `checked_evaluate_si` -- the machinery this node rides, per this
-///      phase's own settled decision that a lookup is a `Node` needing none
-///      of `Constraint`'s separate entry points -- returns `Evaluated<Rep>`,
-///      an alias for `std::expected<std::optional<Rep>, ArithmeticError>`.
+///   1. `checked_evaluate_si` -- the machinery this node rides, because a
+///      lookup is a `Node` needing none of `Constraint`'s separate entry
+///      points -- returns `Evaluated<Rep>`, an alias for
+///      `std::expected<std::optional<Rep>, ArithmeticError>`.
 ///      There is no path from there to `Outcome<Result>::invalid(...)`:
 ///      `checked_evaluate` only ever builds `Outcome<Result>::empty()` or
 ///      `::%value(...)` itself, and an `ArithmeticError` returned by any node
@@ -89,13 +88,13 @@
 ///      `checked_evaluate_si` would mean widening `Evaluated<Rep>` for every
 ///      existing node kind to serve this one new caller -- a change far
 ///      beyond this header, and a much larger one than "add a node".
-///   2. A prior spike proved `InvalidReason::label` is a non-owning
+///   2. `InvalidReason::label` is, as measured, a non-owning
 ///      `std::string_view` that dangles the moment it is built from anything
-///      but a string literal -- it printed the pointer inside the
+///      but a string literal -- the measurement printed the pointer inside the
 ///      reason-building function and the one the caller received, identical,
 ///      with the string already destroyed. "Value 42 falls in no band" is
-///      exactly the generated-at-the-point-of-failure sentence that proof
-///      condemns.
+///      exactly the generated-at-the-point-of-failure sentence that
+///      measurement condemns.
 ///
 /// So the miss is reported the way `Evaluated<Rep>`'s existing error channel
 /// already reports every other kind of failure: `std::unexpected {
@@ -166,7 +165,7 @@
 /// enumeration the method's author declares, and a table is
 /// `KeyTable<Shape, 3>` -- `std::array<Shape, 3>` -- as a non-type template
 /// parameter. The alternative considered, and rejected, was
-/// `detail::FixedString` (phase 4), which is equally usable as an NTTP. The
+/// `detail::FixedString`, which is equally usable as an NTTP. The
 /// deciding question is the one a method author will actually hit: **what
 /// happens when a key is absent.**
 ///
@@ -436,15 +435,16 @@
 /// `checked_add` onto the lower row -- so
 /// `y0 + (x - x0)(y1 - y0)/(x1 - x0)` is computed with no rounding anywhere,
 /// and a result no finite decimal can hold (14/15, say) comes back as exactly
-/// 14/15. Nothing here reaches for phase 8's rounding, and nothing here loses
-/// precision silently: the *only* way the answer is not the exact rational the
-/// two rows imply is that some intermediate lies outside `Rational`'s
-/// representable range, and that is reported as `ArithmeticError::Overflow`
-/// through the same channel a miss uses, never approximated away -- asserted
-/// on a table whose exact answer genuinely does not fit, rather than only
-/// reasoned about. `x1 - x0` cannot be zero -- strictly ascending breakpoints
-/// are enforced at compile time -- so the division is guarded by the table's
-/// own validation rather than by a runtime test.
+/// 14/15. Nothing here reaches for rounding (`rounding.hpp`), and nothing here
+/// loses precision silently: the *only* way the answer is not the exact
+/// rational the two rows imply is that some intermediate lies outside
+/// `Rational`'s representable range, and that is reported as
+/// `ArithmeticError::Overflow` through the same channel a miss uses, never
+/// approximated away -- asserted on a table whose exact answer genuinely does
+/// not fit, rather than only reasoned about. `x1 - x0` cannot be zero --
+/// strictly ascending breakpoints are enforced at compile time -- so the
+/// division is guarded by the table's own validation rather than by a runtime
+/// test.
 ///
 /// **`Rep` is closed to `Rational`, and here the arithmetic reason is the true
 /// one.** The banded node's guard gives an arithmetic reason (band selection
@@ -556,14 +556,13 @@ namespace detail
     ///
     /// A linear scan, not a binary search, even though `band_table_is_well_
     /// formed`'s own proof (`band.hpp`) shows a well-formed table's bands are
-    /// strictly ascending, which would make a binary search valid. Phase 10
-    /// is the first thing in this codebase to need an interval search at
-    /// all; a method's own published table is rows, not big data, and an
-    /// obviously-correct O(N) scan is worth more here than O(log N) --
-    /// especially for the half-open, exactly-on-a-boundary case this type
-    /// exists to get right. `Bands` is compile-time state (see the file
-    /// comment); this is the one place its `int64` pairs are turned into
-    /// `Rational` for an exact comparison.
+    /// strictly ascending, which would make a binary search valid. A method's
+    /// own published table is rows, not big data, and an obviously-correct
+    /// O(N) scan is worth more here than O(log N) -- especially for the
+    /// half-open, exactly-on-a-boundary case this type exists to get right.
+    /// `Bands` is compile-time state (see the file comment); this is the one
+    /// place its `int64` pairs are turned into `Rational` for an exact
+    /// comparison.
     template <BandTable Bands>
     [[nodiscard]] constexpr std::optional<std::size_t> find_band(Rational value) noexcept
     {
@@ -905,8 +904,8 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
 
 /// A table of category keys, in the order their corrections are declared. An
 /// alias template over `std::array`, for the same reason `BandTable` is one
-/// (`band.hpp`): a spike compiled `template <KeyTable Keys>` with both `Key`
-/// and `N` deduced from the template argument, on cl, clang-cl, clang++ and
+/// (`band.hpp`): `template <KeyTable Keys>` compiles with both `Key` and `N`
+/// deduced from the template argument, measured on cl, clang-cl, clang++ and
 /// g++, so a wrapping struct would add a name to unwrap and nothing else.
 ///
 /// `Key` is a scoped enumeration -- enforced by `RequireScopedEnumKey` in
@@ -946,8 +945,8 @@ namespace detail
     /// Declared here, ahead of the predicates, because **every** public entry
     /// point that takes a key enforces it, not only the node. A validator that
     /// accepted an `std::array<int, N>` no node would ever take is two
-    /// surfaces disagreeing about the same question -- the defect this phase
-    /// keeps finding -- and a runtime loader of tables reaching for
+    /// surfaces disagreeing about the same question -- a defect this codebase
+    /// has met more than once -- and a runtime loader of tables reaching for
     /// `key_table_is_well_formed` is exactly where it would bite.
     template <typename Key>
     struct RequireScopedEnumKey
@@ -1398,8 +1397,8 @@ template <typename N, typename D>
 
 /// A table of breakpoints, declared in strictly ascending order. An alias
 /// template over `std::array`, for the reason `BandTable` (`band.hpp`) and
-/// `KeyTable` above are: a spike compiled `template <BandTable Bands>` with
-/// both the element type and `N` deduced on all four compilers, so a wrapping
+/// `KeyTable` above are: `template <BandTable Bands>` compiles with both the
+/// element type and `N` deduced, measured on all four compilers, so a wrapping
 /// struct would add a name to unwrap and nothing else.
 template <std::size_t N>
 using BreakpointTable = std::array<Breakpoint, N>;
@@ -1731,7 +1730,7 @@ namespace detail
     /// say which two rows an answer came from would otherwise have to find
     /// them again with a second scan somewhere else. Two scans of one table
     /// against one rule is the pair-of-surfaces-that-must-agree defect this
-    /// phase keeps refusing; returning what is already known costs one
+    /// library keeps refusing; returning what is already known costs one
     /// `std::pair` and cannot drift from itself. `interpolate` just below
     /// drops the location for the evaluation path, which has no use for it.
     ///

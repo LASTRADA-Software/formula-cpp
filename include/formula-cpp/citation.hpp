@@ -87,8 +87,8 @@ template <Node Inner>
 }
 
 /// Evaluating a documented expression evaluates what it documents. The wrapper
-/// is invisible to arithmetic; only the documentation walk and, from phase 7,
-/// the trace sink will notice it.
+/// is invisible to arithmetic; only the documentation walk and the trace sink
+/// notice it.
 template <typename Rep = Rational, Node Inner, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(DocumentedNode<Inner> const& node,
                                                            Env const& environment,

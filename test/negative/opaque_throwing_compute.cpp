@@ -6,7 +6,7 @@
 // A compute declared without noexcept: an exception escaping it would end the
 // program, since evaluation is noexcept throughout. Refused once, where the
 // call is built; the evaluator's body is gated on the call being sound, so
-// g++ 14.2 adds none of its own errors (phase 15's spike, step 7) -- the
+// g++ 14.2 adds none of its own errors -- the
 // REJECTs name the ones it added when the body was not gated.
 #include <formula-cpp/opaque.hpp>
 

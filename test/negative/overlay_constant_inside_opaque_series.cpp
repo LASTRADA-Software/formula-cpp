@@ -6,7 +6,7 @@
 // `with_constant<Length>` on a method whose only use of the length is the
 // series a fit reads. The rewrite sees through the opaque call to its inputs
 // (`ConstantRewrite` for `OpaqueOutputNode`, `overlay.hpp`), so the refusal is
-// phase 12's for a series -- once -- and not also "cannot see inside", nor
+// the one for a series -- once -- and not also "cannot see inside", nor
 // "nobody reads it", which would both be false.
 #include <formula-cpp/least_squares.hpp>
 #include <formula-cpp/method.hpp>

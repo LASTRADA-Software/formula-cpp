@@ -10,7 +10,7 @@
 /// compiler to materialise the address of an empty object that nothing reads,
 /// which clang emits as a real instruction at every call site. By value it
 /// disappears. Measured on cl 19.51, clang-cl 22.1.3, clang++ 22.1.3 and
-/// g++ 13.3 -- see the phase-7 prep notes.
+/// g++ 13.3.
 ///
 /// The consequence for anyone writing a stateful sink: keep it small and
 /// cheap to copy. A sink that owns its storage would copy that storage at
@@ -204,11 +204,11 @@ namespace detail
 {
     /// Evaluates @p node with @p sink, through whichever overload exists.
     ///
-    /// Phase 5 published `checked_evaluate_si(node, environment)` as an
-    /// extension point: a consumer with their own node kind writes an overload
-    /// and the evaluator finds it by ADL. This phase adds a third parameter,
-    /// which would leave every such overload unreachable. The `requires` below
-    /// prefers a sink-aware overload where one exists and falls back to the
+    /// `checked_evaluate_si(node, environment)` was published as an extension
+    /// point: a consumer with their own node kind writes an overload and the
+    /// evaluator finds it by ADL. The sink is a third parameter, which would
+    /// leave every such overload unreachable. The `requires` below prefers a
+    /// sink-aware overload where one exists and falls back to the
     /// two-parameter one where it does not, so a consumer's existing node keeps
     /// evaluating correctly. It simply contributes no trace steps -- the honest
     /// outcome, since the library was never told how to trace it.

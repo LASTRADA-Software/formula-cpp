@@ -243,13 +243,13 @@ template <Predicate P>
 /// because `formula::constraint(...)` is a free function at namespace scope
 /// and a parameter of the same name would shadow it. `-Wshadow` does not
 /// catch a parameter shadowing a function, so nothing would fail to build,
-/// but it is the same kind of name collision that shipped a `StepKind::Pi`
-/// enumerator shadowing `formula::Pi` in phase 7 and broke GCC alone.
+/// but it is the same kind of name collision that once shipped a
+/// `StepKind::Pi` enumerator shadowing `formula::Pi` and broke GCC alone.
 ///
 /// **Recorded in the trace as its own step**, the way spec sections 9 and
 /// 9.1 require. A constraint is not a `Node`, so it cannot go through
 /// `sink.entered`/`sink.produced` -- both constrained on `Node` -- the same
-/// problem phase 8 solved for a `WhenNode`'s branch with an optional
+/// problem a `WhenNode`'s branch has, solved with an optional
 /// `sink.branch_taken(...)` hook. The two calls below follow that
 /// established shape: a sink that defines `constraint_entered`/
 /// `constraint_produced` -- `RecordingSink` (`trace.hpp`) is the one that

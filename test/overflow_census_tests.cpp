@@ -197,7 +197,7 @@ template <std::size_t N, typename Criterion>
 inline constexpr auto sixPercent = formula::deviation_from_mean(Rational { 6, 100 } * formula::pass_mean<Mass>);
 inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::number(Rational { 7, 4 }));
 
-// The phase 13 fixtures (rejection_tests.cpp's shared fixtures), in grams.
+// The statistics fixtures (rejection_tests.cpp's shared fixtures), in grams.
 std::array<Rational, 6> const fixtureA { rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10) };
 std::array<Rational, 6> const fixtureB { rat(402, 10), rat(398, 10), rat(405, 10), rat(452, 10), rat(40), rat(372, 10) };
 std::array<Rational, 5> const fixtureC { rat(40), rat(40), rat(44), rat(40), rat(36) };
@@ -317,11 +317,11 @@ template <int Places, typename Evaluate>
     return found;
 }
 
-// ---- Least squares (phase 15), a spike's data shapes ------------------------------
+// ---- Least squares: three data shapes ---------------------------------------------
 
 // Point k of each shape, in coherent SI -- seconds and newtons -- so the fit
-// sees exactly these numbers. Invented; the spike's offsets are replaced by
-// primes, the rest of its generator kept.
+// sees exactly these numbers. Invented: the two decimal shapes' offsets are
+// primes.
 struct FitPoint
 {
     Rational x;
@@ -716,7 +716,7 @@ TEST_CASE("the census reports 0 bits of headroom for the largest Int128, and Ove
 
 // ---- The census set -----------------------------------------------------------------
 
-TEST_CASE("census: phase 13's fixtures", "[census]")
+TEST_CASE("census: statistics, outlier rejections and spreads over the six fixtures", "[census]")
 {
     emit("statistics", "| formula | numerator bits | denominator bits | intermediate bits | unsigned bits | headroom |");
     emit("statistics", "|---|---|---|---|---|---|");
@@ -749,7 +749,7 @@ TEST_CASE("census: phase 13's fixtures", "[census]")
     print_row("fixture F: exact root at 0 dp", census_of([] { REQUIRE(spread_of<0>(fixtureF)); }));
 }
 
-TEST_CASE("census: phase 12's cumulative sums and interpolation", "[census]")
+TEST_CASE("census: cumulative sums and interpolation", "[census]")
 {
     std::array<Rational, 5> const screens { rat(130), rat(210), rat(95), rat(340), rat(28) };
     print_row("passing from the cumulative retained, 5 screens", census_of([&] {
@@ -958,7 +958,7 @@ TEST_CASE("census: a cylinder's cross-section and its strength, for d from 101 t
 
 TEST_CASE("census: least squares over 2 to 128 points", "[census]")
 {
-    // The spike's shapes, through the library's own fit: which sizes
+    // The three shapes, through the library's own fit: which sizes
     // overflow, and what the others leave. An overflowing fit is the library's
     // Overflow, never a line.
     // The least-squares tests' fixtures, through the node as a method states the fit: t = 1,

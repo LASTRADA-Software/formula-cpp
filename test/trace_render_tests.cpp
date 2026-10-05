@@ -308,7 +308,7 @@ TEST_CASE("an explicit limit of zero is allowed, and says what it hid", "[trace-
     CHECK(text == "... 1 further step not shown\n");
 }
 
-// --------------------------------------------------------------- phase 8
+// ----------------- rounding, logarithms, numeric values and conditionals
 
 TEST_CASE("a derivation renders a Round step as round(..., to N dp of unit)", "[trace-render]")
 {
@@ -678,11 +678,11 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
     // constraint_expression (trace_render.hpp) and render_node(Constraint
     // ...) (render.hpp) are two independent functions that each spell
     // "require <lhs> <comparison> <rhs>" from scratch, and nothing but this
-    // assertion ties them together. Phase 8 shipped exactly this shape of
-    // defect -- render() and the trace renderer disagreeing about a
-    // rounding spelling -- for several commits, each internally consistent
-    // and fully tested, caught only by a whole-branch review because no
-    // test compared the two surfaces to each other.
+    // assertion ties them together. This shape of defect once shipped --
+    // render() and the trace renderer disagreeing about a rounding spelling
+    // -- for several commits, each internally consistent and fully tested,
+    // caught only by a whole-branch review because no test compared the two
+    // surfaces to each other.
     //
     // Extracts just the keyword and the comparison token from each surface
     // -- both "require f >= 473/10 MPa" (render) and "require #1 >= #2 [...]"
@@ -866,7 +866,7 @@ TEST_CASE("a derivation renders a Constraint step with two operands when the pre
              "5. require #1 > #4 [division by zero]\n");
 }
 
-// ------------------------------------------------------- phase 10: lookups
+// ----------------------------------------------------------------- lookups
 
 namespace
 {
@@ -1170,10 +1170,10 @@ TEST_CASE("a derivation names the band a banded lookup's value fell in", "[trace
 
 TEST_CASE("a derivation renders a banded miss as a miss, never as a value", "[trace-render][lookup]")
 {
-    // Phase 9's `[not checked]` against `[else]` is the precedent: a reader
-    // must never confuse "no row matched" with "the matched row held zero".
-    // The bands are named too, because "outside the domain" is not something
-    // a reader can check without knowing what the domain was.
+    // A constraint's `[not checked]` against `[else]` is the precedent: a
+    // reader must never confuse "no row matched" with "the matched row held
+    // zero". The bands are named too, because "outside the domain" is not
+    // something a reader can check without knowing what the domain was.
     CHECK(derivationOf(sizeLookup(), diameterOf(95))
           == "1. d = 95 mm\n"
              "2. lookup(#1) = argument outside the domain of the operation"
@@ -1294,8 +1294,8 @@ TEST_CASE("a derivation renders an interpolating miss as outside the curve, not 
 
     // The other end of the same axis: 2 cm is in the FIRST segment. A suite
     // that only ever probed the second lets "report the last pair" through in
-    // silence, exactly as round 1's fixtures let "report the last band"
-    // through by only ever selecting the middle one.
+    // silence, exactly as fixtures that only ever selected the middle band
+    // once let "report the last band" through.
     CHECK(derivationOf(curveLookup(), diameterOf(20))
           == "1. d = 20 mm\n"
              "2. interpolate(#1) = 11221/480 % [between 139/100 and 331/100 cm]\n");
@@ -1348,12 +1348,12 @@ TEST_CASE("a derivation spells a band's excluded top and a curve's included one 
 
 TEST_CASE("a derivation spells a lookup the way render() does", "[trace-render][lookup]")
 {
-    // `render.hpp` and `trace_render.hpp` compose a band, a key and a head
-    // name from scratch, independently of each other, and nothing but this
-    // assertion ties them together. Phase 8 shipped exactly this shape of
-    // defect for several commits -- two surfaces each internally consistent
-    // and fully tested, disagreeing with each other -- caught only by a
-    // whole-branch review because no test compared them.
+    // `render.hpp` and `trace_render.hpp` compose a band, a key and a head name
+    // from scratch, independently of each other, and nothing but this assertion
+    // ties them together. This shape of defect once shipped for several commits
+    // -- two surfaces each internally consistent and fully tested, disagreeing
+    // with each other -- caught only by a whole-branch review because no test
+    // compared them.
     //
     // Each surface is compared to the other and never to a literal here, so a
     // failure shows both actual spellings side by side rather than naming
@@ -1625,7 +1625,7 @@ TEST_CASE("a derivation renders a miss against a table that covers nothing at al
 // ---------------------------------------------------------------------------
 // Which variant a method selected
 //
-// Spec section 9.1 makes this the phase's acceptance criterion: the trace
+// Spec section 9.1 makes this an acceptance criterion: the trace
 // records which variant fired and on what discriminator. The fixture below is
 // written so that the name of a variant NOT taken cannot appear in a
 // derivation by any other route -- no quantity symbol, unit, constant or
@@ -1858,7 +1858,7 @@ namespace
 {
 // Author text the compile-time rules let through -- a semicolon and a
 // backslash are refused nowhere -- in a variant's tag and a lookup key's name.
-// Final re-review of phase 11, L3: each escaped today, and no test said so.
+// Each is escaped, and these tests say so.
 struct EscapedTag
 {
 };
@@ -2013,13 +2013,13 @@ TEST_CASE("a rounding or a numeric value in a unit with no symbol adds no unit c
               .ends_with("2. numeric(#1, in MPa) = 30 (the fit is stated in MPa)\n"));
 }
 
-// ---- A series on the trace (phase 12) ----
+// ---- A series on the trace ----
 
 namespace
 {
 namespace series_trace
 {
-    // The shared fixture of the phase 12 plan: an invented screen analysis.
+    // The shared series fixture: an invented screen analysis.
     // Every element differs, and the middle one was not measured.
     struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
     {
@@ -2618,7 +2618,7 @@ TEST_CASE("a per-element rounding records each element's granularity and its mod
 
 TEST_CASE("a series and a curve escape their symbols and units, as a scalar step does", "[trace-render][escape][series]")
 {
-    // Phase 11's escaping reaches the series lines through `step_line`, the
+    // The trace's escaping reaches the series lines through `step_line`, the
     // one entry point: the declared symbol that spells a jurisdiction's
     // clause, and the author's unit that closes the value's clause, are
     // escaped on every element, every pair and an interpolation's value.

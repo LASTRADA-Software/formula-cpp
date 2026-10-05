@@ -106,15 +106,15 @@ formula_add_example(rounding_and_conditionals rounding_and_conditionals.cpp "all
 # yes" says the program's own booleans agreed with themselves, but says
 # nothing about what those booleans actually checked. That is not enough
 # here: docs/constraints.md quotes this program's output verbatim, including
-# the very outcome words and trace shape this phase exists to get right, and
-# nothing but an implementer's own diligence stood between a withdrawn
-# spelling and a stale guide during phase 8. So this regex additionally pins,
+# the very outcome words and trace shape the constraints guide exists to show,
+# and nothing but an implementer's own diligence once stood between a
+# withdrawn spelling and a stale guide. So this regex additionally pins,
 # in the order the program prints them: all four ConstraintOutcomeKind words
 # (satisfied, violated, not checked, invalid), the verdict label surviving
 # into output (`reject the specimen`), the arithmetic-error text surviving
 # into output (`division by zero`), and two literal `require ... [...]` trace
 # lines -- the satisfied case and, especially, the not-checked case that is
-# this whole phase's central argument -- plus the degenerate one-operand
+# the guide's central argument -- plus the degenerate one-operand
 # shape a left-side arithmetic error produces. A spelling change to any of
 # these now fails the build instead of silently leaving the guide wrong.
 #
@@ -133,8 +133,8 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #
 #  - `0 to under 127 mm gives 913/10 %` -- the ONE spelling of a half-open
 #    interval in this library. It exists because `[0, 127)` is Markdown link
-#    syntax, which silently dropped an operand from a published page in phase
-#    8; a guard test already forbids `](` and a bare `[` in any Markdown
+#    syntax, which once silently dropped an operand from a published page; a
+#    guard test already forbids `](` and a bare `[` in any Markdown
 #    rendering, and this regex additionally pins that the replacement wording
 #    itself does not drift.
 #  - `at 127 mm gives 913/10 %` -- the interpolating table's point spelling, which

@@ -383,7 +383,7 @@ TEST_CASE("a key that is not an enumerator at all is a miss, not an index", "[lo
 
 TEST_CASE("an exact miss and a banded miss are the same failure, reported the same way", "[lookup]")
 {
-    // The one test that pins this phase's stated drift risk directly. Two
+    // The one test that pins the lookups' drift risk directly. Two
     // different tables, two different reasons nothing was found, and exactly
     // one vocabulary for "found nothing" -- so a later change that gives
     // either kind its own spelling fails here rather than in a consumer.
@@ -535,9 +535,8 @@ TEST_CASE("key_table_is_well_formed answers for a table that only arrives at run
 TEST_CASE("a two-row exact table selects each of its rows and misses everything else", "[lookup]")
 {
     // The compile-time side of the same boundary the predicate test covers
-    // just above: two rows is the smallest table with a pair, and the phase
-    // otherwise only ever uses 0, 1, 4 and 5. Both rows, so neither a
-    // first-only nor a last-only scan passes.
+    // just above: two rows is the smallest table with a pair. Both rows, so
+    // neither a first-only nor a last-only scan passes.
     constexpr KeyTable<SpecimenVariant, 2> TwoShapes { SpecimenVariant::CubeSmall, SpecimenVariant::Prism };
 
     constexpr auto first = formula::checked_evaluate<SizeCorrection>(
@@ -737,7 +736,7 @@ TEST_CASE("a value below the table's first row is a miss -- interpolation does n
     // -5 mm == -0.5 cm, below `CurvePoints[0]`. An implementation that ran the
     // first segment's slope backwards would answer about 75.2 % here,
     // confidently, for an input the table never defined -- which is the one
-    // thing this phase refuses everywhere. A miss, not a value.
+    // thing the lookups refuse everywhere. A miss, not a value.
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(-5));
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
@@ -984,7 +983,7 @@ TEST_CASE("breakpoint_table_is_well_formed answers for a curve that only arrives
 
 TEST_CASE("all three lookup kinds report finding nothing the same way", "[lookup]")
 {
-    // The one test that pins this phase's stated drift risk across every table
+    // The one test that pins the lookups' drift risk across every table
     // kind at once. Three different tables, three different reasons nothing was
     // found, and exactly one vocabulary for "found nothing" -- so a later change
     // that gives any kind its own spelling fails here rather than in a consumer.
