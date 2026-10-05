@@ -4611,6 +4611,17 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
     return explained;
 }
 
+/// A series handed to `explain`: fails to compile, in this library's words,
+/// pointing at `explain_series`, which gives a series' outcome and its
+/// derivation. The body is the refusal and nothing else; what it returns is
+/// never seen.
+template <Described Result, typename Rep = Rational, SeriesNode Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Explained<Result, Rep> explain(Expression const&, Env const&, V const& = V {})
+{
+    static_assert(detail::RequireSingleValueTraced<Expression>::value);
+    return Explained<Result, Rep> {};
+}
+
 /// `explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary)`,
 /// `Q` taken from the `Yields` (`yields.hpp`). `Result` is `Q`'s place for a
 /// caller who names it anyway; any other quantity is refused.
@@ -4749,6 +4760,17 @@ checked_explain(Expression const& expression, Env const& environment, V const& v
     if (!checked.has_value())
         return std::unexpected { CheckedExplainFailure<Rep> { checked.error(), std::move(recorded) } };
     return Explained<Result, Rep> { *checked, std::move(recorded) };
+}
+
+/// A series handed to `checked_explain`: refused as `explain` refuses it,
+/// pointing at `explain_series`. The body is the refusal and nothing else;
+/// what it returns is never seen.
+template <Described Result, typename Rep = Rational, SeriesNode Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::expected<Explained<Result, Rep>, CheckedExplainFailure<Rep>>
+checked_explain(Expression const&, Env const&, V const& = V {})
+{
+    static_assert(detail::RequireSingleValueTraced<Expression>::value);
+    return Explained<Result, Rep> {};
 }
 
 /// `checked_explain<Q, Rep>(boundFormula.expression, environmentGiven,

@@ -200,6 +200,24 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when a series (`series.hpp`) is handed to a verb that
+    /// traces one value -- `explain` or `checked_explain` (`trace.hpp`). The
+    /// tracing counterpart of `RequireSingleValueExpression`: a caller who
+    /// asked for a derivation is pointed at `explain_series`, the series verb
+    /// that gives one. Named so the expression prints.
+    template <typename Expression>
+    struct RequireSingleValueTraced
+    {
+        // A series already refused (`refused`, `series.hpp`) is not asked
+        // again: its own refusal is the one message for the mistake.
+        static_assert(
+            !SeriesNode<Expression> || requires { requires detail::refused_already<Expression>(); },
+            "formula: this expression is a series, not a single value; explain it with "
+            "explain_series, or reduce it to one value first (sum, interpolate_at)");
+
+        static constexpr bool value = true;
+    };
+
     /// Wraps a bare `Rep` as a present value.
     template <typename Rep>
     [[nodiscard]] constexpr Evaluated<Rep> present(Rep value) noexcept

@@ -52,6 +52,14 @@ refused in the library's words:
 static assertion failed: formula: this expression is a series, not a single value; evaluate it with checked_evaluate_series, or reduce it to one value first (sum, interpolate_at)
 ```
 
+Handed to `explain` or `checked_explain`, which trace a single value, it is
+refused the same way, pointing at `explain_series`, the verb that gives a
+series' outcome together with its derivation:
+
+```
+static assertion failed: formula: this expression is a series, not a single value; explain it with explain_series, or reduce it to one value first (sum, interpolate_at)
+```
+
 Anywhere else, the compiler reports only that no function or operator
 matches. That covers the operand of `snapped`, `rounded`, `pow` or
 `documented`, the point `interpolate_at` reads at, and one side of a

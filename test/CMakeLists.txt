@@ -551,6 +551,16 @@ formula_add_negative_test(trace_of_si_series_as_single
 formula_add_negative_test(yields_series_explain
     "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 3
     REJECT "no matching")
+# A bare series handed to explain or checked_explain, which trace a single
+# value: refused in the library's words, pointing at explain_series, the
+# verb that gives a series' derivation, rather than as an overload nobody
+# matched. trace_of and the bound forms above keep their own message.
+formula_add_negative_test(explain_series_as_single
+    "this expression is a series, not a single value; explain it with explain_series" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(checked_explain_series_as_single
+    "this expression is a series, not a single value; explain it with explain_series" EXPECT_COUNT 1
+    REJECT "no matching")
 formula_add_negative_test(yields_rejection_evaluate
     "formula: this is a rejection of outliers, not a single value; evaluate it with checked_evaluate_rejection" EXPECT_COUNT 6
     REJECT "no matching")

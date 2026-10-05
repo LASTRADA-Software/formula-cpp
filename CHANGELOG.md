@@ -77,6 +77,8 @@ change is recorded here.
 - The numeric headroom page's least-squares table gives the most bits the exact curve fit's wide integers used, as
   the overflow census measures it, in place of figures no test checked; the opaque-operation guide's widths of an
   exact fit's outputs are pinned by a test.
+- `explain` and `checked_explain` handed a series refuse it in the library's words, pointing at `explain_series`,
+  instead of failing with "no matching function".
 
 ## [0.3.0] - 2026-10-01
 

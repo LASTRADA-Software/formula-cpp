@@ -227,6 +227,11 @@ was typed in rather than derived leaves `trace` empty, as it does for
 `double` is traced by calling its `checked_evaluate_si<double>` with your own
 `RecordingSink<double>`.
 
+A series handed to `explain` or `checked_explain` does not compile: both
+trace a single value, and they say so in the library's words, pointing at
+`explain_series`. Reduce the series to one value first (`sum`,
+`interpolate_at`) to trace that value instead.
+
 ## Just the trace
 
 Code that only shows how a number was reached has no use for the outcome, and
