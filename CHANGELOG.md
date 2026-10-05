@@ -88,8 +88,9 @@ change is recorded here.
 - `_r` literals take a 128-bit mantissa, so every integer up to 2^127 - 1 in magnitude can be written as one
   (`12'345'678'901'234'567'890_r` compiles), and `Rational::from_decimal` and `_r` scale by powers of ten from
   10^-38 to 10^38 rather than stopping at 10^18. `from_decimal` folds a mantissa's trailing zeros into a negative
-  exponent first, so `from_decimal(10, -39)` is 1/10^38. Only refusals turn into answers: every value that answered
-  before is unchanged.
+  exponent first, so `from_decimal(10, -39)` is 1/10^38. A zero literal with an exponent beyond ±1000, such as
+  `0e1001_r`, now reads as 0 rather than being refused, as the same text does at run time. Only refusals turn into
+  answers: every value that answered before is unchanged.
 
 ## [0.4.0] - 2026-10-05
 

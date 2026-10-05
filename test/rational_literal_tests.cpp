@@ -48,6 +48,7 @@ TEST_CASE("_r: the edges of what is exact", "[rational][literal]")
 {
     STATIC_REQUIRE(00.5_r == Rational { 1, 2 });     // a leading zero is fine once there is a point
     STATIC_REQUIRE(0e3_r == Rational {});
+    STATIC_REQUIRE(0e1001_r == Rational {}); // zero at any exponent, as parse_decimal_text reads "0e99999"
     STATIC_REQUIRE(1e-18_r == Rational { 1, 1'000'000'000'000'000'000 });
 }
 
