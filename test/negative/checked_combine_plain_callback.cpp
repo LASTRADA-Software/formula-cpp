@@ -5,7 +5,7 @@
 // combine. This must not compile.
 #include <formula-cpp/measured.hpp>
 
-struct Reading: formula::Quantity<Reading, "g", "a gauge reading", formula::unit::Litre>
+struct Reading: formula::Quantity<Reading, "V", "a volume reading", formula::unit::Litre>
 {
 };
 

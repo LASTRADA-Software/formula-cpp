@@ -370,6 +370,12 @@ formula_add_negative_test(checked_transform_plain_callback
     "formula: a checked_transform callback must return std::expected")
 formula_add_negative_test(checked_combine_plain_callback
     "formula: a checked_combine callback must return std::expected")
+# A callback that cannot be called with the measured values at all is refused
+# in the library's own words, not the standard library's.
+formula_add_negative_test(checked_transform_uncallable_callback
+    "formula: a checked_transform callback must be callable with a Rational")
+formula_add_negative_test(checked_combine_uncallable_callback
+    "formula: a checked_combine callback must be callable with two Rationals")
 
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately

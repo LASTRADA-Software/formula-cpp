@@ -605,6 +605,12 @@ ConsumerGlobalsProbe probe_consumer_globals()
         formula::transform(edge, [](formula::Rational measured) { return measured * formula::Rational { 2 }; });
     auto const summed = formula::combine<EdgeX>(
         edge, edge, [](formula::Rational augend, formula::Rational addend) { return augend + addend; });
+    probe.checks.push_back(inMetres.has_value() && withinBounds.has_value() && declared.has_value());
+    auto const convertedEdge = formula::convert_to<EdgeX>(edge);
+    auto const roundedEdge = formula::round_to_declared(edge, formula::RoundingMode::HalfAwayFromZero);
+    probe.checks.push_back(convertedEdge == *inMetres && roundedEdge == *declared
+                           && formula::within_bounds(edge) == *withinBounds);
+    probe.checks.push_back(doubled.value() == formula::Rational { 300 } && summed.value() == formula::Rational { 300 });
     auto const checkedDoubled = formula::checked_transform(
         edge, [](formula::Rational measured) noexcept { return formula::checked_mul(measured, formula::Rational { 2 }); });
     auto const checkedSummed = formula::checked_combine<EdgeX>(
@@ -613,12 +619,6 @@ ConsumerGlobalsProbe probe_consumer_globals()
         });
     probe.checks.push_back(checkedDoubled.has_value() && checkedDoubled->value() == formula::Rational { 300 }
                            && checkedSummed.has_value() && checkedSummed->value() == formula::Rational { 300 });
-    probe.checks.push_back(inMetres.has_value() && withinBounds.has_value() && declared.has_value());
-    auto const convertedEdge = formula::convert_to<EdgeX>(edge);
-    auto const roundedEdge = formula::round_to_declared(edge, formula::RoundingMode::HalfAwayFromZero);
-    probe.checks.push_back(convertedEdge == *inMetres && roundedEdge == *declared
-                           && formula::within_bounds(edge) == *withinBounds);
-    probe.checks.push_back(doubled.value() == formula::Rational { 300 } && summed.value() == formula::Rational { 300 });
 
     // A series: built, entered, read from an environment and evaluated both
     // ways, derived and entered.

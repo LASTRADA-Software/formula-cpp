@@ -173,10 +173,26 @@ template <Described Result, Described Q, Described R, typename F>
 
 namespace detail
 {
-    /// Whether @p F, called with @p Arguments, returns exactly `std::expected<Rational, ArithmeticError>`.
+    /// False: @p F cannot be called with @p Arguments, so it returns nothing at all. Kept apart from the
+    /// specialisation below so that `std::invoke_result_t` is never formed for such a callback, and the caller's own
+    /// `static_assert` speaks instead of the standard library's missing `type`.
+    template <bool Invocable, typename F, typename... Arguments>
+    struct ReturnsCheckedRational: std::false_type
+    {
+    };
+
+    /// Whether @p F, which can be called with @p Arguments, returns exactly `std::expected<Rational, ArithmeticError>`.
+    template <typename F, typename... Arguments>
+    struct ReturnsCheckedRational<true, F, Arguments...>:
+        std::is_same<std::invoke_result_t<F&, Arguments...>, std::expected<Rational, ArithmeticError>>
+    {
+    };
+
+    /// Whether @p F, called with @p Arguments, returns exactly `std::expected<Rational, ArithmeticError>`; false
+    /// when it cannot be called with them.
     template <typename F, typename... Arguments>
     inline constexpr bool returns_checked_rational =
-        std::is_same_v<std::invoke_result_t<F&, Arguments...>, std::expected<Rational, ArithmeticError>>;
+        ReturnsCheckedRational<std::is_invocable_v<F&, Arguments...>, F, Arguments...>::value;
 } // namespace detail
 
 /// `transform` for a callback that can fail: @p function returns `std::expected<Rational, ArithmeticError>` --
@@ -187,7 +203,9 @@ template <Described Q, typename F>
 [[nodiscard]] constexpr std::expected<Measured<Q>, ArithmeticError> checked_transform(Measured<Q> measured, F function)
     noexcept(std::is_nothrow_invocable_v<F&, Rational>)
 {
-    static_assert(detail::returns_checked_rational<F, Rational>,
+    static_assert(std::is_invocable_v<F&, Rational>,
+                  "formula: a checked_transform callback must be callable with a Rational");
+    static_assert(!std::is_invocable_v<F&, Rational> || detail::returns_checked_rational<F, Rational>,
                   "formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>; use "
                   "transform for a callback that returns a Rational");
     if (measured.is_absent())
@@ -206,7 +224,9 @@ template <Described Result, Described Q, Described R, typename F>
                                                                                          F function)
     noexcept(std::is_nothrow_invocable_v<F&, Rational, Rational>)
 {
-    static_assert(detail::returns_checked_rational<F, Rational, Rational>,
+    static_assert(std::is_invocable_v<F&, Rational, Rational>,
+                  "formula: a checked_combine callback must be callable with two Rationals");
+    static_assert(!std::is_invocable_v<F&, Rational, Rational> || detail::returns_checked_rational<F, Rational, Rational>,
                   "formula: a checked_combine callback must return std::expected<Rational, ArithmeticError>; use "
                   "combine for a callback that returns a Rational");
     if (lhs.is_absent() || rhs.is_absent())

@@ -562,6 +562,26 @@ TEST_CASE("checked_combine: absent if either is absent; an error propagates", "[
         Measured<WaterVolume> {}, Measured<SpecimenMass> { Rational { 3 } }, multiply);
     STATIC_REQUIRE(oneAbsent.has_value());
     STATIC_REQUIRE(oneAbsent->is_absent());
+    constexpr std::expected<Measured<Density>, ArithmeticError> otherAbsent = formula::checked_combine<Density>(
+        Measured<WaterVolume> { Rational { 2 } }, Measured<SpecimenMass> {}, multiply);
+    STATIC_REQUIRE(otherAbsent.has_value());
+    STATIC_REQUIRE(otherAbsent->is_absent());
+
+    int calls = 0;
+    auto const counting = [&calls](Rational lhsReading, Rational rhsReading) {
+        ++calls;
+        return formula::checked_mul(lhsReading, rhsReading);
+    };
+    std::expected<Measured<Density>, ArithmeticError> const leftAbsent = formula::checked_combine<Density>(
+        Measured<WaterVolume> {}, Measured<SpecimenMass> { Rational { 3 } }, counting);
+    std::expected<Measured<Density>, ArithmeticError> const rightAbsent = formula::checked_combine<Density>(
+        Measured<WaterVolume> { Rational { 2 } }, Measured<SpecimenMass> {}, counting);
+    REQUIRE(leftAbsent.has_value());
+    REQUIRE(leftAbsent->is_absent());
+    REQUIRE(rightAbsent.has_value());
+    REQUIRE(rightAbsent->is_absent());
+    REQUIRE(calls == 0);
+
     constexpr auto dividing = [](Rational lhsReading, Rational rhsReading) noexcept {
         return formula::checked_div(lhsReading, rhsReading);
     };
@@ -570,4 +590,6 @@ TEST_CASE("checked_combine: absent if either is absent; an error propagates", "[
     STATIC_REQUIRE(byZero.error() == ArithmeticError::DivisionByZero);
     STATIC_REQUIRE(
         noexcept(formula::checked_combine<Density>(Measured<WaterVolume> {}, Measured<SpecimenMass> {}, multiply)));
+    STATIC_REQUIRE(
+        !noexcept(formula::checked_combine<Density>(Measured<WaterVolume> {}, Measured<SpecimenMass> {}, counting)));
 }
