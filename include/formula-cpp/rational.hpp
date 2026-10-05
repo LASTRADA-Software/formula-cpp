@@ -156,8 +156,7 @@ class Rational
     }
 
     /// The value `parse_decimal_text` reads from @p spelling: `"2.400"` is
-    /// 12/5. `DomainError` for text that is not a decimal, `Overflow` for a
-    /// value no `Rational` holds.
+    /// 12/5. Text is refused as `parse_decimal_text` describes.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_decimal_text(std::string_view spelling) noexcept;
 
     /// The exact value of the double, which is a dyadic rational. Usually not
@@ -573,8 +572,8 @@ namespace detail
     };
 
     /// The exact value of a decimal spelling, and its places as typed. `DomainError` for a spelling that is not a
-    /// decimal in @p syntax, `Overflow` for a value no `Rational` holds. The mantissa accumulates in 128 bits;
-    /// fractional zeros are deferred, so trailing ones cost nothing.
+    /// decimal in @p syntax; otherwise refused as `parse_decimal_text` describes. The mantissa accumulates in 128
+    /// bits; fractional zeros are deferred, so trailing ones cost nothing.
     [[nodiscard]] constexpr std::expected<ParsedDecimal, ArithmeticError> parse_decimal(std::string_view spelling,
                                                                                     DecimalSyntax syntax) noexcept
     {
@@ -691,9 +690,17 @@ namespace detail
 /// Parses decimal text that arrives at run time -- a CSV import, a form field, a configuration value -- into its
 /// exact value and the places it was typed to: `"2.400"` is 12/5 at 3 places, `"2.4"` 12/5 at 1. An optional sign,
 /// digits with at most one point, an optional exponent (`e` or `E`, an optional sign, digits). `DomainError` for
-/// anything else -- whitespace, a decimal comma, separators, `inf`, `nan`. `Overflow` for digits above 2^127 - 1 in
-/// magnitude, a scale outside 10^-38 to 10^38 once trailing zeros fold, or a scaled whole number above 2^127 - 1
-/// (`"2e38"`): `"2.5e-38"` is refused, though 1/(4 * 10^37) would fit. The same parser reads `_r` literals.
+/// anything else -- whitespace, a decimal comma, separators, `inf`, `nan`. `Overflow` for exactly these:
+///
+/// - digits above 2^127 - 1 in magnitude, read as an integer (trailing zeros after the point aside);
+/// - an exponent outside -1000 to 1000, for a value that is not zero: `"0.<1001 zeros>1e1002"` is refused, though
+///   it is 1;
+/// - a scale outside 10^-38 to 10^38 once trailing zeros fold: `"2.5e-38"` is refused, though 1/(4 * 10^37) would
+///   fit;
+/// - a scaled whole number above 2^127 - 1: `"2e38"`;
+/// - places as typed above `INT32_MAX`, even for zero: `"0e-99999999999"`.
+///
+/// The same parser reads `_r` literals.
 [[nodiscard]] constexpr std::expected<ParsedDecimal, ArithmeticError> parse_decimal_text(std::string_view spelling) noexcept
 {
     return detail::parse_decimal(spelling, detail::DecimalSyntax::Text);
@@ -747,11 +754,11 @@ inline namespace literals
 {
     /// An exact decimal: `27.3_r` is 273/10, never the `double` nearest it.
     /// An exponent scales exactly (`1.5e-3_r` is 3/2000); `-27.3_r` is
-    /// `Rational`'s own negation. A spelling no `Rational` holds (more than
-    /// 128 bits, or an exponent beyond 10^±38 once trailing zeros fold), or
-    /// one that is not a decimal (`0x1F_r`, and `017_r`, which C++ reads as
-    /// octal), fails to compile, naming `formula_rational_literal_out_of_range`
-    /// or `formula_rational_literal_not_a_decimal`.
+    /// `Rational`'s own negation. A spelling refused as `parse_decimal_text`
+    /// describes its `Overflow`, or one that is not a decimal (`0x1F_r`, and
+    /// `017_r`, which C++ reads as octal), fails to compile, naming
+    /// `formula_rational_literal_out_of_range` or
+    /// `formula_rational_literal_not_a_decimal`.
     consteval Rational operator""_r(char const* spelling)
     {
         return detail::rational_from_spelling(spelling);

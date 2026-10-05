@@ -180,12 +180,13 @@ The places are the digits after the point, minus the exponent, and never below
 Anything else is `ArithmeticError::DomainError`: the empty text, whitespace
 anywhere (trim before parsing), a decimal comma (`"2,4"`), any digit separator
 (`"1'000"`, `"1_000"`), a second point, hexadecimal, `inf`, `nan`, and an
-exponent with no digits (`"1e"`). `ArithmeticError::Overflow` is the text
-whose digits, read as an integer, are above 2^127 − 1 in magnitude; whose
-scale lies outside 10^-38 to 10^38 once trailing zeros fold; or whose
-value, once scaled, is a whole number above 2^127 − 1 (`"2e38"`). So
-`"2.5e-38"` is refused, though 1/(4 · 10^37) would fit a `Rational`.
-Trailing zeros after the point cost nothing, however many.
+exponent with no digits (`"1e"`). Text beyond the parser's range is
+`ArithmeticError::Overflow`. Most often, its digits, read as an integer, are
+above 2^127 − 1 in magnitude, or its scale lies outside 10^-38 to 10^38 once
+trailing zeros fold. So `"2.5e-38"` is refused, though 1/(4 · 10^37) would
+fit a `Rational`. The comment on `parse_decimal_text` in
+`formula-cpp/rational.hpp` lists every cause. Trailing zeros after the point
+cost nothing, however many.
 
 ## Exact or nothing
 
