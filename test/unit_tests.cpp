@@ -5,6 +5,7 @@
 
 #include <expected>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -857,8 +858,8 @@ inline constexpr Unit BoundedPercent { .dimension = dim::Scalar,
                                        .bounds = formula::bounds(0, 1, 100, 1) };
 } // namespace
 
-static_assert(!unit::Litre.bounds.present);
-static_assert(BoundedPercent.bounds.present);
+static_assert(!unit::Litre.bounds.lowPresent && !unit::Litre.bounds.highPresent);
+static_assert(BoundedPercent.bounds.lowPresent && BoundedPercent.bounds.highPresent);
 
 static_assert(*formula::checked_within_bounds(*Rational::make(50, 1), BoundedPercent)
               == BoundsCheck::WithinBounds);
@@ -1032,18 +1033,63 @@ TEST_CASE("a malformed unit refuses to answer rather than answer wrong", "[unit]
     Unit const invertedByAggregate { .dimension = dim::Scalar,
                                      .symbolText = formula::symbol("agg"),
                                      .decimals = 0,
-                                     .bounds = { true, 100, 1, 0, 1 } };
+                                     .bounds = { .lowPresent = true,
+                                                 .highPresent = true,
+                                                 .lowNumerator = 100,
+                                                 .lowDenominator = 1,
+                                                 .highNumerator = 0,
+                                                 .highDenominator = 1 } };
     auto const aggregateResult = formula::checked_within_bounds(*Rational::make(50, 1), invertedByAggregate);
     REQUIRE_FALSE(aggregateResult.has_value());
     CHECK(aggregateResult.error() == ArithmeticError::DomainError);
 
-    // And an inverted range that was never declared present is still simply
+    // And an inverted range with neither end declared present is still simply
     // unchecked: a unit nobody gave bounds to must not start reporting errors.
     Unit const invertedButAbsent { .dimension = dim::Scalar,
                                    .symbolText = formula::symbol("abs"),
                                    .decimals = 0,
-                                   .bounds = { false, 100, 1, 0, 1 } };
+                                   .bounds = { .lowPresent = false,
+                                               .highPresent = false,
+                                               .lowNumerator = 100,
+                                               .lowDenominator = 1,
+                                               .highNumerator = 0,
+                                               .highDenominator = 1 } };
     CHECK(unwrapped(formula::checked_within_bounds(*Rational::make(50, 1), invertedButAbsent)) == BoundsCheck::NotChecked);
+}
+
+TEST_CASE("checked_within: either end, both, or neither", "[unit][bounds]")
+{
+    using formula::BoundsCheck;
+    using formula::Rational;
+    constexpr std::optional<Rational> none {};
+    STATIC_REQUIRE(*formula::checked_within(Rational { 5 }, Rational { 0 }, none) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { -1 }, Rational { 0 }, none) == BoundsCheck::BelowMinimum);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 0 }, Rational { 0 }, none) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 21 }, none, Rational { 20 }) == BoundsCheck::AboveMaximum);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 20 }, none, Rational { 20 }) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 7 }, Rational { 0 }, Rational { 20 }) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 7 }, none, none) == BoundsCheck::NotChecked);
+    STATIC_REQUIRE(formula::checked_within(Rational { 7 }, Rational { 20 }, Rational { 0 }).error()
+                   == formula::ArithmeticError::DomainError);
+    REQUIRE(formula::within(Rational { 7 }, none, Rational { 5 }) == BoundsCheck::AboveMaximum);
+    REQUIRE_THROWS_AS(formula::within(Rational { 7 }, Rational { 9 }, Rational { 5 }), formula::ArithmeticException);
+}
+
+TEST_CASE("checked_within_bounds: a unit declared with at_least or at_most", "[unit][bounds]")
+{
+    using formula::BoundsCheck;
+    using formula::Rational;
+    constexpr formula::Unit NonNegative { .dimension = formula::dim::Scalar,
+                                          .symbolText = formula::symbol("x"),
+                                          .bounds = formula::at_least(0, 1) };
+    constexpr formula::Unit AtMostTwenty { .dimension = formula::dim::Scalar,
+                                           .symbolText = formula::symbol("y"),
+                                           .bounds = formula::at_most(20, 1) };
+    STATIC_REQUIRE(NonNegative.bounds.lowPresent && !NonNegative.bounds.highPresent);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { 1'000'000 }, NonNegative) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -1, 2 }, NonNegative) == BoundsCheck::BelowMinimum);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -1'000'000 }, AtMostTwenty) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { 41, 2 }, AtMostTwenty) == BoundsCheck::AboveMaximum);
 }
 
 // ---- cross-translation-unit identity ----

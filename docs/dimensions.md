@@ -133,7 +133,7 @@ A `formula::Unit` is a small aggregate, and every field earns its place:
 | `symbolText` | a fixed-capacity display symbol (a `Symbol`, not a `std::string_view`); required for a dimensionless unit with a scale |
 | `asciiText` | a stable ASCII key for serialising the unit, read with `view_ascii`; empty when the symbol is its own key, required when the symbol is not ASCII |
 | `decimals` | the declared display precision |
-| `bounds` | an optional valid range, in the unit's own scale |
+| `bounds` | an optional valid range -- a minimum, a maximum, or both -- in the unit's own scale |
 
 Like `Dimension`, `Unit` is structural on purpose: a quantity (see
 [Quantities and measurements](quantities.md)) names its unit as a template
@@ -213,8 +213,8 @@ inline constexpr formula::Unit MicrogramPerLitre { .dimension = formula::dim::Ma
                                                    .asciiText = formula::symbol("ug/L") };
 ```
 
-Without the key, the unit is refused wherever it is written -- as a quantity's
-unit, a constant's, a rounding's, or a table's key or result, the same places
+Without the key, the unit is refused wherever it is written -- as a quantity's,
+constant's, rounding's, table's or other formula node's unit, the same places
 a dimensionless unit with a scale and no symbol is refused -- with
 `formula: a unit whose symbol is not ASCII must declare an ASCII key`. A key
 that is itself not ASCII is refused the same way: the key is what a serialiser
@@ -385,6 +385,37 @@ than units: it is what `checked_within_bounds` answers for a `Measured` that
 holds nothing. A reading nobody took and a range nobody declared are
 different facts, for the same reason `NotChecked` is not `WithinBounds`. `formula::describe(BoundsCheck)` gives each outcome its own
 non-empty, mutually distinct wording, as shown above.
+
+A unit declares each end of its range on its own: `Bounds` holds `lowPresent`
+and `highPresent`, one for each end. `formula::bounds(lowNumerator,
+lowDenominator, highNumerator, highDenominator)` declares both,
+`formula::at_least(numerator, denominator)` a minimum only, and
+`formula::at_most(numerator, denominator)` a maximum only. Both ends are
+inclusive, and a unit that declares neither reports `NotChecked`.
+
+Limits known only at run time -- a specification row, a catalogue entry -- need
+no unit to carry them. `formula::checked_within(value, lowEnd, highEnd)` takes
+each end as a `std::optional<Rational>`, and either may be absent. Here a
+catalogue row gives a minimum and no maximum:
+
+<!-- snippet: not from the example -->
+```cpp
+std::optional<Rational> const catalogueMinimum = Rational { 25 };
+auto const strengthCheck = formula::checked_within(measuredStrength, catalogueMinimum, std::nullopt);
+if (!strengthCheck)
+{
+    std::println("checking the strength: {}", strengthCheck.error());
+    return 1;
+}
+std::println("strength: {}", *strengthCheck);
+```
+
+It answers by the rule `checked_within_bounds` applies to a unit's declared
+ends: `NotChecked` when neither end is given, never `WithinBounds`, and
+`DomainError` when the lower end is above the upper one, a malformed pair of
+limits rather than a value to judge. Given a `Measured`, it reports
+`NotMeasured` for a value nobody took. `formula::within` is the same check
+spelled to throw.
 
 ## Base dimensions the SI does not have
 
@@ -563,7 +594,7 @@ sentinels are always compile errors, never aborts:
 filled by hand is checked by none of them.
 
 `Unit`'s `magnitudeNumerator`, `magnitudeDenominator`,
-`offsetNumerator`, `offsetDenominator` and the four fields of `Bounds` are all
+`offsetNumerator`, `offsetDenominator` and the four integer fields of `Bounds` are all
 `std::int64_t`. `Rational`'s own numerator and denominator are 128-bit, so every
 value these fields state converts to one exactly.
 

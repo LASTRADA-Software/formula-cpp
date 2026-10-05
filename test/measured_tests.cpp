@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <limits>
+#include <optional>
 #include <type_traits>
 
 namespace unit = formula::unit;
@@ -265,6 +266,17 @@ TEST_CASE("an unmeasured value is not judged against bounds", "[measured]")
     auto const present = formula::checked_within_bounds(measured(1000000, 1));
     REQUIRE(present.has_value());
     CHECK(*present == formula::BoundsCheck::NotChecked);
+}
+
+TEST_CASE("checked_within on a measurement: absent is NotMeasured", "[measured][bounds]")
+{
+    constexpr formula::Measured<WaterVolume> absentReading {};
+    STATIC_REQUIRE(*formula::checked_within(absentReading, formula::Rational { 0 }, std::nullopt)
+                   == formula::BoundsCheck::NotMeasured);
+    constexpr formula::Measured<WaterVolume> present { formula::Rational { 3 } };
+    STATIC_REQUIRE(*formula::checked_within(present, formula::Rational { 0 }, std::nullopt)
+                   == formula::BoundsCheck::WithinBounds);
+    REQUIRE(formula::within(present, std::nullopt, formula::Rational { 2 }) == formula::BoundsCheck::AboveMaximum);
 }
 
 TEST_CASE("rounding to declared precision leaves an absent value absent", "[measured]")

@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <string_view>
 
 namespace formula
@@ -49,11 +50,14 @@ namespace detail
     return *built;
 }
 
-/// Optional validity range, in the unit's own scale, as exact rationals.
+/// Optional validity range, in the unit's own scale, as exact rationals. Either end may be declared on its own, both
+/// may be, or neither; an undeclared end's fields are ignored.
 struct Bounds
 {
-    /// Whether a range was declared at all -- `false` for a unit with no bounds.
-    bool present = false;
+    /// Whether a minimum was declared. `false` for a unit with no lower limit.
+    bool lowPresent = false;
+    /// Whether a maximum was declared. `false` for a unit with no upper limit.
+    bool highPresent = false;
     /// Numerator of the declared minimum.
     std::int64_t lowNumerator = 0;
     /// Denominator of the declared minimum.
@@ -73,7 +77,19 @@ struct Bounds
                                       std::int64_t highNumerator,
                                       std::int64_t highDenominator) noexcept
 {
-    return { true, lowNumerator, lowDenominator, highNumerator, highDenominator };
+    return { true, true, lowNumerator, lowDenominator, highNumerator, highDenominator };
+}
+
+/// Builds a `Bounds` with a minimum only, as a numerator/denominator pair: no value is too large.
+[[nodiscard]] constexpr Bounds at_least(std::int64_t lowNumerator, std::int64_t lowDenominator) noexcept
+{
+    return { true, false, lowNumerator, lowDenominator, 0, 1 };
+}
+
+/// Builds a `Bounds` with a maximum only, as a numerator/denominator pair: no value is too small.
+[[nodiscard]] constexpr Bounds at_most(std::int64_t highNumerator, std::int64_t highDenominator) noexcept
+{
+    return { false, true, 0, 1, highNumerator, highDenominator };
 }
 
 /// A unit of measurement.
@@ -117,8 +133,9 @@ struct Unit
 };
 
 /// The unit's serialising key: `asciiText` when one is declared, otherwise `symbolText`. Stable across restyling of
-/// the display symbol. A unit that a quantity, a constant, a rounding or a table takes is printable ASCII here
-/// (`RequireAsciiKey`); for any other unit, such as one built at run time, ask `has_ascii_key` first.
+/// the display symbol. A unit the library takes as a quantity's, constant's, rounding's, table's or other formula
+/// node's unit is printable ASCII here (`RequireAsciiKey`); for any other unit, such as one built at run time, ask
+/// `has_ascii_key` first.
 [[nodiscard]] constexpr std::string_view view_ascii(Unit const& unitValue) noexcept
 {
     std::string_view const declaredKey = view(unitValue.asciiText);
@@ -630,8 +647,8 @@ namespace detail
     };
 
     /// Fails to compile when @p U's symbol is not printable ASCII and it declares no ASCII key (`has_ascii_key`).
-    /// Asserted wherever `RequireNamedScaledScalar` is, so every unit a quantity, constant, rounding or table uses
-    /// can be serialised by `view_ascii`. Write `::value`, as there.
+    /// Asserted wherever `RequireNamedScaledScalar` is, so every unit the library takes as a quantity's, constant's,
+    /// rounding's, table's or other formula node's unit can be serialised by `view_ascii`. Write `::value`, as there.
     template <Unit U>
     struct RequireAsciiKey
     {
@@ -763,33 +780,59 @@ template <>
 inline constexpr bool formats_by_describe<BoundsCheck> = true;
 } // namespace detail
 
-/// Checks @p magnitude, expressed in @p unitOfValue, against that unit's bounds.
+/// Checks @p magnitude against limits held at run time -- a specification row, a catalogue entry -- either of which
+/// may be absent. Both ends are inclusive. With no end there is nothing to check (`NotChecked`, never
+/// `WithinBounds`); a lower end above the upper one is a malformed pair of limits, refused as `DomainError`.
+[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within(
+    Rational magnitude, std::optional<Rational> lowEnd, std::optional<Rational> highEnd) noexcept
+{
+    if (!lowEnd && !highEnd)
+        return BoundsCheck::NotChecked;
+    if (lowEnd && highEnd && *lowEnd > *highEnd)
+        return std::unexpected { ArithmeticError::DomainError };
+    if (lowEnd && magnitude < *lowEnd)
+        return BoundsCheck::BelowMinimum;
+    if (highEnd && magnitude > *highEnd)
+        return BoundsCheck::AboveMaximum;
+    return BoundsCheck::WithinBounds;
+}
+
+/// @throws ArithmeticException when the checked form would report an error.
+[[nodiscard]] constexpr BoundsCheck within(Rational magnitude, std::optional<Rational> lowEnd,
+                                           std::optional<Rational> highEnd)
+{
+    return detail::or_throw(checked_within(magnitude, lowEnd, highEnd));
+}
+
+/// Checks @p magnitude, expressed in @p unitOfValue, against the ends that unit's bounds declare, as
+/// `checked_within`; an end the unit does not declare is not checked.
 [[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(Rational magnitude,
                                                                                           Unit unitOfValue) noexcept
 {
-    if (!unitOfValue.bounds.present)
-        return BoundsCheck::NotChecked;
-
-    std::expected<Rational, ArithmeticError> const lowBound =
-        Rational::make(unitOfValue.bounds.lowNumerator, unitOfValue.bounds.lowDenominator);
-    std::expected<Rational, ArithmeticError> const highBound =
-        Rational::make(unitOfValue.bounds.highNumerator, unitOfValue.bounds.highDenominator);
-    if (!lowBound)
-        return std::unexpected { lowBound.error() };
-    if (!highBound)
-        return std::unexpected { highBound.error() };
+    std::optional<Rational> lowEnd;
+    std::optional<Rational> highEnd;
+    if (unitOfValue.bounds.lowPresent)
+    {
+        std::expected<Rational, ArithmeticError> const lowBound =
+            Rational::make(unitOfValue.bounds.lowNumerator, unitOfValue.bounds.lowDenominator);
+        if (!lowBound)
+            return std::unexpected { lowBound.error() };
+        lowEnd = *lowBound;
+    }
+    if (unitOfValue.bounds.highPresent)
+    {
+        std::expected<Rational, ArithmeticError> const highBound =
+            Rational::make(unitOfValue.bounds.highNumerator, unitOfValue.bounds.highDenominator);
+        if (!highBound)
+            return std::unexpected { highBound.error() };
+        highEnd = *highBound;
+    }
 
     // A unit whose declared minimum exceeds its maximum is a malformed unit,
-    // not a value to be judged. Reporting BelowMinimum or AboveMaximum here
-    // would be a wrong answer dressed up as a real one; refuse instead.
-    if (*lowBound > *highBound)
-        return std::unexpected { ArithmeticError::DomainError };
-
-    if (magnitude < *lowBound)
-        return BoundsCheck::BelowMinimum;
-    if (magnitude > *highBound)
-        return BoundsCheck::AboveMaximum;
-    return BoundsCheck::WithinBounds;
+    // not a value to be judged. Reporting BelowMinimum or AboveMaximum there
+    // would be a wrong answer dressed up as a real one, so `checked_within`
+    // refuses the pair instead.
+    return checked_within(magnitude, lowEnd, highEnd);
 }
 
 /// The unit's declared display precision, as the rounding layer's own type.

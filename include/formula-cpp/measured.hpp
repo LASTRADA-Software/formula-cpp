@@ -235,6 +235,17 @@ template <Described Q>
     return checked_within_bounds(value.value(), Describe<Q>::unit);
 }
 
+/// Checks a measurement against limits held at run time, as `checked_within` on a `Rational`; an absent
+/// measurement is `BoundsCheck::NotMeasured`.
+template <Described Q>
+[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within(
+    Measured<Q> measured, std::optional<Rational> lowEnd, std::optional<Rational> highEnd) noexcept
+{
+    if (measured.is_absent())
+        return BoundsCheck::NotMeasured;
+    return checked_within(measured.value(), lowEnd, highEnd);
+}
+
 /// Rounds a measurement to the precision its quantity's unit declares.
 template <Described Q>
 [[nodiscard]] constexpr std::expected<Measured<Q>, ArithmeticError> checked_round_to_declared(
@@ -258,6 +269,17 @@ template <Described Q>
 [[nodiscard]] constexpr BoundsCheck within_bounds(Measured<Q> measured)
 {
     return detail::or_throw(checked_within_bounds(measured));
+}
+
+/// Throwing spelling of `checked_within` on a measurement, for callers who would only rethrow.
+///
+/// An absent measurement is `BoundsCheck::NotMeasured`, as there. Throws
+/// `ArithmeticException` where `checked_within` returns an error.
+template <Described Q>
+[[nodiscard]] constexpr BoundsCheck within(Measured<Q> measured, std::optional<Rational> lowEnd,
+                                           std::optional<Rational> highEnd)
+{
+    return detail::or_throw(checked_within(measured, lowEnd, highEnd));
 }
 
 /// Throwing spelling of `checked_round_to_declared`, for callers who would only rethrow.
