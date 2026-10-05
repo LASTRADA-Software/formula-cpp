@@ -181,7 +181,10 @@ Each program's largest integers over everything it evaluates at run time.
 The lowest is `opaque_and_retry`, at 6 bits, on purpose: it fits twenty-seven points on
 distinct denominators to show a least-squares fit refusing with `Overflow`, and the census
 counts the integers the fit formed before it was refused (see [Least squares](#least-squares-realistic-and-one-stress-control)). Of the examples that
-compute only results, the lowest is `methods_and_overlays`, at 69 bits: its cylinder
+compute only results, the lowest is `cycling_speed`, at 68 bits: it puts the speed it
+evaluates in double onto an exact scale of millimetres a second, starting from that
+double's exact binary value: a numerator of up to 53 bits over a power of two. Its exact
+steps alone stay within 30 bits. Next is `methods_and_overlays`, at 69 bits: its cylinder
 variant divides a force of 89.3 kN by the library's rational π,
 245850922/78256779, times a squared diameter of 135 mm, and a jurisdiction's
 replacement of that variant divides it by 1127/1000 times the squared

@@ -37,7 +37,6 @@
 #include <cstdint>
 #include <expected>
 #include <print>
-#include <string_view>
 
 namespace
 {
@@ -47,7 +46,8 @@ using namespace formula::literals;
 
 // ---- Units the library does not ship ----
 //
-// Each is a coherent combination of SI units, declared over its dimension.
+// Each is declared over its dimension: four coherent combinations of SI units,
+// and the kilometre an hour, which is not coherent.
 inline constexpr formula::Unit MetrePerSecondSquared { .dimension = formula::dim::Acceleration,
                                                        .symbolText = formula::symbol("m/s2"),
                                                        .decimals = 5 };
@@ -69,28 +69,27 @@ inline constexpr formula::Unit KilometrePerHour { .dimension = formula::dim::Vel
                                                   .decimals = 1 };
 
 // ---- The inputs ----
-using RiderMass = formula::Quantity<struct RiderMassTag, "m_r", "the rider's mass", unit::Kilogram>;
-using BikeMass = formula::Quantity<struct BikeMassTag, "m_b", "the bike's mass", unit::Kilogram>;
-using DragArea = formula::Quantity<struct DragAreaTag, "C_dA", "the drag area", unit::SquareMetre>;
-using AirDensity = formula::Quantity<struct AirDensityTag, "rho", "the density of the air", unit::KilogramPerCubicMetre>;
-using Power = formula::Quantity<struct PowerTag, "P", "the power the rider holds", unit::Watt>;
+using RiderMass = formula::Quantity<struct RiderMassTag, "m_r", "rider's mass", unit::Kilogram>;
+using BikeMass = formula::Quantity<struct BikeMassTag, "m_b", "bike's mass", unit::Kilogram>;
+using DragArea = formula::Quantity<struct DragAreaTag, "C_dA", "drag area", unit::SquareMetre>;
+using AirDensity = formula::Quantity<struct AirDensityTag, "rho", "density of the air", unit::KilogramPerCubicMetre>;
+using Power = formula::Quantity<struct PowerTag, "P", "power the rider holds", unit::Watt>;
 using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
 using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
 
 // ---- The calculated values ----
 using RollingCoefficient =
-    formula::Quantity<struct RollingCoefficientTag, "C_rr", "the rolling resistance coefficient", unit::One>;
+    formula::Quantity<struct RollingCoefficientTag, "C_rr", "rolling resistance coefficient", unit::One>;
 using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", unit::One>;
-using TotalMass = formula::Quantity<struct TotalMassTag, "m", "the mass of rider and bike", unit::Kilogram>;
+using TotalMass = formula::Quantity<struct TotalMassTag, "m", "mass of rider and bike", unit::Kilogram>;
 using ResistingForce =
     formula::Quantity<struct ResistingForceTag, "F", "rolling resistance and gravity together", unit::Newton>;
-using DragFactor = formula::Quantity<struct DragFactorTag, "k", "the air drag per square of speed", KilogramPerMetre>;
-using PowerTerm =
-    formula::Quantity<struct PowerTermTag, "a", "the power over twice the drag factor", CubicMetrePerSecondCubed>;
+using DragFactor = formula::Quantity<struct DragFactorTag, "k", "air drag per square of speed", KilogramPerMetre>;
+using PowerTerm = formula::Quantity<struct PowerTermTag, "a", "power over twice the drag factor", CubicMetrePerSecondCubed>;
 using ForceTerm =
-    formula::Quantity<struct ForceTermTag, "b", "the force over three times the drag factor", SquareMetrePerSecondSquared>;
-using Speed = formula::Quantity<struct SpeedTag, "v", "the steady-state speed", unit::MetrePerSecond>;
-using SpeedInKmh = formula::Quantity<struct SpeedInKmhTag, "v_kmh", "the steady-state speed", KilometrePerHour>;
+    formula::Quantity<struct ForceTermTag, "b", "force over three times the drag factor", SquareMetrePerSecondSquared>;
+using Speed = formula::Quantity<struct SpeedTag, "v", "steady-state speed", unit::MetrePerSecond>;
+using SpeedInKmh = formula::Quantity<struct SpeedInKmhTag, "v_kmh", "steady-state speed", KilometrePerHour>;
 
 // Standard gravity, as defined: exactly 9.80665 m/s2.
 inline constexpr auto gravity = formula::constant<MetrePerSecondSquared>(9.80665_r);
@@ -138,9 +137,9 @@ inline constexpr auto speed = formula::yields<Speed>(formula::documented(
     { .title = "Validation of a mathematical model for road cycling power",
       .reference = "J. C. Martin, D. L. Milliken, J. E. Cobb, K. L. McFadden and A. R. Coggan, "
                    "Journal of Applied Biomechanics, 1998",
-      .text = "The power a rider holds balances rolling resistance, gravity and air drag; in steady state, with "
-              "no wind and a small gradient, P = v * (m * g * (C_rr + s) + 1/2 * rho * C_dA * v^2), solved here "
-              "for its one real root v." }));
+      .text = "A simplified form of the model, without drivetrain or bearing losses: the power a rider holds "
+              "balances rolling resistance, gravity and air drag; in steady state, with no wind and a small "
+              "gradient, P = v * (m * g * (C_rr + s) + 1/2 * rho * C_dA * v^2), solved here for v." }));
 
 // How LaTeX writes the two symbols plain text cannot: a subscript of two
 // letters, and the Greek letter.
@@ -177,7 +176,7 @@ inline constexpr auto latexSymbols =
 }
 
 /// The speed of one ride, in m/s and in km/h; both absent when an input is.
-struct Ridden
+struct RideSpeed
 {
     formula::Measured<Speed> inMetresPerSecond;
     formula::Measured<SpeedInKmh> inKilometresPerHour;
@@ -186,11 +185,11 @@ struct Ridden
 /// Calculates @p surface's ride on @p inputs: every step exactly on a
 /// worksheet, then the speed in double from the exact a and b, rounded to the
 /// millimetre a second.
-template <typename Env>
-[[nodiscard]] std::expected<Ridden, formula::ArithmeticError> ride_on(RoadSurface surface, Env const& inputs)
+[[nodiscard]] std::expected<RideSpeed, formula::ArithmeticError> ride_on(RoadSurface surface,
+                                                                         decltype(riding(0, 0)) const& inputs)
 {
     auto sheet = formula::worksheet(ride(surface), inputs);
-    auto const [a, b] = sheet.template checked_calculate<PowerTerm, ForceTerm>();
+    auto const [a, b] = sheet.checked_calculate<PowerTerm, ForceTerm>();
     if (!a)
         return std::unexpected { a.error() };
     if (!b)
@@ -202,7 +201,7 @@ template <typename Env>
         return std::unexpected { inSi.error() };
     // An input nobody measured leaves the speed absent: not zero, not a failure.
     if (!inSi->has_value())
-        return Ridden { .inMetresPerSecond = {}, .inKilometresPerHour = {} };
+        return RideSpeed { .inMetresPerSecond = {}, .inKilometresPerHour = {} };
 
     // In the coherent unit, which m/s is: the double is a speed in m/s.
     auto const exact = formula::rational_from_double(**inSi, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven);
@@ -212,7 +211,7 @@ template <typename Env>
     auto const inKilometresPerHour = formula::checked_convert_to<SpeedInKmh>(inMetresPerSecond);
     if (!inKilometresPerHour)
         return std::unexpected { inKilometresPerHour.error() };
-    return Ridden { .inMetresPerSecond = inMetresPerSecond, .inKilometresPerHour = *inKilometresPerHour };
+    return RideSpeed { .inMetresPerSecond = inMetresPerSecond, .inKilometresPerHour = *inKilometresPerHour };
 }
 } // namespace
 
@@ -255,9 +254,8 @@ int main()
     // ---- 3. The speed, in double, from the exact steps ----
     //
     // Every step up to a and b is a sum, product or quotient of exact numbers,
-    // and is calculated exactly. The speed's roots have no exact value, so an
-    // exact evaluation of it is refused as Inexact rather than rounded behind
-    // the reader's back; it is evaluated in double instead (ride_on above).
+    // and is calculated exactly. The speed's roots have no exact value, so it
+    // is evaluated in double instead (ride_on above).
     auto const flat = ride_on(RoadSurface::Asphalt, riding(250, 0));
     if (!flat)
     {
@@ -301,8 +299,9 @@ int main()
     // of those roots, sqrt(-F / k); this formula is not the one for it.)
     auto const descent = ride_on(RoadSurface::Asphalt, riding(0, -80));
     std::println("8 % descent, asphalt, 0 W:     {}",
-                 descent.has_value() ? "a speed, where there must be none" : formula::describe(descent.error()));
-    check("no real root: a DomainError, reported",
+                 descent.has_value() ? "a speed, where the square root has no real answer"
+                                     : formula::describe(descent.error()));
+    check("Cardano's square root has no real answer: a DomainError",
           !descent.has_value() && descent.error() == formula::ArithmeticError::DomainError);
 
     std::println("\nall checks passed: {}", ok ? "yes" : "no");
