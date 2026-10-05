@@ -3,7 +3,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <expected>
 #include <limits>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -117,8 +119,8 @@ TEST_CASE("reading a symbol never runs off the end of its storage", "[unit]")
     // directly, and exactly SymbolCapacity bytes of text leaves no room for a
     // terminator. An unbounded scan then reads whatever follows in memory. The
     // neighbouring array is here so that a regression has something to run into:
-    // before `view()` was bounded, this returned 23 characters from a 16-byte
-    // array.
+    // before `view()` was bounded, this returned 23 characters from what was
+    // then a 16-byte array.
     struct Adjacent
     {
         formula::Symbol symbolText;
@@ -142,6 +144,58 @@ TEST_CASE("reading a symbol never runs off the end of its storage", "[unit]")
     Symbol const empty = formula::symbol("");
     CHECK(formula::view(mm).size() == 2);
     CHECK(formula::view(empty).empty());
+}
+
+TEST_CASE("checked_symbol: run-time text that fits is kept byte for byte", "[unit][symbol]")
+{
+    // µmol/(L·min·kg): 18 bytes of UTF-8.
+    constexpr std::string_view compound = "\xc2\xb5mol/(L\xc2\xb7min\xc2\xb7kg)";
+    STATIC_REQUIRE(compound.size() == 18);
+    constexpr std::expected<formula::Symbol, formula::SymbolError> built = formula::checked_symbol(compound);
+    STATIC_REQUIRE(built.has_value());
+    STATIC_REQUIRE(formula::view(*built) == compound);
+
+    // 31 bytes, the most that fits, ending in a two-byte character: kept whole.
+    constexpr std::string_view widest = "abcdefghijklmnopqrstuvwxyz012\xc2\xb5";
+    STATIC_REQUIRE(widest.size() == formula::SymbolCapacity - 1);
+    constexpr std::expected<formula::Symbol, formula::SymbolError> widestBuilt = formula::checked_symbol(widest);
+    STATIC_REQUIRE(widestBuilt.has_value());
+    STATIC_REQUIRE(formula::view(*widestBuilt) == widest);
+
+    constexpr std::expected<formula::Symbol, formula::SymbolError> empty = formula::checked_symbol("");
+    STATIC_REQUIRE(empty.has_value());
+    STATIC_REQUIRE(formula::view(*empty).empty());
+
+    // The same at run time, from text the compiler cannot see.
+    std::string const fromCatalogue { compound };
+    std::expected<formula::Symbol, formula::SymbolError> const atRunTime = formula::checked_symbol(fromCatalogue);
+    REQUIRE(atRunTime.has_value());
+    REQUIRE(formula::view(*atRunTime) == compound);
+}
+
+TEST_CASE("checked_symbol: text that does not fit, or holds a NUL, is refused", "[unit][symbol]")
+{
+    constexpr std::string_view tooLong = "abcdefghijklmnopqrstuvwxyz0123\xc2\xb5"; // 32 bytes
+    STATIC_REQUIRE(tooLong.size() == formula::SymbolCapacity);
+    STATIC_REQUIRE(formula::checked_symbol(tooLong).error() == formula::SymbolError::TooLong);
+
+    constexpr std::string_view withNull { "mg\0L", 4 };
+    STATIC_REQUIRE(formula::checked_symbol(withNull).error() == formula::SymbolError::EmbeddedNull);
+}
+
+TEST_CASE("describe(SymbolError) names each refusal", "[unit][symbol]")
+{
+    STATIC_REQUIRE(formula::describe(formula::SymbolError::TooLong)
+                   == "the symbol does not fit SymbolCapacity bytes, terminator included");
+    STATIC_REQUIRE(formula::describe(formula::SymbolError::EmbeddedNull) == "the symbol contains a NUL byte");
+    STATIC_REQUIRE(formula::describe(formula::SymbolError::NotAscii)
+                   == "the symbol holds a byte outside printable ASCII");
+}
+
+TEST_CASE("symbol(): a compound UTF-8 laboratory unit fits", "[unit][symbol]")
+{
+    constexpr formula::Symbol compound = formula::symbol("\xc2\xb5mol/(L\xc2\xb7min\xc2\xb7kg)");
+    STATIC_REQUIRE(formula::view(compound).size() == 18);
 }
 
 TEST_CASE("units report a readable symbol", "[unit]")

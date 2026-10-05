@@ -325,7 +325,7 @@ formula_add_negative_test(expression_too_many_named_bases "formula_dimension_has
 # once for the constant it initialises and once for the call, each naming the
 # sentinel, while cl and g++ report it once.
 formula_add_negative_test(base_dimension_name_empty "formula_base_dimension_name_must_not_be_empty")
-# A 16-byte name would also overflow symbol(); the base's own rule must be the one that fires.
+# A 32-byte name would also overflow symbol(); the base's own rule must be the one that fires.
 formula_add_negative_test(base_dimension_name_too_long "formula_base_dimension_name_too_long"
     REJECT "formula_unit_symbol_too_long")
 formula_add_negative_test(base_dimension_name_not_identifier
@@ -367,6 +367,11 @@ formula_add_negative_test(measured_convert_currency_mismatch
 # reason: symbol() rejects an over-long symbol by calling a deliberately
 # non-`constexpr` sentinel rather than truncating it.
 formula_add_negative_test(unit_symbol_too_long "formula_unit_symbol_too_long")
+# symbol() is consteval, so a spelling that only exists at run time is refused
+# where it is passed. cl says "call to immediate function is not a constant
+# expression", clang and g++ "call to consteval function ... is not a constant
+# expression"; the expected text is the part they share.
+formula_add_negative_test(unit_symbol_from_runtime_text "is not a constant expression")
 
 formula_add_negative_test(fixed_string_not_terminated
     "formula_fixed_string_must_be_null_terminated")

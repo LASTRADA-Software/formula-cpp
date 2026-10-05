@@ -8,7 +8,7 @@
 /// named from unit::Litre. If the two spellings are not the same type, this
 /// does not link.
 ///
-/// Unit nests Symbol (a 16-byte char array) and Bounds inside the NTTP, a
+/// Unit nests Symbol (a 32-byte char array) and Bounds inside the NTTP, a
 /// strictly richer mangling than Dimension's, and `Quantity<…, Unit>` is the
 /// consumer that depends on this holding.
 

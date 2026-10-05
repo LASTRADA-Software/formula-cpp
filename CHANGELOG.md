@@ -12,9 +12,19 @@ change is recorded here.
   speed's steps exactly on a worksheet, cites the model it follows, evaluates the speed's cube
   roots in `double`, and reports a `DomainError` on a steep descent, where the formula has no real
   answer.
+- **`checked_symbol()`** builds a unit `Symbol` from run-time text -- a catalogue row, a configuration file -- byte
+  for byte, and returns `std::expected<Symbol, SymbolError>`: `SymbolError::TooLong` for text that does not fit,
+  `SymbolError::EmbeddedNull` for text holding a NUL byte. It never truncates and never aborts. `describe()` spells a
+  `SymbolError` for an error message.
 
 ### Changed
 
+- **Breaking:** `symbol()` is `consteval`: its spelling must be a constant expression, so a symbol too long for
+  `SymbolCapacity` can no longer reach `std::abort()` at run time. Run-time text goes through `checked_symbol()`.
+- **Breaking:** `SymbolCapacity` is 32 bytes including the terminator, up from 16: a unit symbol or a named base's
+  name holds 31 bytes, enough for compound laboratory units such as `µmol/(L·min·kg)` (18 bytes of UTF-8). `Symbol`
+  is 16 bytes larger, and `Dimension` and `Unit`, which hold symbols, are larger with it; the longest text
+  `number_text` spells grows from 97 to 113 bytes, still within `NumberTextCapacity`.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.

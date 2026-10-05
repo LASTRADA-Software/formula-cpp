@@ -38,7 +38,7 @@ namespace formula
 
 /// Bytes of text a `NumberText` can hold. The longest text this header
 /// spells is a fraction -- a sign, a 39-digit numerator, a slash, a 39-digit
-/// denominator, a space and a unit symbol of `SymbolCapacity` bytes -- of 97
+/// denominator, a space and a unit symbol of `SymbolCapacity` bytes -- of 113
 /// bytes, and a `static_assert` below keeps it within this. A fraction is
 /// never marked approximate, and the longest marked decimal, at 18 places, is
 /// shorter. A value in a dimensioned unit with no symbol is followed by its

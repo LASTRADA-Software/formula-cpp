@@ -425,7 +425,7 @@ shows the two additions it refuses. The library itself declares no currency:
 the application's.
 
 **Names.** A base's name must be an ASCII letter followed by ASCII letters or
-digits, at most 15 bytes long -- it is a `Symbol`, as a unit's symbol is --
+digits, at most 31 bytes long -- it is a `Symbol`, as a unit's symbol is --
 and not the symbol of an SI base unit: `m`, `kg`, `s`, `A`, `K`, `mol` or `cd`,
 since a base named `m` would read as metres wherever it is printed. And it is
 printed: it is the symbol of the base's coherent unit, written into a trace
@@ -497,10 +497,19 @@ the same kind, `formula_dimension_has_too_many_named_bases` -- a compile error
 in a constant expression, an abort at run time -- never by dropping a base. A
 named base's exponent is an `Exponent`, with the limits above.
 
-`SymbolCapacity` is 16 bytes **including the terminator** -- 15 usable
-characters, not 16 -- and a base's name is a `Symbol` too, so it is at most 15
-bytes long. The name is checked only where it is made, and `base_dimension` is
-`consteval`, so its four sentinels are always compile errors, never aborts:
+`SymbolCapacity` is 32 bytes **including the terminator** -- 31 usable
+bytes, not 32 -- which holds compound laboratory units such as
+`µmol/(L·min·kg)` (18 bytes of UTF-8). `symbol()` is `consteval`: it accepts
+only a constant expression, so a literal that does not fit is a compile error
+naming `formula_unit_symbol_too_long`, and no run-time text can reach it. A
+symbol from run-time text -- a catalogue row, a configuration file -- is built
+with `checked_symbol()`, which returns the `Symbol` byte for byte, or
+`SymbolError::TooLong` or `SymbolError::EmbeddedNull` instead of aborting or
+truncating; `describe()` spells either for an error message.
+
+A base's name is a `Symbol` too, so it is at most 31 bytes long. The name is
+checked only where it is made, and `base_dimension` is `consteval`, so its four
+sentinels are always compile errors, never aborts:
 `formula_base_dimension_name_must_not_be_empty`,
 `formula_base_dimension_name_too_long`,
 `formula_base_dimension_name_must_be_a_letter_then_letters_or_digits` and
