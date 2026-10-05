@@ -15,8 +15,9 @@ change is recorded here.
 - `formula::parse_decimal_text` reads decimal text that arrives at run time -- a CSV import, a form field, a
   configuration value -- into a `ParsedDecimal`: its exact value and the places it was typed to, so `"2.400"` is 12/5
   at 3 places and `"2.4"` is 12/5 at 1. `Rational::from_decimal_text` gives the value alone. Text that is not a
-  decimal (whitespace, a decimal comma, separators, `inf`, `nan`) is `DomainError`, and a value no `Rational` holds
-  is `Overflow`. The same parser reads `_r` literals.
+  decimal (whitespace, a decimal comma, separators, `inf`, `nan`) is `DomainError`. Digits above 2^127 - 1 in
+  magnitude, a scale outside 10^-38 to 10^38 once trailing zeros fold, or a scaled whole number above 2^127 - 1
+  (`"2e38"`) is `Overflow`. The same parser reads `_r` literals.
 
 ### Changed
 

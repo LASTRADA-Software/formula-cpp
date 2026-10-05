@@ -691,8 +691,9 @@ namespace detail
 /// Parses decimal text that arrives at run time -- a CSV import, a form field, a configuration value -- into its
 /// exact value and the places it was typed to: `"2.400"` is 12/5 at 3 places, `"2.4"` 12/5 at 1. An optional sign,
 /// digits with at most one point, an optional exponent (`e` or `E`, an optional sign, digits). `DomainError` for
-/// anything else -- whitespace, a decimal comma, separators, `inf`, `nan` -- and `Overflow` for a value no `Rational`
-/// holds. The same parser reads `_r` literals.
+/// anything else -- whitespace, a decimal comma, separators, `inf`, `nan`. `Overflow` for digits above 2^127 - 1 in
+/// magnitude, a scale outside 10^-38 to 10^38 once trailing zeros fold, or a scaled whole number above 2^127 - 1
+/// (`"2e38"`): `"2.5e-38"` is refused, though 1/(4 * 10^37) would fit. The same parser reads `_r` literals.
 [[nodiscard]] constexpr std::expected<ParsedDecimal, ArithmeticError> parse_decimal_text(std::string_view spelling) noexcept
 {
     return detail::parse_decimal(spelling, detail::DecimalSyntax::Text);
