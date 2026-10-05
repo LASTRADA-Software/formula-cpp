@@ -12,6 +12,9 @@ whose body closes all six.
 
 ## 1. Delivery
 
+Parameter names in this document's signatures are descriptive; the plan gives the names the code uses, since a
+test translation unit declares globals such as `value`, `text`, `low` and `high` that a parameter must not shadow.
+
 | Group | Issues | Main files |
 |---|---|---|
 | Lane A: units | #27, #22, #25, #26 | `dimension.hpp`, `unit.hpp`, `quantity.hpp`, the unit checks, `trace.hpp` (`unit_quotient`), `measured.hpp` (bounds overloads) |
@@ -182,8 +185,9 @@ declare different precision without a second `Unit`, which then compares unequal
   - Its `Describe` specialisation exposes that `unit`, as today. A `Describe<Q>` the application writes is
     unaffected.
   - The unit checks (§2.2's, #14's and the rest) apply to `U`, as today.
-- New `constexpr bool same_unit(Unit const& left, Unit const& right) noexcept`: equal dimension, magnitude, offset,
-  `symbolText` and `asciiText`; `decimals` and `bounds` are ignored.
+- New `constexpr bool same_unit(Unit const& leftUnit, Unit const& rightUnit) noexcept`: equal dimension, magnitude,
+  offset, `symbolText`, and key (`view_ascii`, so a key declared equal to the symbol is the same key as none
+  declared); `decimals` and `bounds` are ignored.
 - `detail::same_scale_and_symbol` (`trace.hpp`) compares what a unit shows, so it keeps ignoring `asciiText`. It
   and `same_unit` share one helper for the dimension, magnitude and offset comparison; the plan names it.
 
@@ -206,8 +210,8 @@ declared precision also need the places as typed: `"2.400"` is not `"2.4"`.
 **Design.**
 
 - New in `rational.hpp`:
-  - `struct DecimalText { Rational value; std::int32_t places; }`, with defaulted `operator==`.
-  - `constexpr std::expected<DecimalText, ArithmeticError> parse_decimal_text(std::string_view text) noexcept`.
+  - `struct ParsedDecimal { Rational value; std::int32_t places; }`, with defaulted `operator==`.
+  - `constexpr std::expected<ParsedDecimal, ArithmeticError> parse_decimal_text(std::string_view text) noexcept`.
   - `static constexpr std::expected<Rational, ArithmeticError> Rational::from_decimal_text(std::string_view text)
     noexcept`: `parse_decimal_text`'s value.
 - **Syntax:**
@@ -231,9 +235,11 @@ declared precision also need the places as typed: `"2.400"` is not `"2.4"`.
 - **Wider literals.** The literal mode's mantissa also widens from 64 to 128 bits, so `_r` accepts every literal
   `Int128` holds. `docs/numbers.md`'s limits are updated.
 
-**A finding, fixed here: `from_decimal` and negative exponents.** `Rational::from_decimal(mantissa, exponent)`
-scales a negative exponent by `detail::pow10`, which reaches only 10^18, so `from_decimal(1, -19)` is `Overflow`
-although 1/10^19 fits a `Rational`. It moves to the 128-bit power of ten, reaching 10^38. The negative test
+**A finding, fixed here: `from_decimal` and exponents beyond 18.** `Rational::from_decimal(mantissa, exponent)`
+scales by `detail::pow10` (and the 128-bit `mul_pow10` built on it), which reach only 10^18, so `from_decimal(1, -19)`
+and `from_decimal(1, 19)` are `Overflow` although both values fit a `Rational`. Both move to a 128-bit power of ten,
+reaching 10^38, and a negative exponent first folds the mantissa's trailing zeros, so `from_decimal(10, -39)` is
+1/10^38. The negative test
 `rational_literal_exponent_out_of_range` keeps a literal that is still refused, and its comment gives the true
 reason.
 
