@@ -647,6 +647,8 @@ TEST_CASE("a measured value is written to the places its quantity declares", "[n
     // An exact decimal is never cut short, whatever the places.
     STATIC_REQUIRE(formula::number_text(Measured<FineCurrent> { Rational { 1234, 100 } }, evenApproximation)
                    == "12.34 mA");
+    STATIC_REQUIRE(formula::number_text(Measured<CoarseCurrent> { Rational { 1234, 100 } }, evenApproximation)
+                   == "12.34 mA");
     // Padded to the places each declares.
     STATIC_REQUIRE(formula::number_text(Measured<FineCurrent> { Rational { 12 } }, paddedExact) == "12.0 mA");
     STATIC_REQUIRE(formula::number_text(Measured<CoarseCurrent> { Rational { 12 } }, paddedExact) == "12 mA");

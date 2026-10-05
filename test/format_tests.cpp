@@ -448,4 +448,5 @@ TEST_CASE("a Measured formats to the places its quantity declares", "[format][de
     CHECK(std::format("{:~HalfEven}", Measured<CoarseCurrent> { Rational { 37, 3 } }) == "\xe2\x89\x88" "12 mA");
     // An exact decimal is never cut short, whatever the places.
     CHECK(std::format("{:~HalfEven}", Measured<FineCurrent> { Rational { 1234, 100 } }) == "12.34 mA");
+    CHECK(std::format("{:~HalfEven}", Measured<CoarseCurrent> { Rational { 1234, 100 } }) == "12.34 mA");
 }
