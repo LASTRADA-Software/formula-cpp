@@ -155,15 +155,15 @@ Each program's largest integers over everything it evaluates at run time.
 
 | program | numerator bits | denominator bits | intermediate bits | headroom |
 |---|---|---|---|---|
-| example `simple` | 4 | 10 | 6 | 117 |
+| example `simple` | 12 | 12 | 12 | 115 |
 | example `exact_numbers` | 9 | 10 | 9 | 117 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 105 |
 | example `quantities` | 0 | 0 | 0 | 127 |
 | example `expressions` | 0 | 0 | 0 | 127 |
-| example `citations` | 4 | 10 | 6 | 117 |
-| example `composition` | 10 | 10 | 9 | 117 |
+| example `citations` | 12 | 12 | 12 | 115 |
+| example `composition` | 18 | 12 | 18 | 109 |
 | example `electricity_bill` | 31 | 26 | 31 | 96 |
-| example `tracing` | 10 | 10 | 9 | 117 |
+| example `tracing` | 12 | 12 | 12 | 115 |
 | example `rounding_and_conditionals` | 27 | 20 | 27 | 100 |
 | example `constraints` | 26 | 20 | 26 | 101 |
 | example `lookup_tables` | 26 | 20 | 26 | 101 |
