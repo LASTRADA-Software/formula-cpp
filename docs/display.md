@@ -488,10 +488,13 @@ std::println("two places:   {}\n", twoPlaces.view());
 **When a number cannot be spelled.** `decimal_text` throws
 `ArithmeticException` for more than 18 places, and where rounding to whole
 tens or thousands overflows. `number_text` throws it where its rounding
-overflows so, for a padded or approximating style in a unit whose
-declared decimals lie outside -18 to 18, where a value in a unit with no
-symbol cannot move into the coherent unit, and where that unit's spelling
-does not fit the buffer. Each has a `checked_` form,
+overflows so, and for a padded or approximating style in a unit whose
+declared decimals lie outside -18 to 18: a `Rational` in any unit you pass,
+or a `Measured` whose unit has a symbol or is dimensionless. A `Measured` in
+a dimensioned unit with no symbol is shown in the coherent unit, at that
+unit's places, so its unit's declared decimals are never read; it throws
+instead where its value cannot move into the coherent unit, and where that
+unit's spelling does not fit the buffer. Each has a `checked_` form,
 `checked_decimal_text` and `checked_number_text`, that returns the
 `ArithmeticError` in a `std::expected` instead of throwing. A trace never
 throws for a number: a line whose value its style cannot spell reads

@@ -904,8 +904,8 @@ TEST_CASE("a Measured value in a unit with no symbol reads in number_text and st
              { formula::NumberStyle::fraction(), formula::NumberStyle::exact_decimal(),
                formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded), halfEven })
         {
-            std::string const traced = formula::render_trace(recorded_trace(var<UnnamedMass>, formula::environment(measured)),
-                                                             { .maxSteps = 20, .numbers = numberStyle });
+            formula::Trace<> const recorded = recorded_trace(var<UnnamedMass>, formula::environment(measured));
+            std::string const traced = formula::render_trace(recorded, { .maxSteps = 20, .numbers = numberStyle });
             formula::NumberText const spelled = formula::number_text(measured, numberStyle);
             CHECK(traced == "1. m_u = " + std::string { spelled.view() } + "\n");
         }
