@@ -145,7 +145,7 @@ namespace detail
     /// leaf, or a node kind that cannot be refused). A node over a refused
     /// operand asks no question of its own -- the operand's length and
     /// dimension are stand-ins taken after the refusal, and asking about them
-    /// would report the one mistake a second time (defect class 2).
+    /// would report the one mistake a second time.
     ///
     /// Declared here, beside `Node`, because every check that reads a node's
     /// dimension asks it: a series refused already (`series.hpp`), a curve

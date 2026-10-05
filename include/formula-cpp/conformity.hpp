@@ -190,8 +190,8 @@ namespace detail
 /// `std::array` of `N` rows, or, when the count is only known at run time,
 /// with `envelope_from`, which checks it.
 ///
-/// No `{}` default member initialiser, deliberately (defect class 4): an
-/// envelope must state its contents.
+/// No `{}` default member initialiser, deliberately: an envelope must state
+/// its contents.
 ///
 /// **`{}` is refused in this library's words**, naming both counts as every
 /// other wrong count is, by the one rule `Elements` (`series.hpp`) follows

@@ -131,8 +131,8 @@ namespace detail
 /// (`lookup.hpp`). `series_constant` with no values is refused in words
 /// already, so no author's spelling reaches the compiler's.
 ///
-/// No `{}` default member initialiser, deliberately (defect class 4): a
-/// constant must state its contents.
+/// No `{}` default member initialiser, deliberately: a constant must state
+/// its contents.
 template <std::size_t N>
 struct Elements
 {
@@ -658,10 +658,9 @@ namespace detail
     /// What a refused `cumulative` of a single value stands for: a series,
     /// already refused (`refused`), so that nothing built over it -- a `sum`,
     /// another `cumulative`, an elementwise operator, `checked_evaluate` or
-    /// `checked_evaluate_series` -- reports the one mistake a second time
-    /// (defect class 2). It evaluates to a `DomainError` with no position and
-    /// tells no sink: a program holding one never compiles, so neither is
-    /// ever seen.
+    /// `checked_evaluate_series` -- reports the one mistake a second time. It
+    /// evaluates to a `DomainError` with no position and tells no sink: a
+    /// program holding one never compiles, so neither is ever seen.
     template <Dimension D>
     struct RefusedSeries: SeriesNodeBase
     {

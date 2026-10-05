@@ -8,8 +8,8 @@
 // as an inverted band -- and, like an inverted band, every adjacent pair
 // still shares its boundary exactly (103 == 103, 103 == 103), so only
 // well-formedness catches it, not gap/overlap checking. The zero-width band
-// sits in the middle, matching how the other defect classes here place
-// theirs. This must not compile.
+// sits in the middle, matching how band_gap.cpp, band_overlap.cpp and
+// band_inverted.cpp place theirs. This must not compile.
 #include <formula-cpp/band.hpp>
 
 namespace

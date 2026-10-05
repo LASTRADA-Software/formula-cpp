@@ -105,7 +105,7 @@ TEST_CASE("the order the points are listed in does not change the fit", "[least-
 {
     // Through compute directly: a curve refuses a domain listed out of order
     // as its own NotAscending failure. Same four pairs, listed
-    // 4, 1, 7, 2 s: identical coefficients (defect class 6).
+    // 4, 1, 7, 2 s: identical coefficients.
     constexpr std::array<formula::Rational, 4> shuffledTimes { rat(4), rat(1), rat(7), rat(2) };
     constexpr std::array<formula::Rational, 4> shuffledLengths {
         rat(121, 10'000), rat(102, 10'000), rat(143, 10'000), rat(109, 10'000)

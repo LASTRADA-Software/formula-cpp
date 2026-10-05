@@ -797,8 +797,7 @@ struct OpaqueCall
     using operation = Op;
 
     /// The inputs, in the order the operation declares them. No `{}`
-    /// initialiser, deliberately (defect class 4): see `Corrections`
-    /// (`lookup.hpp`).
+    /// initialiser, deliberately: see `Corrections` (`lookup.hpp`).
     std::tuple<Inputs...> inputs;
 
     /// Why the method uses the operation here: required by `opaque()`, and
@@ -951,7 +950,8 @@ namespace detail
 /// @p Origin is `detail::`, and says whether `opaque_output` found the name
 /// (see `detail::UnnamedOpaqueOutput`); leave it to its default.
 ///
-/// No `{}` initialiser on `call`, deliberately (defect class 4).
+/// No `{}` initialiser on `call`, deliberately: see `Corrections`
+/// (`lookup.hpp`).
 template <std::size_t I, typename Call, typename Origin = detail::NamedOpaqueOutput>
 struct OpaqueOutputNode: NodeBase
 {
