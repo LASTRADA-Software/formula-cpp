@@ -335,7 +335,13 @@ if (!diluted)
 ```
 
 A callback that returns a bare `Rational` does not compile with either: it
-cannot fail, so it belongs to `transform` or `combine`.
+cannot fail, so it belongs to `transform` or `combine`, and its message, which
+begins
+`formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>`,
+says so (`checked_combine`'s names itself, and `combine`). A callback that
+cannot be called with the value at all is refused too, with
+`formula: a checked_transform callback must be callable with a Rational`, or
+`formula: a checked_combine callback must be callable with two Rationals`.
 
 `formula::checked_convert_to<R>` converts a `Measured<Q>` into a
 `Measured<R>` and keeps this rule too -- an absent input converts to an
@@ -417,12 +423,18 @@ substitutes for the other.** `NotChecked` means the unit declares no bounds
 at all -- there is a value, but nothing to check it against. `NotMeasured`
 means there is no value in the first place, regardless of whether the unit
 declares bounds. A reading nobody took and a range nobody declared are
-different facts. `test/measured_tests.cpp:206-268` pins all five
+different facts. `test/measured_tests.cpp:210-270` pins all five
 `BoundsCheck` outcomes side by side -- `WithinBounds`, `BelowMinimum` and
 `AboveMaximum` for present values against a bounded unit, `NotMeasured` for
 an absent value regardless of whether its unit declares bounds, and
 `NotChecked` for a present value in a unit (such as `unit::Litre`) that
 declares no bounds at all.
+
+`formula::checked_within`, which checks a value against limits held at run
+time rather than the ones its unit declares
+([Dimensions and units](dimensions.md#declared-precision-and-bounds)), takes a
+`Measured<Q>` too, and keeps the same rule: an absent measurement is
+`NotMeasured`, whatever limits it is given.
 
 A present measurement still converts exactly, carrying its quantity's own
 unit rather than needing one passed alongside it. From the worked example,
@@ -432,10 +444,11 @@ a rise of 450 m converted to kilometres:
 450 m converted to km = 0.45 km
 ```
 
-The conversion, the rounding and the bounds check each have a throwing twin,
-for callers who would only rethrow the error: `formula::convert_to<R>`,
-`formula::round_to_declared` and `formula::within_bounds`, which take the
-same arguments and return the value itself, and throw `ArithmeticException`
+The conversion, the rounding and the two bounds checks each have a throwing
+twin, for callers who would only rethrow the error: `formula::convert_to<R>`,
+`formula::round_to_declared`, `formula::within_bounds` and `formula::within`,
+which take the same arguments and return the value itself, and throw
+`ArithmeticException`
 where the `checked_` form returns an error. Absence behaves as above -- an
 absent measurement converts and rounds to an absent one and is `NotMeasured`
 for its bounds -- and a conversion across dimensions does not compile in

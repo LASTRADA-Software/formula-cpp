@@ -50,7 +50,9 @@ change is recorded here.
   unchanged. An absent value stays absent without calling it. Both are `noexcept` when the callback is, so
   `checked_transform(reading, [](Rational litres) noexcept { return checked_mul(litres, Rational { 10 }); })` can be
   written under a no-throw rule. A callback that returns a bare `Rational` does not compile; it belongs to
-  `transform` or `combine`.
+  `transform` or `combine`. Nor does one that cannot be called with a `Rational`, which is refused with
+  `formula: a checked_transform callback must be callable with a Rational`, or, for `checked_combine`, with
+  `formula: a checked_combine callback must be callable with two Rationals`.
 
 ### Changed
 

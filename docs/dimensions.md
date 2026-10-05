@@ -3,8 +3,9 @@
 `formula-cpp` provides a compile-time dimension vector, `formula::Dimension`,
 and a unit descriptor built on top of it, `formula::Unit`. This page explains
 why a dimension is a type rather than a runtime tag, how to compose one, why
-its exponents are rational rather than integer, what a `Unit` carries, how
-conversion between units stays exact, where the declared-precision and
+its exponents are rational rather than integer, what a `Unit` carries, how a
+unit is keyed for serialising and compared, how conversion between units stays
+exact, where the declared-precision and
 bounds machinery sits, and how an application declares a base dimension the
 SI does not have, such as money.
 
@@ -17,8 +18,9 @@ source, and `docs.dimensions-snippets` fails unless each code block appears
 there as a run of consecutive lines, compared without their indentation
 (`cmake/CheckGuideSnippets.cmake`). A code block deliberately not from the
 example carries a `<!-- snippet: not from the example -->` comment directly
-above it; one on this page does, the block showing that
-`formula::exponent(1, 0)` does not compile. A couple of numeric facts that
+above it; two on this page do, the block declaring a unit with an ASCII
+key and the block showing that `formula::exponent(1, 0)` does not compile. A
+couple of numeric facts that
 the example does not itself print are given as plain rationals instead, each
 naming the `static_assert` in the test suite that pins it -- never formatted
 as if a program had printed them.
@@ -191,7 +193,9 @@ make silently.
 
 Their `decimals` values are ordinary engineering
 defaults, not a requirement taken from any standard -- a caller that needs a
-different precision states it at the point of use.
+different precision states it at the point of use, or declares it on the
+quantity (see
+[Quantities and measurements](quantities.md#a-quantitys-own-decimal-places)).
 
 ### A stable ASCII key
 
