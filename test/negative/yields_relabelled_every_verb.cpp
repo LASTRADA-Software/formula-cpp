@@ -10,17 +10,17 @@
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/trace.hpp>
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", formula::unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", formula::unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct RatioTag, "w/c", "ratio of water to cement", formula::unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", formula::unit::Millimetre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", formula::unit::Millimetre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", formula::unit::One>;
 using Retained = formula::Quantity<struct RetainedTag, "m_r", "mass retained on a screen", formula::unit::Gram>;
 using Mass = formula::Quantity<struct MassTag, "m", "mass of a determination", formula::unit::Gram>;
 
 // Ten quantities none of the formulas names: six ratios, two masses of a
 // screen and two masses of a determination.
-using AirContent = formula::Quantity<struct AirTag, "a", "air content", formula::unit::One>;
-using Porosity = formula::Quantity<struct PorosityTag, "n", "porosity", formula::unit::One>;
-using Absorption = formula::Quantity<struct AbsorptionTag, "w_a", "water absorption", formula::unit::One>;
+using Efficiency = formula::Quantity<struct EfficiencyTag, "eta", "drivetrain efficiency", formula::unit::One>;
+using RollingCoefficient = formula::Quantity<struct RollingCoefficientTag, "C_rr", "rolling resistance coefficient", formula::unit::One>;
+using Drafting = formula::Quantity<struct DraftingTag, "k_d", "drafting factor", formula::unit::One>;
 using MoistureContent = formula::Quantity<struct MoistureTag, "u", "moisture content", formula::unit::One>;
 using Shrinkage = formula::Quantity<struct ShrinkageTag, "e_s", "shrinkage strain", formula::unit::One>;
 using Saturation = formula::Quantity<struct SaturationTag, "S_r", "degree of saturation", formula::unit::One>;
@@ -29,14 +29,14 @@ using Sieved = formula::Quantity<struct SievedTag, "m_s", "mass sieved", formula
 using Tare = formula::Quantity<struct TareTag, "m_0", "tare of a determination", formula::unit::Gram>;
 using DryMass = formula::Quantity<struct DryMassTag, "m_d", "dry mass of a determination", formula::unit::Gram>;
 
-inline constexpr auto inputs = formula::environment(formula::Measured<WaterVolume> { 163 },
-                                                    formula::Measured<CementVolume> { 307 },
+inline constexpr auto inputs = formula::environment(formula::Measured<Rise> { 163 },
+                                                    formula::Measured<Run> { 307 },
                                                     formula::measured_series<Retained>(131, 211),
                                                     formula::measured_series<Mass>(41, 43, 47, 53, 59));
 
 int main()
 {
-    constexpr auto ratio = formula::yields<WaterCementRatio>(formula::var<WaterVolume> / formula::var<CementVolume>);
+    constexpr auto ratio = formula::yields<Gradient>(formula::var<Rise> / formula::var<Run>);
     constexpr auto retained = formula::yields<Retained>(formula::series<Retained, 2>);
     constexpr auto mostExtreme = formula::PerPass::MostExtreme;
     constexpr auto keep = formula::OnLimit::Keep;
@@ -47,9 +47,9 @@ int main()
             formula::Verdict { "repeat the determinations" },
             formula::Citation { .title = "Example Standard" }));
 
-    auto const evaluated = formula::evaluate<AirContent>(ratio, inputs);
-    auto const checked = formula::checked_evaluate<Porosity>(ratio, inputs);
-    auto const explained = formula::explain<Absorption>(ratio, inputs);
+    auto const evaluated = formula::evaluate<Efficiency>(ratio, inputs);
+    auto const checked = formula::checked_evaluate<RollingCoefficient>(ratio, inputs);
+    auto const explained = formula::explain<Drafting>(ratio, inputs);
     auto const checkedExplained = formula::checked_explain<MoistureContent>(ratio, inputs);
     auto const traced = formula::trace_of<Saturation>(ratio, inputs);
     auto const defined = formula::define<Shrinkage>(ratio);

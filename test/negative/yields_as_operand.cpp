@@ -5,7 +5,7 @@
 // REJECT: no match for
 // REJECT: RequireResultDimension
 //
-// A formula bound to the water/cement ratio, used as an operand of another
+// A formula bound to the road gradient, used as an operand of another
 // formula, then evaluated, rendered and documented: refused once, in this
 // library's words, and the refused value asks nothing more of any of the
 // three. The formula it holds, .expression, is the operand to use.
@@ -13,20 +13,20 @@
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", formula::unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", formula::unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct RatioTag, "w/c", "ratio of water to cement", formula::unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", formula::unit::Millimetre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", formula::unit::Millimetre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", formula::unit::One>;
 
 inline constexpr auto inputs =
-    formula::environment(formula::Measured<WaterVolume> { 163 }, formula::Measured<CementVolume> { 307 });
+    formula::environment(formula::Measured<Rise> { 163 }, formula::Measured<Run> { 307 });
 
 int main()
 {
-    constexpr auto ratio = formula::yields<WaterCementRatio>(formula::var<WaterVolume> / formula::var<CementVolume>);
-    constexpr auto misused = formula::var<WaterVolume> * ratio;
+    constexpr auto ratio = formula::yields<Gradient>(formula::var<Rise> / formula::var<Run>);
+    constexpr auto misused = formula::var<Rise> * ratio;
     auto const shown = formula::render(misused);
     auto const written = formula::document(misused);
-    return formula::checked_evaluate<WaterVolume>(misused, inputs).has_value() && !shown.empty() && !written.formula.empty()
+    return formula::checked_evaluate<Rise>(misused, inputs).has_value() && !shown.empty() && !written.formula.empty()
                ? 0
                : 1;
 }

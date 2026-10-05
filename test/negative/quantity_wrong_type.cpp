@@ -5,18 +5,18 @@
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/unit.hpp>
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V", "a volume", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "x", "a distance", formula::unit::Millimetre>
 {
 };
 
-struct CementVolume: formula::Quantity<CementVolume, "V", "a volume", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "x", "a distance", formula::unit::Millimetre>
 {
 };
 
-void takes_water(WaterVolume);
+void takes_rise(Rise);
 
 int main()
 {
-    takes_water(CementVolume {});
+    takes_rise(Run {});
     return 0;
 }

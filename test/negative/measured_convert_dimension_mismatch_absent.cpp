@@ -6,7 +6,7 @@
 // exactly as when a value is there. This must not compile, and draws one message.
 #include <formula-cpp/measured.hpp>
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "volume of water added", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
 struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen", formula::unit::Kilogram>
@@ -15,5 +15,5 @@ struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen"
 
 int main()
 {
-    return formula::checked_convert_to<SpecimenMass>(formula::Measured<WaterVolume> {}).has_value() ? 1 : 0;
+    return formula::checked_convert_to<SpecimenMass>(formula::Measured<Rise> {}).has_value() ? 1 : 0;
 }

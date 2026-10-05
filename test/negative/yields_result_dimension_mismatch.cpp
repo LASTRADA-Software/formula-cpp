@@ -8,10 +8,10 @@
 // message: each verb given a refused Yields asks nothing more.
 #include <formula-cpp/formula.hpp>
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 struct Length: formula::Quantity<Length, "L", "a length", formula::unit::Metre>
@@ -19,12 +19,12 @@ struct Length: formula::Quantity<Length, "L", "a length", formula::unit::Metre>
 };
 
 inline constexpr auto inputs =
-    formula::environment(formula::Measured<WaterVolume> { 163 }, formula::Measured<CementVolume> { 307 });
+    formula::environment(formula::Measured<Rise> { 163 }, formula::Measured<Run> { 307 });
 
 int main()
 {
     // The expression is dimensionless; `Length` is not.
-    constexpr auto refused = formula::yields<Length>(formula::var<WaterVolume> / formula::var<CementVolume>);
+    constexpr auto refused = formula::yields<Length>(formula::var<Rise> / formula::var<Run>);
     auto const evaluated = formula::checked_evaluate(refused, inputs);
     auto const defined = formula::define(refused);
     return evaluated.has_value() && decltype(defined)::valid ? 0 : 1;
