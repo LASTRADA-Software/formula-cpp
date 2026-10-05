@@ -60,10 +60,11 @@ change is recorded here.
   `SymbolCapacity` can no longer reach `std::abort()` at run time. Run-time text goes through `checked_symbol()`.
 - **Breaking:** `SymbolCapacity` is 32 bytes including the terminator, up from 16: a unit symbol or a named base's
   name holds 31 bytes, enough for compound laboratory units such as `µmol/(L·min·kg)` (18 bytes of UTF-8). `Symbol`
-  is 16 bytes larger, and `Dimension` and `Unit`, which hold symbols, are larger with it; the longest text
-  `number_text` spells grows from 97 to 113 bytes, still within `NumberTextCapacity`. A trace shows an
-  `opaque_output` in the quotient of its inputs' units, `AcmeGrams/AcmeVials` for instance, when that quotient's
-  symbol is 16 to 31 bytes long, where it used to fall back to the coherent unit.
+  is 16 bytes larger, and `Dimension` and `Unit`, which hold symbols, are larger with it, as is a trace's `Step`,
+  which holds a dimension and two units, so a trace takes more memory; the longest text `number_text` spells grows
+  from 97 to 113 bytes, still within `NumberTextCapacity`. A trace shows an `opaque_output` in the quotient of its
+  inputs' units, `AcmeGrams/AcmeVials` for instance, when that quotient's symbol is 16 to 31 bytes long, where it
+  used to fall back to the coherent unit.
 - **Breaking:** a unit whose symbol is not ASCII must declare an ASCII key, `.asciiText = formula::symbol("ug/L")`
   for a symbol written `µg/L`, where the library takes it as a quantity's, constant's, rounding's, table's or other
   formula node's unit. Without one that use no longer compiles, with

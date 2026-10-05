@@ -333,14 +333,22 @@ TEST_CASE("a scope reported without its origin records none, and says so", "[rec
 
 TEST_CASE("a step costs what it cost before records were traced", "[record-trace]")
 {
-    // 1320 bytes, measured on cl and clang-cl (release, /MD) and on g++ 14 and
-    // clang++ 20 with libstdc++, all 64-bit. It was 1296 until `Rational` held
-    // its numerator and denominator in 128 bits: a `Rational` grew from 16
-    // bytes to 32, and the one a step holds inline, its `std::optional` value,
-    // from 24 to 40 -- 16 bytes more -- and `lookupKeyHigh`, a count's top 64
-    // bits, adds 8 more after `lookupKeyIsSigned`. A step's band, segment and
-    // covered range keep their declared 64-bit numerators and denominators, and
-    // its other values live in its vectors, so neither grew. Before that it was
+    // 1608 bytes, measured on cl and clang-cl (release, /MD) and on g++ 14 and
+    // clang++ 20 with libstdc++, all 64-bit. It was 1320 until a unit symbol
+    // held 32 bytes and a unit gained an ASCII key: a `Symbol` grew from 16
+    // bytes to 32, so a `Dimension`'s four named-base symbols grew by 64 bytes,
+    // from 152 to 216, and a `Unit` by 112, from 248 to 360 -- 64 in its
+    // dimension, 16 in its symbol and 32 for its new key. One dimension and two
+    // units make 288 bytes more per step. The `BoundsEnd` flags that replaced a
+    // unit's one `bool` of declared bounds are a byte each and fit the padding
+    // that `bool` left, so `Bounds` stays 40 bytes. Before that it was 1296,
+    // until `Rational` held its numerator and denominator in 128 bits: a
+    // `Rational` grew from 16 bytes to 32, and the one a step holds inline, its
+    // `std::optional` value, from 24 to 40 -- 16 bytes more -- and
+    // `lookupKeyHigh`, a count's top 64 bits, adds 8 more after
+    // `lookupKeyIsSigned`. A step's band, segment and covered range keep their
+    // declared 64-bit numerators and denominators, and its other values live
+    // in its vectors, so neither grew. Before that it was
     // 1008, until a `Dimension` could carry named base dimensions and a step's
     // one dimension and two units grew by 96 bytes each. Records' per-step
     // facts -- the source, whether a replaced entry was empty, and the record's
@@ -353,6 +361,6 @@ TEST_CASE("a step costs what it cost before records were traced", "[record-trace
 #if (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0) || defined(_GLIBCXX_DEBUG)
     SUCCEED("a checked standard library's containers change every step's size, so nothing is pinned here");
 #else
-    STATIC_REQUIRE((sizeof(void*) != 8 || sizeof(formula::Step<formula::Rational>) == 1320));
+    STATIC_REQUIRE((sizeof(void*) != 8 || sizeof(formula::Step<formula::Rational>) == 1608));
 #endif
 }
