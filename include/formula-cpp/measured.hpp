@@ -208,12 +208,19 @@ template <Described Q, typename F>
     static_assert(!std::is_invocable_v<F&, Rational> || detail::returns_checked_rational<F, Rational>,
                   "formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>; use "
                   "transform for a callback that returns a Rational");
-    if (measured.is_absent())
+    // A callback refused above never reaches the call: the branch below is discarded for it, so the build fails
+    // with the library's message alone. The else branch is therefore never part of a working build.
+    if constexpr (detail::returns_checked_rational<F, Rational>)
+    {
+        if (measured.is_absent())
+            return Measured<Q> {};
+        std::expected<Rational, ArithmeticError> const transformed = function(measured.value());
+        if (!transformed)
+            return std::unexpected { transformed.error() };
+        return Measured<Q> { *transformed };
+    }
+    else
         return Measured<Q> {};
-    std::expected<Rational, ArithmeticError> const transformed = function(measured.value());
-    if (!transformed)
-        return std::unexpected { transformed.error() };
-    return Measured<Q> { *transformed };
 }
 
 /// `combine` for a callback that can fail, as `checked_transform` is for `transform`. Absent if either measurement
@@ -229,12 +236,19 @@ template <Described Result, Described Q, Described R, typename F>
     static_assert(!std::is_invocable_v<F&, Rational, Rational> || detail::returns_checked_rational<F, Rational, Rational>,
                   "formula: a checked_combine callback must return std::expected<Rational, ArithmeticError>; use "
                   "combine for a callback that returns a Rational");
-    if (lhs.is_absent() || rhs.is_absent())
+    // A callback refused above never reaches the call: the branch below is discarded for it, so the build fails
+    // with the library's message alone. The else branch is therefore never part of a working build.
+    if constexpr (detail::returns_checked_rational<F, Rational, Rational>)
+    {
+        if (lhs.is_absent() || rhs.is_absent())
+            return Measured<Result> {};
+        std::expected<Rational, ArithmeticError> const combined = function(lhs.value(), rhs.value());
+        if (!combined)
+            return std::unexpected { combined.error() };
+        return Measured<Result> { *combined };
+    }
+    else
         return Measured<Result> {};
-    std::expected<Rational, ArithmeticError> const combined = function(lhs.value(), rhs.value());
-    if (!combined)
-        return std::unexpected { combined.error() };
-    return Measured<Result> { *combined };
 }
 
 namespace detail
