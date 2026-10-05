@@ -82,26 +82,26 @@ $$
 
 Flow rate is the volume discharged divided by the time taken to discharge it.
 
-## Water/cement ratio
+## Road gradient
 
 ```
-V_w / V_c
+h / L
 ```
 
 $$
-\frac{V_w}{V_c}
+\frac{h}{L}
 $$
 
 | Symbol | Description | Unit |
 | --- | --- | --- |
-| V_w | effective water content | l |
-| V_c | cement content | l |
+| h | height gained | m |
+| L | horizontal distance covered | km |
 
 - Reference: Example Standard 4:2020
 - Section: 6.3
 - Equation: (2)
 
-Ratio of the effective water content to the cement content of a batch.
+Height a road gains over the horizontal distance it covers.
 
 ## Compaction-adjusted bulk density
 
@@ -276,16 +276,16 @@ $$
 
 The two determinations agree when they differ by no more than r = 0.1 g + level / 50, the level being their mean.
 
-## Worked evaluation: water/cement ratio
+## Worked evaluation: road gradient
 
-`V_w` = 180 l, `V_c` = 300 l:
-
-```
-V_w / V_c
-```
+`h` = 90 m, `L` = 3 km:
 
 ```
-with V_w = 180 l and V_c = 300 l: 3/5 = 0.6
+h / L
+```
+
+```
+with h = 90 m and L = 3 km: 3/100 = 0.03
 ```
 
 ## Worked derivation: bulk density
