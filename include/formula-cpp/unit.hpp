@@ -55,7 +55,8 @@ namespace detail
 /// It reads as a `bool` -- in `if`, `!`, `&&`, `||` and when assigned to one -- but no other type converts to it, so
 /// a `Bounds` written with positional initialisers whose second value is a number, `{ true, 0, 1, 100, 1 }`, does not
 /// compile instead of putting every value one member later. Structural, so a `Unit` holding it stays a template
-/// argument.
+/// argument. Test it directly, `if (range.lowPresent)`: `range.lowPresent == true` is ambiguous, and it has no
+/// `std::format`.
 struct BoundsEnd
 {
     /// Whether this end of the range is declared.
