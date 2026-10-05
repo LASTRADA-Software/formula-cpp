@@ -65,12 +65,14 @@ struct UnlabelledLoading: formula::Quantity<UnlabelledLoading, "q", "a count per
 };
 // A mass unit of magnitude 1 with no symbol: the kilogram's size under no name.
 inline constexpr formula::Unit UnlabelledKilogram { .dimension = formula::dim::Mass };
-struct UnlabelledHeft: formula::Quantity<UnlabelledHeft, "h", "a mass in an unnamed unit of one kilogram", UnlabelledKilogram>
+struct UnlabelledHeft:
+    formula::Quantity<UnlabelledHeft, "h", "a mass in an unnamed unit of one kilogram", UnlabelledKilogram>
 {
 };
 // A mass unit of a whole thousand kilograms with no symbol.
 inline constexpr formula::Unit UnlabelledTonne { .dimension = formula::dim::Mass, .magnitudeNumerator = 1000 };
-struct UnlabelledLoad: formula::Quantity<UnlabelledLoad, "L", "a mass in an unnamed unit of a thousand kilograms", UnlabelledTonne>
+struct UnlabelledLoad:
+    formula::Quantity<UnlabelledLoad, "L", "a mass in an unnamed unit of a thousand kilograms", UnlabelledTonne>
 {
 };
 
@@ -562,10 +564,12 @@ TEST_CASE("render: a rounding in a unit with no symbol names that unit by its si
 
     // A numeric value and a constant in such a unit, in LaTeX: the size
     // grouped after the quotient's slash, and the coherent unit set upright.
-    constexpr auto bareWeight = formula::numeric_value_of<UnlabelledGram, "the table is in unnamed grams">(var<UnlabelledWeight>);
+    constexpr auto bareWeight =
+        formula::numeric_value_of<UnlabelledGram, "the table is in unnamed grams">(var<UnlabelledWeight>);
     CHECK(formula::render<Dialect::Plain>(bareWeight) == "numeric(w, in 1/1000 kg)");
     CHECK(formula::render<Dialect::LaTeX>(bareWeight) == "\\{w/(1/1000\\,\\mathrm{kg})\\}");
-    CHECK(formula::render<Dialect::LaTeX>(formula::constant<UnlabelledGram>(formula::Rational { 3 })) == "3/1000\\,\\mathrm{kg}");
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<UnlabelledGram>(formula::Rational { 3 }))
+          == "3/1000\\,\\mathrm{kg}");
     CHECK(formula::render<Dialect::Plain>(formula::constant<UnlabelledPerGram>(formula::Rational { 2 })) == "2000 kg^-1");
     CHECK(formula::render<Dialect::LaTeX>(formula::constant<UnlabelledPerGram>(formula::Rational { 2 }))
           == "2000\\,\\mathrm{kg}^{-1}");

@@ -338,8 +338,9 @@ TEST_CASE("a rounding in a unit with no symbol names that unit by its size", "[t
                      masses)
           == "1. m_u = 3141/1000000 kg\n"
              "2. round(#1, to 2 dp of 1/1000 kg) = 157/50000 kg [nearest, ties to even]\n");
-    CHECK(trace_text(formula::rounded_to_digits<UnnamedGram, formula::SignificantDigits { 2 }, formula::RoundingMode::HalfEven>(
-                         var<UnnamedMass>),
+    CHECK(trace_text(formula::rounded_to_digits<UnnamedGram,
+                                                formula::SignificantDigits { 2 },
+                                                formula::RoundingMode::HalfEven>(var<UnnamedMass>),
                      masses)
               .find("2. round(#1, to 2 sf of 1/1000 kg) = 31/10000 kg")
           != std::string::npos);
@@ -359,8 +360,10 @@ TEST_CASE("a rounding in a unit with no symbol names that unit by its size", "[t
                      masses)
               .find("round(sqrt(#3), to 2 dp of 1/1000 kg) = 157/50000 kg")
           != std::string::npos);
-    CHECK(trace_text(formula::rounded_output<"span", UnnamedGram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
-                         lowestAndSpan),
+    CHECK(trace_text(formula::rounded_output<"span",
+                                             UnnamedGram,
+                                             formula::DecimalPlaces { 2 },
+                                             formula::RoundingMode::HalfEven>(lowestAndSpan),
                      determinations)
               .find(", to 2 dp of 1/1000 kg) = 7/2000 kg")
           != std::string::npos);
@@ -540,7 +543,8 @@ TEST_CASE("a conditional reads in its chosen branch's unit, offset or not", "[tr
              "4. if #1 > #2 then #3 = 25 \xc2\xb0" "C\n");
 }
 
-TEST_CASE("a precision limit's first pass reads in the unit of the level it restates", "[trace-render][shown-unit][precision]")
+TEST_CASE("a precision limit's first pass reads in the unit of the level it restates",
+          "[trace-render][shown-unit][precision]")
 {
     // The level is a constant in grams and the limit names no quantity, so
     // nothing in the types says grams: pass 1 reads off the step it restates,
@@ -563,7 +567,8 @@ TEST_CASE("a precision limit's first pass reads in the unit of the level it rest
     // degrees Celsius, as the constant's own line does, never as a kelvin
     // difference.
     CHECK(trace_text(formula::precision_limit<formula::PrecisionKind::Repeatability>(
-                         formula::constant<unit::Celsius>(Rational { 20 }), formula::constant<unit::Celsius>(Rational { 1 })),
+                         formula::constant<unit::Celsius>(Rational { 20 }),
+                         formula::constant<unit::Celsius>(Rational { 1 })),
                      determinations)
               .starts_with("1. 20 \xc2\xb0" "C\n"
                            "2. level (pass 1 of 2) = #1 = 20 \xc2\xb0" "C\n"));

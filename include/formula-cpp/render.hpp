@@ -222,10 +222,10 @@ namespace detail
     /// curve or a permitted set declared, a limit (`shown_number`,
     /// `shown_bound_text`, `shown_limit_row`). So every number is in the unit
     /// written after it.
-    /// A dimensionless unit with no symbol is always at scale 1 here:
-    /// one with a scale is refused where it is written
-    /// (`RequireNamedScaledScalar`, `unit.hpp`), so its bare number is the
-    /// value.
+    ///
+    /// A dimensionless unit with no symbol is always at scale 1 here: one with
+    /// a scale is refused where it is written (`RequireNamedScaledScalar`,
+    /// `unit.hpp`), so its bare number is the value.
     [[nodiscard]] constexpr bool spells_coherent_unit(Unit const& declared, Dimension dimension)
     {
         return view(declared.symbolText).empty() && !(dimension == dim::Scalar);
