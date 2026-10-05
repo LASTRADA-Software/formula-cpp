@@ -117,8 +117,8 @@ struct Unit
 };
 
 /// The unit's serialising key: `asciiText` when one is declared, otherwise `symbolText`. Stable across restyling of
-/// the display symbol. A unit that a template takes is guaranteed printable ASCII here (`RequireAsciiKey`); for a unit
-/// built at run time, ask `has_ascii_key` first.
+/// the display symbol. A unit that a quantity, a constant, a rounding or a table takes is printable ASCII here
+/// (`RequireAsciiKey`); for any other unit, such as one built at run time, ask `has_ascii_key` first.
 [[nodiscard]] constexpr std::string_view view_ascii(Unit const& unitValue) noexcept
 {
     std::string_view const declaredKey = view(unitValue.asciiText);

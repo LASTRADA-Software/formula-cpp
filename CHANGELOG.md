@@ -34,10 +34,14 @@ change is recorded here.
   is 16 bytes larger, and `Dimension` and `Unit`, which hold symbols, are larger with it; the longest text
   `number_text` spells grows from 97 to 113 bytes, still within `NumberTextCapacity`.
 - **Breaking:** a unit whose symbol is not ASCII must declare an ASCII key, `.asciiText = formula::symbol("ug/L")`
-  for a symbol written `µg/L`, where a template takes it -- as a quantity's unit, a constant's, a rounding's, or a
-  table's key or result. Without one it no longer compiles, with
+  for a symbol written `µg/L`, where a quantity, a constant, a rounding or a table takes it -- as a quantity's unit,
+  a constant's, a rounding's, or a table's key or result. Without one that use no longer compiles, with
   `formula: a unit whose symbol is not ASCII must declare an ASCII key`; a key that is itself not ASCII is refused
-  the same way. `Unit` is larger by the new `Symbol` member.
+  the same way. `Unit` is larger by the new `Symbol` member, which follows `symbolText`: a `Unit` built with
+  positional initialisers, `Unit { dimension, 1, 1000, 0, 1, symbol, 2 }`, no longer compiles or puts its values in
+  the wrong members, while designated initialisers are unaffected. Unit equality compares `asciiText` too, so two
+  units that differ only in their key are no longer equal: a micrometre built at run time without a key is not
+  `unit::Micrometre`.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.

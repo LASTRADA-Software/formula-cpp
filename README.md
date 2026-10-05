@@ -224,8 +224,8 @@ decimal, so it is printed rounded to six places and marked `≈`.
 To serialise a unit -- a JSON annotation, a database column -- write
 `formula::view_ascii(unit)`, its stable ASCII key, not its display symbol,
 which may be restyled. A unit whose symbol is not ASCII declares the key as
-`.asciiText` (`µm` is keyed `um`), and one that does not is refused where it is
-written.
+`.asciiText` (`µm` is keyed `um`); one that does not is refused where a
+quantity, a constant, a rounding or a table takes it.
 
 ### A measurement nobody took stays missing
 
