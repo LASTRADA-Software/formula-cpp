@@ -34,8 +34,9 @@ change is recorded here.
 - **A quantity's own decimal places, and `same_unit`.** `Quantity` takes an optional fifth parameter, a
   `DecimalPlaces` that defaults to the places its unit declares: `Quantity<FineCurrent, "I_f", "...", Milliampere,
   DecimalPlaces { 1 }>` reads milliamperes to a tenth while the unit, and every other quantity in it, keeps its own
-  places. The quantity's `unit` carries those places, so `checked_round_to_declared`, `number_text`, `std::format`
-  and traces use them. `same_unit(leftUnit, rightUnit)` says whether two units are the same unit -- the same
+  places. The quantity's `unit` carries those places: `checked_round_to_declared` rounds to them, and
+  `number_text`, `std::format` and traces pad to them and round an approximation to them, while an exact decimal is
+  still written in full. `same_unit(leftUnit, rightUnit)` says whether two units are the same unit -- the same
   dimension, factor, offset, symbol and key (`view_ascii`) -- whatever their declared decimals and bounds, which `==`,
   comparing every member, does not answer.
 

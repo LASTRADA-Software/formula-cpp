@@ -220,8 +220,12 @@ struct CoarseCurrent: formula::Quantity<CoarseCurrent, "I_c", "a current read to
 
 A quantity's `unit` is its unit with those places in it, so everything that
 reads declared places reads the quantity's: 12.34 mA rounds to 12.3 mA through
-`checked_round_to_declared` for `FineCurrent` and to 12 mA for `CoarseCurrent`,
-and `number_text`, `std::format` and a trace show each to its own places.
+`checked_round_to_declared` for `FineCurrent` and to 12 mA for `CoarseCurrent`.
+`number_text`, `std::format` and a trace pad to, and round an approximation to,
+each quantity's own places: padded, 12 mA is written `12.0 mA` for `FineCurrent`
+and `12 mA` for `CoarseCurrent`, and 37/3 mA approximated is `≈12.3 mA` and
+`≈12 mA`. An exact decimal is always written in full, so 12.34 mA is `12.34 mA`
+for both.
 
 `FineCurrent::unit == Milliampere` is false, since `==` compares every member
 of a unit, its decimals among them. Whether two quantities share a unit is what
