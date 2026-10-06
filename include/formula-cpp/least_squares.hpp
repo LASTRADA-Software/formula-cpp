@@ -584,6 +584,15 @@ template <typename X, typename Y>
     return linear_least_squares(detail::as_operand(pointObservations), detail::as_operand(valueObservations), citation);
 }
 
+/// Bound observations without a citation: refused as the observations they
+/// hold are (`yields.hpp`).
+template <typename X, typename Y>
+    requires detail::AnyBound<X, Y> && ObservationsNode<detail::operand_t<X>> && ObservationsNode<detail::operand_t<Y>>
+[[nodiscard]] constexpr auto linear_least_squares(X pointObservations, Y valueObservations) noexcept
+{
+    return linear_least_squares(detail::as_operand(pointObservations), detail::as_operand(valueObservations));
+}
+
 /// Raw observations handed to `linear_least_squares` without a citation:
 /// refused in this library's words, as a curve without one is.
 template <ObservationsNode X, ObservationsNode Y>

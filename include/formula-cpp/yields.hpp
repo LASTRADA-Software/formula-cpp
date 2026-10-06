@@ -6,8 +6,8 @@
 /// is written: `constexpr auto ratio = yields<Gradient>(var<Rise> / var<Run>);`
 /// then `evaluate(ratio, environment)`. The author still names the result --
 /// nothing is deduced from the expression, whose dimension does not name a
-/// quantity (`evaluate.hpp`) -- but only once. A `Yields` is not a node: it is
-/// the top of a formula.
+/// quantity (`evaluate.hpp`) -- but only once. A `Yields` is not a node: a
+/// verb takes it as the top of a formula.
 ///
 /// Used as part of another formula, a bound formula stands for the formula it
 /// holds: `var<Load> / loadedArea` is `var<Load> / loadedArea.expression`, of
@@ -249,9 +249,9 @@ template <typename Result = detail::ResultOfYields, Described Q, typename E, typ
 
 namespace detail
 {
-    /// Whether any of @p Ts is a bound formula: what the operators below and
-    /// every function that builds a formula ask before they take the formula
-    /// a bound one holds in its place.
+    /// Whether any of @p Ts is a bound formula: what every function that
+    /// builds a formula asks before it takes the formula a bound one holds in
+    /// its place.
     template <typename... Ts>
     concept AnyBound = (is_yields<Ts> || ...);
 
@@ -265,6 +265,48 @@ namespace detail
         else
             return operand;
     }
+
+    /// The type `as_operand` gives for @p T: the formula a bound formula
+    /// holds, and @p T itself otherwise.
+    template <typename T>
+    struct OperandOf
+    {
+        using type = T;
+    };
+
+    template <Described Q, typename E>
+    struct OperandOf<Yields<Q, E>>
+    {
+        using type = E;
+    };
+
+    /// `OperandOf<T>::type`.
+    template <typename T>
+    using operand_t = typename OperandOf<T>::type;
+
+    /// Whether @p T, as an operand, is refused by operators of its own that
+    /// see through a bound formula: a retry (`retry.hpp`). The operators below
+    /// step aside for those, so that a bound retry, and a retry beside a bound
+    /// formula, are refused as the formula held would be, and asking whether
+    /// one can be compared answers no rather than firing the refusal.
+    template <typename T>
+    inline constexpr bool refused_by_own_operators = false;
+
+    /// Whether the operators below take @p L and @p R: one is a bound
+    /// formula, and neither is, or holds, an operand refused by operators of
+    /// its own.
+    template <typename L, typename R>
+    concept ForwardsBound =
+        AnyBound<L, R> && !refused_by_own_operators<operand_t<L>> && !refused_by_own_operators<operand_t<R>>;
+
+    /// What `==` and `!=` over a bound formula require, spelled once so that
+    /// the two operators keep equivalent declarations: a comparison of the
+    /// formulas held that both operators over formulas take.
+    template <typename L, typename R>
+    concept ComparesBound = ForwardsBound<L, R> && requires(L const& lhs, R const& rhs) {
+        as_operand(lhs) == as_operand(rhs);
+        as_operand(lhs) != as_operand(rhs);
+    };
 } // namespace detail
 
 /// A bound formula in arithmetic, on either side of `+`, `-`, `*` or `/`, or
@@ -272,8 +314,14 @@ namespace detail
 /// one `.expression` gives, of its type, and refused where that one is, in
 /// its words. Only an operand that is a `Yields` reaches these, so
 /// arithmetic over formulas is untouched.
+///
+/// Each takes only what the operator over the formulas held takes, so asking
+/// whether a bound formula combines with something those do not -- as a
+/// concept does -- answers no, as it does for the formula held. The return
+/// type is deduced, as the operators over formulas deduce theirs.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) + detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator+(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) + detail::as_operand(rhs);
@@ -281,7 +329,8 @@ template <typename L, typename R>
 
 /// See `operator+` over a bound formula.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) - detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator-(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) - detail::as_operand(rhs);
@@ -289,7 +338,8 @@ template <typename L, typename R>
 
 /// See `operator+` over a bound formula.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) * detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator*(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) * detail::as_operand(rhs);
@@ -297,7 +347,8 @@ template <typename L, typename R>
 
 /// See `operator+` over a bound formula.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) / detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator/(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) / detail::as_operand(rhs);
@@ -305,7 +356,7 @@ template <typename L, typename R>
 
 /// See `operator+` over a bound formula.
 template <typename Operand>
-    requires detail::AnyBound<Operand>
+    requires detail::ForwardsBound<Operand, Operand> && requires(Operand const& operand) { -detail::as_operand(operand); }
 [[nodiscard]] constexpr auto operator-(Operand operand) noexcept
 {
     return -detail::as_operand(operand);
@@ -315,9 +366,12 @@ template <typename Operand>
 /// or `!=`: the formula it holds is compared, as arithmetic over it takes
 /// that formula -- so an acceptance or a constraint over a bound formula
 /// checks what one over `.expression` checks. Only an operand that is a
-/// `Yields` reaches these, so comparisons of formulas are untouched.
+/// `Yields` reaches these, so comparisons of formulas are untouched; and, as
+/// for arithmetic, each takes only what the comparison of the formulas held
+/// takes.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) < detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator<(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) < detail::as_operand(rhs);
@@ -325,7 +379,8 @@ template <typename L, typename R>
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) <= detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator<=(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) <= detail::as_operand(rhs);
@@ -333,7 +388,8 @@ template <typename L, typename R>
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) > detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator>(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) > detail::as_operand(rhs);
@@ -341,23 +397,26 @@ template <typename L, typename R>
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ForwardsBound<L, R>
+             && requires(L const& lhs, R const& rhs) { detail::as_operand(lhs) >= detail::as_operand(rhs); }
 [[nodiscard]] constexpr auto operator>=(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) >= detail::as_operand(rhs);
 }
 
-/// See `operator<` over a bound formula.
+/// See `operator<` over a bound formula. `==` and `!=` share their
+/// constraint, `detail::ComparesBound`, so that the two declarations stay
+/// equivalent and `==` is never weighed reversed.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ComparesBound<L, R>
 [[nodiscard]] constexpr auto operator==(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) == detail::as_operand(rhs);
 }
 
-/// See `operator<` over a bound formula.
+/// See `operator==` over a bound formula.
 template <typename L, typename R>
-    requires detail::AnyBound<L, R>
+    requires detail::ComparesBound<L, R>
 [[nodiscard]] constexpr auto operator!=(L lhs, R rhs) noexcept
 {
     return detail::as_operand(lhs) != detail::as_operand(rhs);

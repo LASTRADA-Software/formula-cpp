@@ -616,6 +616,20 @@ formula_add_negative_test(yields_operand_dimension_mismatch
 formula_add_negative_test(yields_comparand_dimension_mismatch
     "formula: the two sides of this comparison measure different dimensions" EXPECT_COUNT 1
     REJECT "no matching" "invalid operands" "no match for")
+# The same for the functions that build a formula, where the formula held is
+# refused: a replacement with no citation, a fit of no curve, a fit of
+# observations with no citation.
+formula_add_negative_test(yields_replacement_without_citation
+    "formula: replace_variant<Tag>(expression) was given no citation" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(yields_fit_not_a_curve
+    "formula: linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value series with curve(domain, values), or read both with observations<Q, Capacity>"
+    EXPECT_COUNT 1
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
+formula_add_negative_test(yields_fit_observations_uncited
+    "formula: linear_least_squares needs a citation, the reason the method fits a line here; pass {} when it gives none"
+    EXPECT_COUNT 1
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension" "has no output of that name")
 formula_add_negative_test(yields_not_a_value
     "formula: this bound formula is not an expression of one value" EXPECT_COUNT 1
     REJECT "no matching")

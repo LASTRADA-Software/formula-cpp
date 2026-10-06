@@ -309,6 +309,19 @@ TEST_CASE("yields: a bound formula inside another bound formula", "[yields]")
     CHECK(formula::render(nested) == formula::render(var<Load> / (var<SideA> * var<SideB>) ));
 }
 
+namespace
+{
+// Whether a formula of type @p T can be compared with a bare `Rational`: no,
+// for a formula or a bound one -- the comparisons take two formulas.
+template <typename T>
+concept ComparesWithRational = requires(T const& formulaGiven) { formulaGiven < formula::Rational { 1 }; };
+
+// Whether @p T can be added to @p U: no, for a series or a bound one beside
+// something that is no formula.
+template <typename T, typename U>
+concept AddsTo = requires(T const& formulaGiven, U const& other) { formulaGiven + other; };
+} // namespace
+
 TEST_CASE("yields: a bound formula is a comparand, standing for the formula it holds", "[yields]")
 {
     constexpr auto limit = formula::constant<unit::One>(rat(9, 20));
@@ -335,6 +348,31 @@ TEST_CASE("yields: a bound formula is a comparand, standing for the formula it h
     STATIC_REQUIRE(!std::equality_comparable<Bound>);
     STATIC_REQUIRE(!std::equality_comparable_with<Held, Limit>);
     STATIC_REQUIRE(!std::equality_comparable_with<Bound, Limit>);
+
+    // Asked of something the comparisons of formulas do not take, a bound
+    // formula answers no as the formula it holds does, without an error: a
+    // series compared with a series, a formula with a bare `Rational`.
+    using HeldSeries = std::remove_const_t<decltype(formula::series<Retained, 5>)>;
+    using BoundSeries = formula::Yields<RetainedKilograms, HeldSeries>;
+    STATIC_REQUIRE(!std::equality_comparable<HeldSeries>);
+    STATIC_REQUIRE(!std::equality_comparable<BoundSeries>);
+    STATIC_REQUIRE(!ComparesWithRational<Held>);
+    STATIC_REQUIRE(!ComparesWithRational<Bound>);
+    STATIC_REQUIRE(!AddsTo<HeldSeries, std::nullptr_t>);
+    STATIC_REQUIRE(!AddsTo<BoundSeries, std::nullptr_t>);
+
+    // A bound retry is compared as its retry is -- refused, where it is
+    // written, and so no equality a concept can use -- and a retry beside a
+    // bound formula as beside the formula held. Asked of a type, neither
+    // fires the refusal.
+    using HeldRetry = std::remove_const_t<decltype(fourAttempts)>;
+    using BoundRetry = formula::Yields<Estimate, HeldRetry>;
+    STATIC_REQUIRE(!std::equality_comparable<HeldRetry>);
+    STATIC_REQUIRE(!std::equality_comparable<BoundRetry>);
+    STATIC_REQUIRE(std::is_same_v<decltype(std::declval<BoundRetry>() >= limit), decltype(fourAttempts >= limit)>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(fourAttempts + std::declval<Bound>()), decltype(fourAttempts + ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(-std::declval<BoundRetry>()), decltype(-fourAttempts)>);
 
     // A constraint over a bound formula checks what one over the formula
     // checks: 163/307 is above 9/20.
@@ -554,11 +592,16 @@ TEST_CASE("yields: a bound formula in a curve, an opaque call and a fit", "[yiel
     constexpr auto runs = formula::yields<Run>(formula::series<Run, 4>);
     STATIC_REQUIRE(std::is_same_v<decltype(formula::curve(formula::series<Rise, 4>, runs)),
                                   decltype(formula::curve(formula::series<Rise, 4>, runs.expression))>);
+    constexpr auto rises = formula::yields<Rise>(formula::series<Rise, 4>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::curve(rises, formula::series<Run, 4>)),
+                                  decltype(formula::curve(rises.expression, formula::series<Run, 4>))>);
     constexpr auto boundCurve = formula::yields<Run>(riseRun);
     STATIC_REQUIRE(std::is_same_v<decltype(formula::interpolate_at(boundCurve, span)),
                                   decltype(formula::interpolate_at(riseRun, span.expression))>);
     constexpr auto NonDecreasing = formula::Monotone::NonDecreasing;
     STATIC_REQUIRE(std::is_same_v<decltype(formula::splice<NonDecreasing>(boundCurve, riseRun)),
+                                  decltype(formula::splice<NonDecreasing>(riseRun, riseRun))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::splice<NonDecreasing>(riseRun, boundCurve)),
                                   decltype(formula::splice<NonDecreasing>(riseRun, riseRun))>);
 
     // opaque.hpp
