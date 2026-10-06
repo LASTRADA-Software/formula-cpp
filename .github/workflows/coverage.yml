@@ -6,9 +6,10 @@
 # informational (codecov.yml): it never fails a pull request.
 #
 # Uploading needs the CODECOV_TOKEN repository secret, which the repository
-# owner adds once on codecov.io and in Settings > Secrets. Without it the
-# upload step fails and the job is red; the build and tests above it still
-# show whether the suite passed.
+# owner adds once on codecov.io and in Settings > Secrets. Without it -- in a
+# repository that has not set it up, or a pull request from a fork, which gets
+# no secrets -- the upload is skipped with a notice and the job still shows
+# whether the suite passed. With it, a failed upload fails the job.
 name: Coverage
 on:
   push:
@@ -31,6 +32,9 @@ jobs:
   coverage:
     name: Linux-clang-coverage
     runs-on: ubuntu-24.04
+    env:
+      # A step's `if:` cannot read `secrets`; it reads this instead.
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -115,9 +119,14 @@ jobs:
           fi
 
       - name: Upload to Codecov
+        if: env.CODECOV_TOKEN != ''
         uses: codecov/codecov-action@v5
         with:
           files: out/coverage.lcov
           disable_search: true
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           fail_ci_if_error: true
+
+      - name: Skip the upload without a Codecov token
+        if: env.CODECOV_TOKEN == ''
+        run: echo "::notice::Coverage was measured but not uploaded -- this repository has no CODECOV_TOKEN secret, or this pull request comes from a fork, which gets no secrets."
