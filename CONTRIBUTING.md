@@ -55,6 +55,49 @@ because the alternative was measured and failed.
 7. **The version is a committed literal.** Never derive it from `git describe`:
    `vcpkg_from_github` extracts a tarball with no `.git`.
 
+## Documentation
+
+1. **User documentation describes the library as it is now.** That is
+   `README.md`, everything under `docs/` except `docs/superpowers/`, and the
+   doc comments in `include/` that form the API reference. It never says what
+   the library used to do, what changed, or in which release something
+   appeared; that belongs in `CHANGELOG.md`.
+   `ctest -R hygiene.docs-current-state` enforces it. A line that matches a
+   history phrase but describes data goes in
+   `cmake/docs-current-state-allowlist.txt`, one entry per line in the form
+   `path|exact trimmed line|reason`; an entry that allows no reported line
+   fails the check, so remove it when its line is reworded.
+
+2. **The tutorial** has a page in `docs/tutorial/` and a program in
+   `examples/tutorial/` for each chapter. The page includes code with
+   `--8<-- "examples/tutorial/<file>.cpp:<region>"` and output with
+   `--8<-- "examples/tutorial/<file>.expected.txt"`; regions are marked in the
+   program with `// --8<-- [start:<region>]` and `// --8<-- [end:<region>]`.
+   Each program is registered in `examples/CMakeLists.txt` with
+   `formula_add_pinned_example`, whose test `example.<name>.output` compares
+   the program's output with its `.expected.txt`. When a program's output
+   changes, update its `.expected.txt` (`example.<name>.output` fails until you
+   do) and re-read the page. A new program also needs `docs/numeric-headroom.md`
+   regenerated: build the target `formula-cpp-census-page` and commit the
+   result. `mkdocs build --strict` fails on a missing file or region; the
+   `Pages` workflow runs it on every pull request.
+
+3. **The README** shows `examples/readme.cpp` and its output verbatim;
+   `docs.readme-snippets` and `docs.readme-output` check them. The CPM tag in
+   the README and in tutorial chapter 1 (`docs/tutorial/01-first-formula.md`)
+   must equal the project version; `hygiene.version` checks both.
+
+4. **The consumer-globals test.** `test/consumer_globals_tests.cpp` declares
+   309 ordinary globals such as `result`, `value`, `x` and `index` before
+   including every header, and builds under cl `/W4 /WX` and g++
+   `-Wshadow -Werror`: no header's local or parameter hides one of them in
+   anything that test instantiates -- evaluation of every node kind,
+   `render`, `document` and the trace in every dialect, constraints, methods
+   and every overlay operation (the test lists them). cl reports a template's
+   local only in a template that is instantiated, and never a function
+   template's parameter, so a template the test does not reach is not covered
+   by it.
+
 ## Linting
 
 `.clang-tidy` is present but not yet enforced: no CI job runs clang-tidy or
