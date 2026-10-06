@@ -243,8 +243,9 @@ template <Predicate P>
 /// because `formula::constraint(...)` is a free function at namespace scope
 /// and a parameter of the same name would shadow it. `-Wshadow` does not
 /// catch a parameter shadowing a function, so nothing would fail to build,
-/// but it is the same kind of name collision that once shipped a
-/// `StepKind::Pi` enumerator shadowing `formula::Pi` and broke GCC alone.
+/// but it is the same kind of name collision that makes the trace spell its
+/// enumerator `StepKind::PiConstant`: an enumerator named `Pi` would shadow
+/// `formula::Pi`, which GCC's `-Wshadow` reports and the build refuses.
 ///
 /// **Recorded in the trace as its own step**, the way spec sections 9 and
 /// 9.1 require. A constraint is not a `Node`, so it cannot go through

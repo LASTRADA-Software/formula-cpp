@@ -110,9 +110,9 @@ namespace detail
     /// every verb gates on, so that a refused call adds no second message.
     ///
     /// Asked apart from `RequireYieldsResult`, never through its `value`:
-    /// once that check had failed, clang-cl 22.1.8 compiled both branches of
-    /// a gate that asked the value -- `define`'s, whose two branches return
-    /// different types, so it added an error of its own.
+    /// once that check has failed, clang-cl 22.1.8 compiles both branches of
+    /// a gate that asks the value -- `define`'s, whose two branches return
+    /// different types, so asking it there would add an error of its own.
     template <typename Result, typename Q>
     inline constexpr bool names_yields_result = std::is_same_v<Result, ResultOfYields> || std::is_same_v<Result, Q>;
 

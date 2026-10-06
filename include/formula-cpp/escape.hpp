@@ -108,7 +108,7 @@ struct NumericValueNode: NodeBase
     static constexpr std::string_view justification = Justification.view();
 
     /// Dimensionless, by construction. That is the whole point: what comes out
-    /// is a bare number, and the type system now says so honestly rather than
+    /// is a bare number, and the type system says so honestly rather than
     /// carrying a dimension that the rule downstream will contradict.
     static constexpr Dimension dimension = dim::Scalar;
     /// Whether its operand was refused -- see `detail::refused_already`.

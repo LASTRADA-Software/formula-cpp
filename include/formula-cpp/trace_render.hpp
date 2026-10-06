@@ -2202,8 +2202,7 @@ namespace detail
     /// A verdict's second clause, after a semicolon: `; the method's own
     /// constraint`, or `; jurisdiction overlay: ...`. Empty for a constraint
     /// checked outside any method, which is no one's -- so a trace of
-    /// `check` or `check_all` reads exactly as it did before methods had
-    /// constraints.
+    /// `check` or `check_all` carries no provenance clause at all.
     ///
     /// A semicolon, not a comma, for `rounding_rule_suffix`'s reason: a cited
     /// source has commas of its own.

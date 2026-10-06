@@ -60,8 +60,7 @@
 /// - `Record::lineage_of<Attr>` is a public member template, and explicitly
 ///   specialising it for a record type can make a lineage check compare any
 ///   key at all: outside the contract (see below), and not prevented;
-/// - `Trace::steps` is a public arena any code may append to or edit, as it
-///   has been since the trace was introduced;
+/// - `Trace::steps` is a public arena any code may append to or edit;
 /// - a `RecordOrigin` the library built can be copied, and handed to a
 ///   sink's `record_entered` by hand;
 /// - a `RecordOrigin` is trivially copyable, so `std::bit_cast` from a

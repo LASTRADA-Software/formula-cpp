@@ -3267,7 +3267,7 @@ class RecordingSink
         // Anything computed has no declared unit, so the coherent one is
         // the truthful answer -- until the rules below borrow one from the
         // operand steps; a variable overrides it with the unit its
-        // quantity is declared in. `requires { N::unit; }` now also selects
+        // quantity is declared in. `requires { N::unit; }` also selects
         // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode`,
         // `RoundedRootNode` and `RoundedOpaqueOutputNode` -- every one of them
         // declares a unit that is the single most load-bearing fact about the

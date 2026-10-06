@@ -63,15 +63,15 @@
 /// in the type to compare. So this header refuses repeated tags and does not
 /// attempt the general question.
 ///
-/// The first two exist because `variants(...)` over a bare pack accepted
-/// nonsense in silence. Measured on cl 19.51 at `/W4 /WX`, **exit 0, no
-/// diagnostics**: `variants(var<EdgeX>, var<EdgeX>)` -- a pack with no tags
-/// anywhere -- `variants(var<Force>)`, and `variants()`. The first slipped
-/// through rule 3 because a `VarNode` happens to publish a `dimension`; the
-/// second never reached it, a one-element pack having no pair; the third is
-/// vacuous. All three are refused now, at the earliest point where the
-/// mistake is still the author's own call rather than something several
-/// layers away.
+/// The first two exist because `variants(...)` over a bare pack would
+/// otherwise accept nonsense in silence. Measured on cl 19.51 at `/W4 /WX`
+/// without them, **exit 0, no diagnostics**:
+/// `variants(var<EdgeX>, var<EdgeX>)` -- a pack with no tags anywhere --
+/// `variants(var<Force>)`, and `variants()`. The first would slip through
+/// rule 3 because a `VarNode` happens to publish a `dimension`; the second
+/// would never reach it, a one-element pack having no pair; the third is
+/// vacuous. All three are refused, at the earliest point where the mistake is
+/// still the author's own call rather than something several layers away.
 ///
 /// **Variants agree in the quantity they report, and at this layer that means
 /// the dimension.** Variants are heterogeneous by design -- the spec's own
@@ -668,14 +668,14 @@ namespace detail
     /// **A layout is not stated from outside the library, except by
     /// copying one** (see below). The constructor that takes positions and a
     /// count is public, so that braces reach it, and refuses whenever it is
-    /// used, in the library's words. Once it checked the layout and accepted
-    /// any well-formed one, so `{ { 5, 7 }, 9 }` made a two-variant method
+    /// used, in the library's words. Were it to check the layout and accept
+    /// any well-formed one, `{ { 5, 7 }, 9 }` would make a two-variant method
     /// that no overlay touched report its variants as the 6th and 8th of 9.
     /// `select<Kept...>()` is public for the same reason and refuses the same
-    /// way: while it made the selection itself, `decltype(nine.published)
-    /// {}.select<5, 7>()`, taken from a throwaway pack of nine, did the same
-    /// thing with no prune on record. The checked constructor and `kept` are
-    /// private, reached through `PublishedLayoutAccess`, which the overlay
+    /// way: were it to make the selection itself, `decltype(nine.published)
+    /// {}.select<5, 7>()`, taken from a throwaway pack of nine, would do the
+    /// same thing with no prune on record. The checked constructor and `kept`
+    /// are private, reached through `PublishedLayoutAccess`, which the overlay
     /// operations and the negative cases pinning the check use.
     ///
     /// **Why a selection and not the checking constructor.** Which variants a pin
@@ -913,7 +913,7 @@ namespace detail
 /// deliberately: this is a public aggregate with a public member, so a
 /// `Variants<...>` can be declared directly with no factory call anywhere,
 /// and a check placed only in the factory would let that route through. The
-/// lookup tables were once open to the same mistake, and are checked the same
+/// lookup tables would be open to the same mistake, and are checked the same
 /// way.
 template <typename... Cs>
 struct Variants

@@ -269,8 +269,7 @@ namespace detail
     /// that would be one function with two behaviours. `inline` makes the
     /// object one per program and the question moot -- measured on cl 19.51,
     /// clang-cl 22 and g++ 13.3, which agree. Without it the object would be
-    /// one per translation unit on g++ and one per program on the other two,
-    /// a difference this library has already been bitten by once elsewhere.
+    /// one per translation unit on g++ and one per program on the other two.
     template <typename Q>
     inline bool quantityIdentity = false;
 

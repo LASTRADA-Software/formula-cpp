@@ -404,16 +404,16 @@
 ///
 /// It also means the **interpolation** does no arithmetic on a row hit, so no
 /// row can be reported as an overflow *of the interpolation*. That is the whole
-/// of the guarantee, and an earlier revision of this comment claimed more: that
-/// a row whose value is representable can never come back as an `Overflow` at
-/// all. It can. `checked_evaluate_si` still hands the answer to
-/// `detail::in_si`, which converts it out of `ResultUnit` into the coherent
-/// unit, and **a unit conversion is arithmetic** -- a row stating `2^126`
-/// kilometres is a perfectly representable `Rational` that overflows on the way
-/// to metres. That path is shared with the banded and the exact lookup, which
-/// have it for exactly the same reason, and nothing about it is particular to
-/// interpolation. `lookup_tests.cpp` pins both halves: a row hit that overflows
-/// in the conversion, and an interpolation that overflows in the interpolation.
+/// of the guarantee: it does not mean a row whose value is representable can
+/// never come back as an `Overflow` at all. It can. `checked_evaluate_si` hands
+/// the answer to `detail::in_si`, which converts it out of `ResultUnit` into
+/// the coherent unit, and **a unit conversion is arithmetic** -- a row stating
+/// `2^126` kilometres is a perfectly representable `Rational` that overflows on
+/// the way to metres. That path is shared with the banded and the exact
+/// lookup, which have it for exactly the same reason, and nothing about it is
+/// particular to interpolation. `lookup_tests.cpp` pins both halves: a row hit
+/// that overflows in the conversion, and an interpolation that overflows in
+/// the interpolation.
 ///
 /// **There is no extrapolation.** A value below the first row or above the last
 /// one is a miss -- `ArithmeticError::DomainError` through `Evaluated<Rep>`,
@@ -811,12 +811,11 @@ struct BandedLookupNode: NodeBase
 /// three non-operand parameters unstated at the call site's argument list:
 /// a table's structure is the author's declared intent, not something
 /// inferred from whatever `corrections` happens to look like. The braced
-/// list at the call site still reads exactly as it did before `Corrections`
-/// existed -- only its target type changed, from `std::array<Rational, N>`
-/// to `Corrections<N>` -- because the call site's target type is already
-/// known from the explicit template arguments, so list-initialisation finds
-/// `Corrections`'s constructor the same way it found `std::array`'s
-/// aggregate initialisation before.
+/// list at the call site reads as a plain array initialiser would, although
+/// its target type is `Corrections<N>`, because the call site's target type
+/// is already known from the explicit template arguments, so
+/// list-initialisation finds `Corrections`'s constructor the same way it
+/// would find `std::array`'s aggregate initialisation.
 template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
 [[nodiscard]] constexpr BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> banded_lookup(
     Operand operand, Corrections<Bands.size()> corrections) noexcept
@@ -919,12 +918,11 @@ using KeyTable = std::array<Key, N>;
 /// bearing rather than a typo: **Doxygen 1.9.8 -- the version `pages.yml`
 /// installs -- reads a leading `::` as an explicit link request even inside a
 /// code span**, and fails the build under `WARN_AS_ERROR = FAIL_ON_WARNINGS`
-/// when it cannot resolve the name. Newer Doxygen does not, which is exactly
-/// how this reached the branch: it was verified against 1.18.0 on a
-/// contributor's machine and was red for the one CI actually runs. The `%` is
-/// stripped from the generated HTML, so nothing leaks onto the page. Same
-/// treatment, same reason, on `Outcome`'s `::%value(...)` in this file's
-/// comment above.
+/// when it cannot resolve the name. Newer Doxygen does not, so a local build
+/// with a newer version passes without the `%` and only the version CI
+/// installs catches its absence. The `%` is stripped from the generated HTML,
+/// so nothing leaks onto the page. Same treatment, same reason, on
+/// `Outcome`'s `::%value(...)` in this file's comment above.
 template <KeyTable Keys>
 using KeyOf = typename std::remove_cvref_t<decltype(Keys)>::value_type;
 
@@ -1145,15 +1143,14 @@ struct RequireValidKeyTable: detail::KeyChecks<Keys, std::make_index_sequence<Ke
 /// cannot reach the node through an operand or through the `Environment`.
 ///
 /// Both `static_assert`s sit in the class body rather than in the factory,
-/// and the property that buys is narrower than it first looks -- stated
-/// precisely here because an earlier revision of this comment claimed more
-/// than it could deliver, and the difference was measured. Discarding
-/// the factory's result is **not** what distinguishes the two placements:
-/// `exact_lookup` returns `ExactLookupNode` *by value*, so calling it
-/// completes the class whichever placement is chosen, and an assert in the
-/// factory body fires on any call, discarded or not. What the class body
-/// buys is this: `ExactLookupNode` is a public aggregate with public members,
-/// so a caller can declare one **without ever calling the factory** --
+/// and the property that buys is narrower than it first looks, so it is
+/// stated precisely here. Discarding the factory's result is **not** what
+/// distinguishes the two placements: `exact_lookup` returns `ExactLookupNode`
+/// *by value*, so calling it completes the class whichever placement is
+/// chosen, and an assert in the factory body fires on any call, discarded or
+/// not. What the class body buys is this: `ExactLookupNode` is a public
+/// aggregate with public members, so a caller can declare one **without ever
+/// calling the factory** --
 ///
 ///     inline constexpr ExactLookupNode<Duplicated, unit::One> node {
 ///         {}, { 1.127_r, 0.863_r, 1.043_r }, Shape::Cube };

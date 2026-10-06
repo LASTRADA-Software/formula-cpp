@@ -272,9 +272,8 @@ struct RequireEnumeratorNameSpelling
 /// clang-cl warn about (`-Wdeprecated-volatile`, on by default); g++ 13 and
 /// cl stay quiet. The check would turn an ordinary bridge into a build
 /// failure under `-Werror` on clang, to catch a specialization nobody writes.
-/// Measured on
-/// all four; with this library's own warning flags it failed to compile the
-/// bridge test in `enumerator_tests.cpp` on clang 20.
+/// Measured on all four; with this library's own warning flags it failed to
+/// compile the bridge test in `enumerator_tests.cpp` on clang 20.
 ///
 /// Instantiated by `enumerator_name` for every enumerator it names,
 /// customized or not, since the point is to catch a specialization that

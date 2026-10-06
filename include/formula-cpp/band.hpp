@@ -54,13 +54,13 @@
 /// the interval *means*, to a reader of the API reference, where Doxygen sets
 /// these comments and the brackets are inert; the prose spelling is what the
 /// library *emits*, and it carries no punctuation at all because `[103, 197)`
-/// opens CommonMark link syntax, which once silently dropped an operand from a
-/// published page of this project's own documentation (`render.hpp`'s ruling,
-/// and the guard test forbidding `](` and a bare `[` in any Markdown
-/// rendering). **So anything a guide quotes must use the emitted spelling** --
-/// `examples/lookup_tables.cpp`'s band table is quoted into the guide
-/// verbatim, its comments included, which makes those comments published text
-/// and is why they say `to under` where the comments here say `[low, high)`.
+/// opens CommonMark link syntax, which would silently drop an operand from a
+/// published page (`render.hpp`'s ruling, and the guard test forbidding `](`
+/// and a bare `[` in any Markdown rendering). **So anything a guide quotes
+/// must use the emitted spelling** -- `examples/lookup_tables.cpp`'s band
+/// table is quoted into the guide verbatim, its comments included, which
+/// makes those comments published text and is why they say `to under` where
+/// the comments here say `[low, high)`.
 ///
 /// An empty table (`BandTable<0>`) validates: there is no adjacent pair to
 /// check, so it is vacuously free of gaps and overlaps, and a lookup against
