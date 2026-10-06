@@ -12,8 +12,11 @@ build on the previous chapters' programs.
 ## One quantity at several points
 
 The strength at each age is one quantity, the compressive strength, with a
-value at each of three points. The 28-day strength the shares are taken of is
-a single value, so it is a quantity of its own; the share is a pure number:
+value at each of three points. The shares are taken of the 28-day strength,
+the series' third element, but a formula cannot read one element of a
+series. So the 28-day strength is also entered on its own, as `f_c28`, and
+must be the same value as the series' third element. Nothing checks the two
+against each other, so keep them in step. The share is a pure number:
 
 ```cpp
 --8<-- "examples/tutorial/12_series.cpp:quantities"

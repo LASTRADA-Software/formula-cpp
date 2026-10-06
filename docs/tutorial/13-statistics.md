@@ -46,9 +46,9 @@ places for reading: ≈30.33 MPa. The range is 31.0 less 29.8, 1.2 MPa.
 
 Five specimens have strengths of 30.2, 29.8, 31.0, 30.4 and 36.0 MPa. An
 invented rule rejects a specimen more than 3 MPa from the mean, one specimen
-per pass. The library measures each strength's deviation from the mean of
-its pass, that strength included, rather than from the mean of the others;
-with these five strengths, both rules reject 36.0 MPa and nothing else.
+per pass. Some methods measure from the mean of the others; this one
+measures from the mean of each pass, the strength itself included. With
+these five strengths, both rules reject 36.0 MPa and nothing else.
 
 `formula::deviation_from_mean(limit)` is that criterion, the limit here a
 constant 3 MPa. `formula::without_outliers` applies it, pass by pass, and is
@@ -79,6 +79,8 @@ specimens kept:
 --8<-- "examples/tutorial/13_statistics.cpp:reject"
 ```
 
+The limit is evaluated again in every pass, so the trace states it at the
+start of each: lines 2 and 5, 3 MPa both times, since it is a constant.
 In pass 1, the mean of the five is 787/25 MPa, 31.48 MPa. 36.0 MPa is
 113/25 MPa, 4.52 MPa, from it, more than 3 MPa, and the furthest of the
 five: the trace says it rejected element 5 of 5 in pass 1, and why. In
@@ -100,7 +102,8 @@ four kept. The mean of the specimens kept is 30.35 MPa.
   `limit` from the mean of its pass.
 - `formula::without_outliers<PerPass, OnLimit, AtMost, KeepAtLeast>(sample, criterion, verdict)`
   -- the sample with its outliers rejected, pass by pass, until a pass
-  rejects nothing.
+  rejects nothing, or until a rejection would break `AtMost` or
+  `KeepAtLeast` and the verdict is given.
 
 ## Further reading
 
