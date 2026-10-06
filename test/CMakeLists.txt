@@ -2952,6 +2952,8 @@ add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
             -D "PROJECT_VERSION=${PROJECT_VERSION}"
+            -D "README=${PROJECT_SOURCE_DIR}/README.md"
+            -D "TUTORIAL=${PROJECT_SOURCE_DIR}/docs/tutorial/01-first-formula.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckVersionConsistency.cmake")
 
 add_test(NAME hygiene.spdx
