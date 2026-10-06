@@ -1,0 +1,6 @@
+# Lines in user documentation that match a history phrase but describe the
+# library as it is now, read by cmake/CheckDocsCurrentState.cmake. One per line:
+#
+#   <path relative to the repository root>|<the line, exactly, trimmed>|<why it is not history>
+#
+# Keep it short: every entry is a place the check does not look.

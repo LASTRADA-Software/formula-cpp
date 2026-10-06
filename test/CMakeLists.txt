@@ -3016,6 +3016,13 @@ add_test(NAME hygiene.no-real-standards-fallback
             -D "WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/no-real-standards-fallback"
             -P "${PROJECT_SOURCE_DIR}/cmake/TestNoRealStandardsFallback.cmake")
 
+# The current-state check, tested on a tree written to break it.
+add_test(NAME hygiene.docs-current-state-self-test
+    COMMAND "${CMAKE_COMMAND}"
+            -D "CHECK_SCRIPT=${PROJECT_SOURCE_DIR}/cmake/CheckDocsCurrentState.cmake"
+            -D "WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/docs-current-state-self-test"
+            -P "${PROJECT_SOURCE_DIR}/cmake/TestDocsCurrentState.cmake")
+
 # A compiler diagnostic quoted in docs/ names a header and a line number, and
 # the number goes stale the moment anyone inserts a line above it -- which
 # happened twice in this repository before anything checked. See the script's
