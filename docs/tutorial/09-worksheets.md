@@ -53,8 +53,8 @@ change:
 --8<-- "examples/tutorial/09_worksheets.cpp:report"
 ```
 
-`sheet.checked_calculate<Density, Strength>()` calculates what the two
-answers need, each value once, and keeps every result. It returns a
+`sheet.checked_calculate(var<Density>, var<Strength>)` calculates what the
+two answers need, each value once, and keeps every result. It returns a
 `std::tuple` with one `std::expected` per value asked for, in the order
 asked, and each is checked before it is read. `calculate` is the same
 question in its throwing form.
@@ -64,7 +64,7 @@ made, and `reused()` how many it found still up to date after a change, and
 did not calculate again. Both are running totals, so the function reads them
 before it asks and after, and prints how far each moved.
 
-The first question calculates four values: the area, 22500 mm2; the volume,
+The first question calculates four values: the area, 22500 mm²; the volume,
 3375000 mm3; the density, 8.1 kg in 0.003375 m3, which is 2400 kg/m3; and
 the strength, 30 MPa. `{:~.1HalfEven}` writes the density as its exact
 decimal where it has one, and rounds it to one decimal place, marked `≈`,
@@ -80,7 +80,7 @@ where it has none.
 
 Setting an input calculates nothing. The worksheet marks the values the
 change reaches, and the next question recalculates those it needs. A new
-load reaches only the strength: 676.125 kN over 22500 mm2 is 30.05 MPa,
+load reaches only the strength: 676.125 kN over 22500 mm² is 30.05 MPa,
 rounded half away from zero to 30.1 MPa. One value is recalculated. The
 area, the volume and the density read nothing that changed, so they are kept
 as they are; `reused()` counts only values a change reached, so it does not
@@ -115,8 +115,8 @@ only what the change reaches: the density, 8.25 kg in 0.003375 m3, which is
   `expression`, and read elsewhere as `var<Q>`.
 - `formula::worksheet(calculation, environment)` -- a calculation's inputs,
   and each value calculated once and kept.
-- `checked_calculate<Q...>()` -- the values asked for, each a
-  `std::expected`; `calculate<Q...>()` is the throwing form.
+- `checked_calculate(var<Q>...)` -- the values asked for, each a
+  `std::expected`; `calculate(var<Q>...)` is the throwing form.
 - `set(...)` -- gives an input a new value; only what the change reaches is
   recalculated.
 - `with(...)` -- a copy with the change made, the worksheet left unchanged.

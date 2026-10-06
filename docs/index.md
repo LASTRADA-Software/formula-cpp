@@ -56,8 +56,9 @@ every public entity.
 
 [`examples/cycling_speed.cpp`](https://github.com/LASTRADA-Software/formula-cpp/blob/master/examples/cycling_speed.cpp)
 works out a cyclist's steady-state speed from the power the rider holds. Each step is a formula in
-one `formula::calculation`, evaluated on a worksheet; the speed's formula carries a citation, and
-the program renders the calculation as plain text and as LaTeX and prints its symbol table.
+one `formula::calculation`. The exact steps are evaluated on a worksheet; the speed, whose roots
+have no exact value, is evaluated in `double` from them. The speed's formula carries a citation,
+and the program renders the calculation as plain text and as LaTeX and prints its symbol table.
 
 ## A note on the examples
 

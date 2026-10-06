@@ -44,9 +44,9 @@ The specimen carried 675.4 kN:
 ```
 
 675.4 kN over 22500 mm² is 30.0177… MPa, which rounds to 30.0. The result is
-the exact number 30, and prints as `30`: `{}` writes an exact value without
-trailing zeros. A format spec that asks for one place in a named mode,
-`{:.1HalfAwayFromZero}`, would print `30.0`
+the exact number 30, and prints as `30 MPa`: `{}` writes an exact value
+without trailing zeros. A format spec that asks for one place in a named mode,
+`{:.1HalfAwayFromZero}`, would print `30.0 MPa`
 ([Displaying numbers](../display.md#exact-fraction-or)).
 
 ## The mode matters

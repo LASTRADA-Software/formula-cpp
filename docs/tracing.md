@@ -154,7 +154,7 @@ bug -- an overridden number was not derived, so there is nothing to trace --
 but it means `explained.trace.steps[explained.trace.root()]`, the pattern the
 snippet above uses, reads past the end of an empty vector whenever the result
 happens to be an override. Check `empty()` before reading `root()`, the way
-the snippet above now does.
+the snippet above does.
 
 One difference is not about cost but about **where** the call can happen.
 `evaluate` and `checked_evaluate` are `constexpr` and remain usable in a
@@ -832,7 +832,7 @@ constructor, so there is no zero for `{}` to produce; `{.maxSteps = 10}` and
 gets one -- `numbers`, the notation every value is written in, defaults to
 fractions, and [Displaying numbers](display.md) shows the decimal styles --
 while this one does not, because a sensible default does not exist. An
-unbounded render of a derivation with a hundred thousand steps once collapsed
+unbounded render of a derivation with a hundred thousand steps would collapse
 into one wall of text long enough to be practically unusable -- the same
 failure mode `trace.hpp`'s flat, index-addressed arena exists to make
 representable without recursion, just at the rendering end instead of the

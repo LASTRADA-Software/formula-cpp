@@ -14,8 +14,8 @@ to fetch the library. Chapter 1 shows the CMake lines.
 
 **The core track** builds one program: the calculation of a concrete
 specimen's compressive strength, from the load that crushed it and the
-specimen's size. Each chapter extends the previous chapter's program, so read
-the core track in order.
+specimen's size. Each chapter starts from the previous chapter's program, so
+read the core track in order.
 
 **The advanced track** covers the rest of the library in independent
 chapters. Read the ones you need, in any order, once you have finished the

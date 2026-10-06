@@ -64,11 +64,12 @@ of their evaluations overflowed. Three findings decided the remedy:
   below). Storing them in the declared unit would change the evaluator's rule
   that every leaf is converted to SI, and a variance node has no declared unit
   to work in.
-- **So the stored integer was widened.** `Rational` stores its numerator and
-  denominator in `formula::Int128`, 128 bits: the compiler's own 128-bit
+- **So the stored integer is 128 bits wide.** `Rational` stores its numerator
+  and denominator in `formula::Int128`, 128 bits: the compiler's own 128-bit
   integer computes where it has one (GCC, Clang), and portable `constexpr`
-  code everywhere else (cl, clang-cl). A computation that answered at 64 bits
-  gives the same answer; some that were refused with `Overflow` now answer.
+  code everywhere else (cl, clang-cl). A computation that fits in 64 bits
+  gives the same answer at 128; some that 64-bit integers would refuse with
+  `Overflow` answer.
 
 ## Why a fraction's integers grow
 

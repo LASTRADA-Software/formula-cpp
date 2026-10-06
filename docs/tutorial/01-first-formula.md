@@ -35,12 +35,12 @@ tracing are separate, and chapters 7 and 8 introduce them.
 --8<-- "examples/tutorial/01_first_formula.cpp:quantities"
 ```
 
-A quantity is a type. Its template arguments are a tag that makes it unique,
-its symbol, its description, and the unit its values are stated in. `Load`
-is stated in kilonewtons, `Area` in square millimetres and `Strength` in
-megapascals. Because the tag makes each quantity its own type, two quantities
-with the same unit are still different types: a load can never be passed
-where another kilonewton quantity is expected.
+A quantity is a type. The four template arguments used here are a tag that
+makes it unique, its symbol, its description, and the unit its values are
+stated in. `Load` is stated in kilonewtons, `Area` in square millimetres
+and `Strength` in megapascals. Because the tag makes each quantity its own
+type, two quantities with the same unit are still different types: a load
+can never be passed where another kilonewton quantity is expected.
 
 ## Write the formula
 
@@ -90,8 +90,8 @@ out in megapascals with no conversion written; chapter 2 explains why.
 
 ## Summary
 
-- `formula::Quantity` -- declares a quantity as a type: tag, symbol,
-  description and unit.
+- `formula::Quantity` -- declares a quantity as a type; the four template
+  arguments used here are tag, symbol, description and unit.
 - `formula::var<Q>` -- stands for the value of `Q` in a formula.
 - `formula::yields<Q>` -- names the quantity a formula calculates.
 - `formula::Measured<Q>` -- one measured value of `Q`, in `Q`'s declared unit.

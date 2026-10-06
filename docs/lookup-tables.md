@@ -648,12 +648,12 @@ half-open interval everywhere in this library — in the plain rendering, in
 Markdown, in LaTeX, and in the trace.
 
 **It is spelled that way because the obvious mathematical notation is Markdown
-link syntax.** An earlier draft of this library rendered a rounding step as
-`round[to 1 dp of mm](d)`; in CommonMark that is `[text](url)`, and renderers
-silently dropped the operand and published a broken line. A test now asserts
-that no Markdown rendering contains `](` or a bare `[`, and a bracketed interval
-is exactly the character sequence that would defeat it. The wording chosen
-carries no punctuation at all, so it survives every Markdown flavour untouched:
+link syntax.** A rounding step rendered as `round[to 1 dp of mm](d)` would be
+`[text](url)` in CommonMark, and renderers would silently drop the operand and
+publish a broken line. A test asserts that no Markdown rendering contains `](`
+or a bare `[`, and a bracketed interval is exactly the character sequence that
+would defeat it. The wording chosen carries no punctuation at all, so it
+survives every Markdown flavour untouched:
 
 ```
 banded (md):   lookup(`d`, 0 to under 127 mm gives 913/10 %, 127 to under 173 mm gives 1051/10 %, 173 to under 211 mm gives 1127/10 %)

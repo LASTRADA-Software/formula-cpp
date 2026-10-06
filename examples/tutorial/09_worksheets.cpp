@@ -46,15 +46,15 @@ inline constexpr auto test = formula::calculation(
 // --8<-- [end:calculation]
 
 // --8<-- [start:report]
-/// Asks @p sheet for the density and the strength, and prints both with how
-/// many values the question recalculated and reused. False when either
-/// calculation failed.
+// Asks the worksheet for the density and the strength, and prints both with
+// how many values the question recalculated and reused. False when either
+// calculation failed.
 template <typename Sheet>
 bool report(char const* step, Sheet& sheet)
 {
     std::size_t const recomputedBefore = sheet.recomputed();
     std::size_t const reusedBefore = sheet.reused();
-    auto const [density, strength] = sheet.template checked_calculate<Density, Strength>();
+    auto const [density, strength] = sheet.checked_calculate(var<Density>, var<Strength>);
     if (!density)
     {
         std::println("cannot calculate the density: {}", density.error());

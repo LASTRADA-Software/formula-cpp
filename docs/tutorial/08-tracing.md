@@ -28,7 +28,7 @@ the failing step included, so a failure can be shown together with the steps
 that led to it.
 
 `formula::render_trace(trace, options)` writes a trace as one numbered line
-per step. `options.maxSteps` is the most lines it writes; it has no default,
+per step. `options.maxSteps` is the most steps it writes; it has no default,
 and a longer trace ends with one line saying how many steps were left out.
 
 ## Reading a trace
@@ -44,7 +44,7 @@ fraction unless its options ask for another style.
 
 A step that calculates, such as `#2 * #3`, has no declared unit of its own.
 Here it reads in the coherent SI unit of its dimension, spelt from the base
-units: the product is 0.02249996 m^2, that is 22499.96 mm2, and the quotient
+units: the product is 0.02249996 m^2, that is 22499.96 mm², and the quotient
 `kg/(m s^2)` is the pascal, about 30.02 MPa. The rounding step names its
 rule and its mode, and gives 30 MPa in the megapascal it rounds in.
 
@@ -60,7 +60,7 @@ the formula, so nothing is recorded:
 --8<-- "examples/tutorial/08_tracing.cpp:entered"
 ```
 
-`explained->trace` is empty, and `explained->outcome.is_overridden()` is
+`asEntered->trace` is empty, and `asEntered->outcome.is_overridden()` is
 true: the number was not derived, so there is no derivation to show.
 
 Tracing costs nothing when it is not asked for: `checked_evaluate` without a

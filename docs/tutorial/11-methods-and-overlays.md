@@ -107,9 +107,10 @@ not compile. The overlaid method is run exactly like the base method:
 The cube's strength is a whole number of megapascals, so it is 30 MPa under
 either rule. The cylinder's is not: about 30.56 MPa rounds to 31 MPa under
 the jurisdiction's rule, where the base method gives 30.6 MPa. The rounding
-step of each trace reads `rounded to 0 dp`, and names the jurisdiction's
-overlay and its citation in place of `(method default)`, so a reader of the
-trace can see which rule applied and where it comes from.
+step of each trace taken under the jurisdiction's rule reads
+`rounded to 0 dp`, and names the jurisdiction's overlay and its citation in
+place of `(method default)`, so a reader of the trace can see which rule
+applied and where it comes from.
 
 ## Output
 

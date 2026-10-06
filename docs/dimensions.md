@@ -89,9 +89,9 @@ composed dimensions match the named constants: yes
 ```
 
 Composing from constants rather than writing exponents by hand keeps the
-representation swappable, and that has been put to the test: `Dimension` has
-since grown past the seven SI base quantities, to hold the named base
-dimensions described below, and not one of these call sites had to change.
+representation swappable: `Dimension` holds more than the seven SI base
+quantities -- the named base dimensions described below as well -- and a call
+site composed from constants does not depend on how many there are.
 
 ## Rational exponents
 

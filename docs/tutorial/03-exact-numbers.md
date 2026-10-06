@@ -77,6 +77,6 @@ it, comes in chapter 5.
 
 ## Further reading
 
-- [Numbers](../numbers.md#writing-an-exact-decimal)
+- [Exact numbers and rounding](../numbers.md#writing-an-exact-decimal)
 - [Displaying numbers](../display.md#the-spec)
 - [API reference](https://lastrada-software.github.io/formula-cpp/api/)

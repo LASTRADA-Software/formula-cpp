@@ -90,15 +90,17 @@ nothing. A formula that adds them is refused:
 --8<-- "test/negative/tutorial_load_plus_area.cpp:mistake"
 ```
 
-The program does not compile. g++'s report begins:
+The program does not compile. g++ reports:
 
 ```
 static assertion failed: formula: the two sides of this addition or subtraction measure different dimensions
 ```
 
 The library's test suite compiles this line and checks that the compiler
-refuses it with this message. Every compiler reports it where the formula is
-written, before the program can run.
+refuses it with this message. The error is reported at a `static_assert`
+inside the library, and the report names the line that adds the two as the
+place it comes from, so the mistake is found where the formula is written,
+before the program can run.
 
 ## Output
 
