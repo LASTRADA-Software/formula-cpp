@@ -94,9 +94,9 @@ change is recorded here.
   `at_most()` or designated initialisers instead, which are unaffected. Code that read `present` reads
   `lowPresent || highPresent`, or each end on its own. A unit that declared bounds with `bounds()` gives the same
   answers as before.
-- The README and the documentation home page now lead with the cyclist's speed from power. The
-  guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
-  division.
+- The guides and the examples that need a simple exact division use a road gradient,
+  `s = h / L`. The documentation home page opens with the README's example, a concrete
+  specimen's compressive strength, and links `examples/cycling_speed.cpp` as a larger example.
 - `_r` literals take a 128-bit mantissa, so every integer up to 2^127 - 1 in magnitude can be written as one
   (`12'345'678'901'234'567'890_r` compiles), and `Rational::from_decimal` and `_r` scale by powers of ten from
   10^-38 to 10^38 rather than stopping at 10^18. `from_decimal` folds a mantissa's trailing zeros into a negative

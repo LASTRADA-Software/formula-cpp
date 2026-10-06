@@ -78,8 +78,10 @@ because the alternative was measured and failed.
    the program's output with its `.expected.txt`. When a program's output
    changes, update its `.expected.txt` (`example.<name>.output` fails until you
    do) and re-read the page. A new program also needs `docs/numeric-headroom.md`
-   regenerated: build the target `formula-cpp-census-page` and commit the
-   result. `mkdocs build --strict` fails on a missing file or region; the
+   regenerated: build the target `formula-cpp-census-page` with cl (the page's
+   examples table is cl's) and commit the result. The target exists when
+   `FORMULA_BUILD_TESTS`, `FORMULA_BUILD_EXAMPLES` and `FORMULA_TOOLS` are all
+   on, as they are by default in a top-level build. `mkdocs build --strict` fails on a missing file or region; the
    `Pages` workflow runs it on every pull request.
 
 3. **The README** shows `examples/readme.cpp` and its output verbatim;
@@ -88,7 +90,8 @@ because the alternative was measured and failed.
    must equal the project version; `hygiene.version` checks both.
 
 4. **The consumer-globals test.** `test/consumer_globals_tests.cpp` declares
-   309 ordinary globals such as `result`, `value`, `x` and `index` before
+   309 ordinary globals (308 under compilers other than cl and clang-cl, as
+   glibc declares `index`) such as `result`, `value`, `x` and `index` before
    including every header, and builds under cl `/W4 /WX` and g++
    `-Wshadow -Werror`: no header's local or parameter hides one of them in
    anything that test instantiates -- evaluation of every node kind,
