@@ -214,7 +214,7 @@ exit 0
 #include <print>
 // …
     std::println("{} = {} ({})",
-                 formula::Describe<WaterCementRatio>::symbol,
+                 formula::Describe<Gradient>::symbol,
                  result.measurement().value().to_double(),
                  result.is_value() ? "computed" : "no value");
 ```
@@ -760,7 +760,7 @@ TEST_CASE("format: a described enumeration is its words, aligned like a string",
 }
 
 // vocabulary_tests.cpp
-STATIC_REQUIRE(formula::symbol_of<WaterVolume>() == formula::symbol_of<WaterVolume>(formula::DefaultVocabulary {}));
+STATIC_REQUIRE(formula::symbol_of<Rise>() == formula::symbol_of<Rise>(formula::DefaultVocabulary {}));
 
 // render_tests.cpp
 CHECK(formula::render(ratio, formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() })
@@ -1069,8 +1069,8 @@ formula_add_negative_test(decimal_rounding_unit_dimension_mismatch
 ```cpp
 TEST_CASE("convert_to: the throwing twin of checked_convert_to", "[measured]")
 {
-    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(formula::Measured<WaterVolume> { 457 }) == *formula::checked_convert_to<VolumeInCubicMetres>(formula::Measured<WaterVolume> { 457 }));
-    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(formula::Measured<WaterVolume>::absent()).is_absent());
+    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(formula::Measured<Rise> { 457 }) == *formula::checked_convert_to<VolumeInCubicMetres>(formula::Measured<Rise> { 457 }));
+    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(formula::Measured<Rise>::absent()).is_absent());
 }
 
 TEST_CASE("round_to_declared and within_bounds: throwing twins", "[measured]")
@@ -1167,36 +1167,36 @@ namespace
 {
 namespace unit = formula::unit;
 using formula::var;
-using WaterVolume = formula::Quantity<struct YieldsWaterTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct YieldsCementTag, "V_c", "cement content", unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct YieldsRatioTag, "w/c", "ratio of water to cement", unit::One>;
+using Rise = formula::Quantity<struct YieldsRiseTag, "h", "height gained", unit::Millimetre>;
+using Run = formula::Quantity<struct YieldsRunTag, "L", "horizontal distance covered", unit::Millimetre>;
+using Gradient = formula::Quantity<struct YieldsRatioTag, "s", "road gradient", unit::One>;
 
-constexpr auto ratio = formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);
-constexpr auto batch = formula::environment(formula::Measured<WaterVolume> { 163 }, formula::Measured<CementVolume> { 307 });
+constexpr auto ratio = formula::yields<Gradient>(var<Rise> / var<Run>);
+constexpr auto batch = formula::environment(formula::Measured<Rise> { 163 }, formula::Measured<Run> { 307 });
 } // namespace
 
 TEST_CASE("yields: the result quantity is named once, where the formula is written", "[yields]")
 {
-    STATIC_REQUIRE(std::is_same_v<decltype(formula::checked_evaluate(ratio, batch)), std::expected<formula::Outcome<WaterCementRatio>, formula::ArithmeticError>>);
-    STATIC_REQUIRE(formula::checked_evaluate(ratio, batch) == formula::checked_evaluate<WaterCementRatio>(ratio.expression, batch));
-    STATIC_REQUIRE(formula::checked_evaluate<WaterCementRatio>(ratio, batch) == formula::checked_evaluate(ratio, batch));
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::checked_evaluate(ratio, batch)), std::expected<formula::Outcome<Gradient>, formula::ArithmeticError>>);
+    STATIC_REQUIRE(formula::checked_evaluate(ratio, batch) == formula::checked_evaluate<Gradient>(ratio.expression, batch));
+    STATIC_REQUIRE(formula::checked_evaluate<Gradient>(ratio, batch) == formula::checked_evaluate(ratio, batch));
     STATIC_REQUIRE(formula::number_of(formula::evaluate(ratio, batch)) == formula::Rational { 163, 307 });
 }
 
 TEST_CASE("yields: explain, render and document see the formula itself", "[yields]")
 {
     auto const explained = formula::explain(ratio, batch);
-    CHECK(explained.outcome == formula::explain<WaterCementRatio>(ratio.expression, batch).outcome);
+    CHECK(explained.outcome == formula::explain<Gradient>(ratio.expression, batch).outcome);
     CHECK(formula::render(ratio) == formula::render(ratio.expression));
     CHECK(formula::document(ratio).formula == formula::document(ratio.expression).formula);
 }
 
 TEST_CASE("yields: around documented(), and as a calculation's definition", "[yields]")
 {
-    constexpr auto cited = formula::yields<WaterCementRatio>(formula::documented(var<WaterVolume> / var<CementVolume>, { .title = "Water/cement ratio", .reference = "Example Standard 1:2020" }));
+    constexpr auto cited = formula::yields<Gradient>(formula::documented(var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020" }));
     STATIC_REQUIRE(formula::number_of(formula::checked_evaluate(cited, batch)) == formula::Rational { 163, 307 });
     constexpr auto definition = formula::define(ratio);
-    STATIC_REQUIRE(std::is_same_v<typename decltype(definition)::quantity, WaterCementRatio>);
+    STATIC_REQUIRE(std::is_same_v<typename decltype(definition)::quantity, Gradient>);
 }
 ```
 
@@ -1210,7 +1210,7 @@ TEST_CASE("yields: around documented(), and as a calculation's definition", "[yi
 
 /// @file
 /// A formula bound to the quantity it computes, named once where the formula
-/// is written: `constexpr auto ratio = yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);`
+/// is written: `constexpr auto ratio = yields<Gradient>(var<Rise> / var<Run>);`
 /// then `evaluate(ratio, environment)`. The author still names the result --
 /// nothing is deduced from the expression, whose dimension does not name a
 /// quantity (`evaluate.hpp`) -- but only once. A `Yields` is not a node: it is
@@ -1379,12 +1379,12 @@ Each example task:
 - [ ] **Step 1:** Rewrite by the rules. Representative target for `expressions.cpp` §5:
 
 ```cpp
-constexpr auto waterCementRatio = formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);
+constexpr auto gradient = formula::yields<Gradient>(var<Rise> / var<Run>);
 // …
-    auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 }, formula::Measured<CementVolume> { 300 },
-                                            formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
-    auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
-    std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
+    auto const batch = formula::environment(formula::Measured<Rise> { 180 }, formula::Measured<Run> { 300 },
+                                            formula::entered(formula::Measured<Gradient> { 0.5_r }));
+    auto const ratio = formula::checked_evaluate(gradient, batch);
+    std::println("{} = {} ({})", formula::symbol_of<Gradient>(), *ratio, ratio->source());
     // …
     bool const overrideWinsOutright = ratio && ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
 ```

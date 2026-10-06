@@ -68,8 +68,8 @@ written. These are measurements, not expectations:
 |---|---|
 | Do empty node structs composed by operators compile on all three? | Yes, `/W4 /WX` and `-Wall -Wextra -Werror -pedantic` clean |
 | Does a dimensional error point at the user's line? | Yes on all three; cl and clang both name the operand node types and the source line of the formula |
-| Is `Op` readable in the diagnostic? | **No** when the check mentions `Op`: clang prints `(formula::BinaryOperator)'\x00'` with an `unsigned char` underlying type and `(formula::BinaryOperator)0` without one. Moving the check into `detail::RequireAddendsAgree<Left, Right>` — whose template arguments are the *node types* — prints `formula::VarNode<WaterVolume>::dimension == formula::VarNode<BeamLength>::dimension`. **The plan uses that shape.** |
-| Does a missing environment entry name the quantity? | Yes: cl and clang both print `get<BeamLength>` and `Environment<WaterVolume>` |
+| Is `Op` readable in the diagnostic? | **No** when the check mentions `Op`: clang prints `(formula::BinaryOperator)'\x00'` with an `unsigned char` underlying type and `(formula::BinaryOperator)0` without one. Moving the check into `detail::RequireAddendsAgree<Left, Right>` — whose template arguments are the *node types* — prints `formula::VarNode<Rise>::dimension == formula::VarNode<BeamLength>::dimension`. **The plan uses that shape.** |
+| Does a missing environment entry name the quantity? | Yes: cl and clang both print `get<BeamLength>` and `Environment<Rise>` |
 | Does `std::expected<std::optional<Rep>, ArithmeticError>` survive constexpr evaluation on all three? | Yes; whole evaluations are usable inside `static_assert` |
 | Do `Rational` and `double` share one evaluator? | Yes, through a `RepTraits<Rep>` seam; `180 l / 300 l` is exactly `3/5` in `Rational` |
 
@@ -507,7 +507,7 @@ whose condition mentions `Op` makes clang print
 `(formula::BinaryOperator)'\x00'` (with an `unsigned char` underlying type) or
 `(formula::BinaryOperator)0` (without one) in its *due to requirement* clause.
 Hoisting the comparison into a helper templated on the operand types only makes
-clang print `formula::VarNode<WaterVolume>::dimension ==
+clang print `formula::VarNode<Rise>::dimension ==
 formula::VarNode<BeamLength>::dimension`, and cl and g++ name the same two types
 in their instantiation notes. The helper costs one indirection and buys a
 diagnostic a reader can act on.
@@ -535,10 +535,10 @@ Create `test/expression_tests.cpp`:
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 struct BeamLength: formula::Quantity<BeamLength, "L", "beam length", formula::unit::Millimetre>
@@ -559,16 +559,16 @@ using formula::var;
 
 TEST_CASE("expression: a variable carries its quantity's dimension", "[expression]")
 {
-    STATIC_REQUIRE(formula::VarNode<WaterVolume>::dimension == formula::dim::Volume);
+    STATIC_REQUIRE(formula::VarNode<Rise>::dimension == formula::dim::Volume);
     STATIC_REQUIRE(formula::VarNode<BeamLength>::dimension == formula::dim::Length);
-    STATIC_REQUIRE(std::is_same_v<formula::VarNode<WaterVolume>::quantity, WaterVolume>);
+    STATIC_REQUIRE(std::is_same_v<formula::VarNode<Rise>::quantity, Rise>);
 }
 
 TEST_CASE("expression: every node satisfies the Node concept", "[expression]")
 {
-    STATIC_REQUIRE(formula::Node<formula::VarNode<WaterVolume>>);
-    STATIC_REQUIRE(formula::Node<decltype(var<WaterVolume> + var<CementVolume>)>);
-    STATIC_REQUIRE(formula::Node<decltype(-var<WaterVolume>)>);
+    STATIC_REQUIRE(formula::Node<formula::VarNode<Rise>>);
+    STATIC_REQUIRE(formula::Node<decltype(var<Rise> + var<Run>)>);
+    STATIC_REQUIRE(formula::Node<decltype(-var<Rise>)>);
     STATIC_REQUIRE(formula::Node<decltype(formula::number(rat(2)))>);
     STATIC_REQUIRE_FALSE(formula::Node<formula::Rational>);
     STATIC_REQUIRE_FALSE(formula::Node<int>);
@@ -576,7 +576,7 @@ TEST_CASE("expression: every node satisfies the Node concept", "[expression]")
 
 TEST_CASE("expression: multiplication and division combine dimensions", "[expression]")
 {
-    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    constexpr auto ratio = var<Rise> / var<Run>;
     constexpr auto moment = var<AppliedForce> * var<BeamLength>;
 
     STATIC_REQUIRE(formula::is_dimensionless(decltype(ratio)::dimension));
@@ -585,8 +585,8 @@ TEST_CASE("expression: multiplication and division combine dimensions", "[expres
 
 TEST_CASE("expression: addition and subtraction keep the shared dimension", "[expression]")
 {
-    constexpr auto total = var<WaterVolume> + var<CementVolume>;
-    constexpr auto excess = var<WaterVolume> - var<CementVolume>;
+    constexpr auto total = var<Rise> + var<Run>;
+    constexpr auto excess = var<Rise> - var<Run>;
 
     STATIC_REQUIRE(decltype(total)::dimension == formula::dim::Volume);
     STATIC_REQUIRE(decltype(excess)::dimension == formula::dim::Volume);
@@ -636,19 +636,19 @@ TEST_CASE("expression: a Rational mixed into a formula becomes a dimensionless c
 
 TEST_CASE("expression: the tree keeps its shape and its operands", "[expression]")
 {
-    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    constexpr auto ratio = var<Rise> / var<Run>;
 
     STATIC_REQUIRE(decltype(ratio)::op == formula::BinaryOperator::Divide);
     // `decltype` of a member access yields the member's declared type, with no
     // const from the object it was read through -- so no `const` here.
-    STATIC_REQUIRE(std::is_same_v<decltype(ratio.lhs), formula::VarNode<WaterVolume>>);
-    STATIC_REQUIRE(std::is_same_v<decltype(ratio.rhs), formula::VarNode<CementVolume>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio.lhs), formula::VarNode<Rise>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio.rhs), formula::VarNode<Run>>);
 }
 
 TEST_CASE("expression: a deep tree carries no state beyond its constants", "[expression]")
 {
     constexpr auto deep =
-        (var<WaterVolume> + var<CementVolume>) / (var<WaterVolume> - var<CementVolume>) * var<BeamLength>;
+        (var<Rise> + var<Run>) / (var<Rise> - var<Run>) * var<BeamLength>;
 
     STATIC_REQUIRE(decltype(deep)::dimension == formula::dim::Length);
 
@@ -657,14 +657,14 @@ TEST_CASE("expression: a deep tree carries no state beyond its constants", "[exp
     // value, and how much an empty child costs inside its parent is the
     // compiler's business. Measured, the five-leaf tree above was 5 bytes on
     // cl and clang-cl and 9 on g++ -- correct on all three, portable on none.
-    STATIC_REQUIRE(std::is_empty_v<formula::VarNode<WaterVolume>>);
+    STATIC_REQUIRE(std::is_empty_v<formula::VarNode<Rise>>);
     STATIC_REQUIRE_FALSE(std::is_empty_v<formula::ConstantNode<formula::unit::One>>);
 }
 
 TEST_CASE("expression: the same formula written twice is the same type", "[expression]")
 {
-    constexpr auto first = var<WaterVolume> / var<CementVolume>;
-    constexpr auto second = var<WaterVolume> / var<CementVolume>;
+    constexpr auto first = var<Rise> / var<Run>;
+    constexpr auto second = var<Rise> / var<Run>;
 
     STATIC_REQUIRE(std::is_same_v<decltype(first), decltype(second)>);
 }
@@ -817,8 +817,8 @@ Create `include/formula-cpp/expression.hpp`:
 /// @file
 /// The expression layer: formulas written with ordinary operators.
 ///
-/// A formula is a *type*. `var<WaterVolume> / var<CementVolume>` builds a
-/// `BinaryNode<Divide, VarNode<WaterVolume>, VarNode<CementVolume>>`, and every
+/// A formula is a *type*. `var<Rise> / var<Run>` builds a
+/// `BinaryNode<Divide, VarNode<Rise>, VarNode<Run>>`, and every
 /// node publishes `static constexpr Dimension dimension` computed at class
 /// scope. Because the operator the user wrote is what instantiates the node,
 /// a dimensional mistake is a compile error on the line the formula is written
@@ -869,7 +869,7 @@ struct VarNode: NodeBase
     static constexpr Dimension dimension = Describe<Q>::dimension;
 };
 
-/// The spelling of a variable in a formula: `var<WaterVolume>`.
+/// The spelling of a variable in a formula: `var<Rise>`.
 ///
 /// `inline` matters and is not decoration. Without it each translation unit
 /// would get its own object, two of which are not the same variable; with it
@@ -929,7 +929,7 @@ namespace detail
     /// operator makes clang print `(formula::BinaryOperator)0` in its "due to
     /// requirement" clause, because an enumerator used as a value in a
     /// dependent expression is rendered as a cast. Written this way, clang
-    /// prints `formula::VarNode<WaterVolume>::dimension ==
+    /// prints `formula::VarNode<Rise>::dimension ==
     /// formula::VarNode<BeamLength>::dimension` instead, and all three
     /// compilers name the two operand types and the formula's own source line.
     template <Node Left, Node Right>
@@ -1186,13 +1186,13 @@ Create `test/environment_tests.cpp`:
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
-struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
+struct Ratio: formula::Quantity<Ratio, "s", "road gradient", formula::unit::One>
 {
 };
 
@@ -1201,66 +1201,66 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
     return formula::Rational { numerator, denominator };
 }
 
-constexpr auto twoInputs = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                formula::Measured<CementVolume> { rat(300) });
+constexpr auto twoInputs = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                formula::Measured<Run> { rat(300) });
 
 } // namespace
 
 TEST_CASE("environment: it answers for the quantities it holds", "[environment]")
 {
-    STATIC_REQUIRE(decltype(twoInputs)::provides<WaterVolume>);
-    STATIC_REQUIRE(decltype(twoInputs)::provides<CementVolume>);
+    STATIC_REQUIRE(decltype(twoInputs)::provides<Rise>);
+    STATIC_REQUIRE(decltype(twoInputs)::provides<Run>);
     STATIC_REQUIRE_FALSE(decltype(twoInputs)::provides<Ratio>);
 }
 
 TEST_CASE("environment: a value comes back as it went in", "[environment]")
 {
-    STATIC_REQUIRE(twoInputs.get<WaterVolume>().value() == rat(180));
-    STATIC_REQUIRE(twoInputs.get<CementVolume>().value() == rat(300));
+    STATIC_REQUIRE(twoInputs.get<Rise>().value() == rat(180));
+    STATIC_REQUIRE(twoInputs.get<Run>().value() == rat(300));
 }
 
 TEST_CASE("environment: an absent measurement stays absent", "[environment]")
 {
     constexpr auto partial =
-        formula::environment(formula::Measured<WaterVolume>::absent(), formula::Measured<CementVolume> { rat(300) });
+        formula::environment(formula::Measured<Rise>::absent(), formula::Measured<Run> { rat(300) });
 
-    STATIC_REQUIRE(partial.get<WaterVolume>().is_absent());
-    STATIC_REQUIRE(partial.get<CementVolume>().has_value());
+    STATIC_REQUIRE(partial.get<Rise>().is_absent());
+    STATIC_REQUIRE(partial.get<Run>().has_value());
 }
 
 TEST_CASE("environment: a measurement is sourced as measured", "[environment]")
 {
-    STATIC_REQUIRE(twoInputs.source_of<WaterVolume>() == formula::ValueSource::Measured);
-    STATIC_REQUIRE_FALSE(decltype(twoInputs)::is_entered<WaterVolume>);
+    STATIC_REQUIRE(twoInputs.source_of<Rise>() == formula::ValueSource::Measured);
+    STATIC_REQUIRE_FALSE(decltype(twoInputs)::is_entered<Rise>);
 }
 
 TEST_CASE("environment: an entered value is sourced as manually entered", "[environment]")
 {
-    constexpr auto withOverride = formula::environment(formula::Measured<WaterVolume> { rat(180) },
+    constexpr auto withOverride = formula::environment(formula::Measured<Rise> { rat(180) },
                                                        formula::entered(formula::Measured<Ratio> { rat(45, 100) }));
 
     STATIC_REQUIRE(decltype(withOverride)::provides<Ratio>);
     STATIC_REQUIRE(decltype(withOverride)::is_entered<Ratio>);
     STATIC_REQUIRE(withOverride.source_of<Ratio>() == formula::ValueSource::ManuallyEntered);
     STATIC_REQUIRE(withOverride.get<Ratio>().value() == rat(45, 100));
-    STATIC_REQUIRE_FALSE(decltype(withOverride)::is_entered<WaterVolume>);
+    STATIC_REQUIRE_FALSE(decltype(withOverride)::is_entered<Rise>);
 }
 
 TEST_CASE("environment: an empty environment provides nothing", "[environment]")
 {
     constexpr auto nothing = formula::environment();
 
-    STATIC_REQUIRE_FALSE(decltype(nothing)::provides<WaterVolume>);
+    STATIC_REQUIRE_FALSE(decltype(nothing)::provides<Rise>);
 }
 
 TEST_CASE("environment: entries keep their identity whatever order they are given in",
           "[environment]")
 {
-    constexpr auto reversed = formula::environment(formula::Measured<CementVolume> { rat(300) },
-                                                   formula::Measured<WaterVolume> { rat(180) });
+    constexpr auto reversed = formula::environment(formula::Measured<Run> { rat(300) },
+                                                   formula::Measured<Rise> { rat(180) });
 
-    STATIC_REQUIRE(reversed.get<WaterVolume>().value() == rat(180));
-    STATIC_REQUIRE(reversed.get<CementVolume>().value() == rat(300));
+    STATIC_REQUIRE(reversed.get<Rise>().value() == rat(180));
+    STATIC_REQUIRE(reversed.get<Run>().value() == rat(300));
 }
 ```
 
@@ -1271,17 +1271,17 @@ Create `test/negative/environment_duplicate_quantity.cpp`:
 // EXPECT: supplies the same quantity more than once
 #include <formula-cpp/environment.hpp>
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
 
 // Two entries for one quantity: there is no defensible way to pick one.
-inline constexpr auto broken = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                                    formula::Measured<WaterVolume> { formula::Rational { 200 } });
+inline constexpr auto broken = formula::environment(formula::Measured<Rise> { formula::Rational { 180 } },
+                                                    formula::Measured<Rise> { formula::Rational { 200 } });
 
 int main()
 {
-    return broken.get<WaterVolume>().has_value() ? 0 : 1;
+    return broken.get<Rise>().has_value() ? 0 : 1;
 }
 ```
 
@@ -1604,16 +1604,16 @@ Create `test/evaluate_tests.cpp`:
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 struct TotalVolume: formula::Quantity<TotalVolume, "V", "total volume", formula::unit::Litre>
 {
 };
-struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
+struct Ratio: formula::Quantity<Ratio, "s", "road gradient", formula::unit::One>
 {
 };
 struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "specimen mass", formula::unit::Gram>
@@ -1630,11 +1630,11 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 
 using formula::var;
 
-constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
-constexpr auto total = var<WaterVolume> + var<CementVolume>;
+constexpr auto ratio = var<Rise> / var<Run>;
+constexpr auto total = var<Rise> + var<Run>;
 
 constexpr auto inputs =
-    formula::environment(formula::Measured<WaterVolume> { rat(180) }, formula::Measured<CementVolume> { rat(300) });
+    formula::environment(formula::Measured<Rise> { rat(180) }, formula::Measured<Run> { rat(300) });
 
 } // namespace
 
@@ -1672,8 +1672,8 @@ TEST_CASE("evaluate: the representation-agnostic core agrees with the exact one"
 
 TEST_CASE("evaluate: an absent input makes the whole result empty, not zero", "[evaluate]")
 {
-    constexpr auto partial = formula::environment(formula::Measured<WaterVolume>::absent(),
-                                                  formula::Measured<CementVolume> { rat(300) });
+    constexpr auto partial = formula::environment(formula::Measured<Rise>::absent(),
+                                                  formula::Measured<Run> { rat(300) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, partial);
 
     STATIC_REQUIRE(computed.has_value());
@@ -1684,8 +1684,8 @@ TEST_CASE("evaluate: an absent input makes the whole result empty, not zero", "[
 
 TEST_CASE("evaluate: division by zero is an error, never a number", "[evaluate]")
 {
-    constexpr auto zeroed = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                 formula::Measured<CementVolume> { rat(0) });
+    constexpr auto zeroed = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                 formula::Measured<Run> { rat(0) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, zeroed);
 
     STATIC_REQUIRE_FALSE(computed.has_value());
@@ -1694,8 +1694,8 @@ TEST_CASE("evaluate: division by zero is an error, never a number", "[evaluate]"
 
 TEST_CASE("evaluate: the throwing spelling throws what the checked one reports", "[evaluate]")
 {
-    auto const zeroed = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                             formula::Measured<CementVolume> { rat(0) });
+    auto const zeroed = formula::environment(formula::Measured<Rise> { rat(180) },
+                                             formula::Measured<Run> { rat(0) });
 
     CHECK_THROWS_AS(formula::evaluate<Ratio>(ratio, zeroed), formula::ArithmeticException);
     CHECK(formula::evaluate<Ratio>(ratio, inputs).measurement().value() == rat(3, 5));
@@ -1703,8 +1703,8 @@ TEST_CASE("evaluate: the throwing spelling throws what the checked one reports",
 
 TEST_CASE("evaluate: an entered result replaces the formula and says so", "[evaluate]")
 {
-    constexpr auto overridden = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                     formula::Measured<CementVolume> { rat(300) },
+    constexpr auto overridden = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                     formula::Measured<Run> { rat(300) },
                                                      formula::entered(formula::Measured<Ratio> { rat(45, 100) }));
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, overridden);
 
@@ -1721,8 +1721,8 @@ TEST_CASE("evaluate: an entered result short-circuits an otherwise failing formu
     // The formula divides by zero. The override must be returned anyway -- proof
     // that the expression is not evaluated at all, rather than evaluated and
     // discarded.
-    constexpr auto overridden = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                     formula::Measured<CementVolume> { rat(0) },
+    constexpr auto overridden = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                     formula::Measured<Run> { rat(0) },
                                                      formula::entered(formula::Measured<Ratio> { rat(45, 100) }));
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, overridden);
 
@@ -1734,8 +1734,8 @@ TEST_CASE("evaluate: an entered input is still just an input", "[evaluate]")
 {
     // `entered` on an *input* changes where the number came from, not how the
     // formula is evaluated: the result is still derived.
-    constexpr auto mixed = formula::environment(formula::entered(formula::Measured<WaterVolume> { rat(180) }),
-                                                formula::Measured<CementVolume> { rat(300) });
+    constexpr auto mixed = formula::environment(formula::entered(formula::Measured<Rise> { rat(180) }),
+                                                formula::Measured<Run> { rat(300) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, mixed);
 
     STATIC_REQUIRE(computed.has_value());
@@ -1778,8 +1778,8 @@ TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[eva
     // squared, and sqrt(int64 max) is about 3,04e9. 4e9 squared is 1,6e19,
     // comfortably over, so the test does not sit on the boundary.
     constexpr std::int64_t huge = 4'000'000'000LL;
-    auto const big = formula::environment(formula::Measured<WaterVolume> { rat(huge) },
-                                          formula::Measured<CementVolume> { rat(1, huge) });
+    auto const big = formula::environment(formula::Measured<Rise> { rat(huge) },
+                                          formula::Measured<Run> { rat(1, huge) });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, big);
 
     REQUIRE_FALSE(computed.has_value());
@@ -1794,8 +1794,8 @@ TEST_CASE("evaluate: a result at the edge of the range is computed, not refused"
     // cross-reduces before multiplying. A naive implementation would overflow
     // on the way to a perfectly representable answer.
     constexpr std::int64_t large = 3'000'000'000LL;
-    auto const inputs = formula::environment(formula::Measured<WaterVolume> { rat(large) },
-                                             formula::Measured<CementVolume> { rat(1, large) });
+    auto const inputs = formula::environment(formula::Measured<Rise> { rat(large) },
+                                             formula::Measured<Run> { rat(1, large) });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, inputs);
 
     REQUIRE(computed.has_value());
@@ -1811,10 +1811,10 @@ Create `test/negative/evaluate_result_dimension_mismatch.cpp`:
 // EXPECT: does not measure the dimension this expression computes
 #include <formula-cpp/evaluate.hpp>
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 struct Length: formula::Quantity<Length, "L", "a length", formula::unit::Metre>
@@ -1824,10 +1824,10 @@ struct Length: formula::Quantity<Length, "L", "a length", formula::unit::Metre>
 int main()
 {
     // The expression is dimensionless; `Length` is not.
-    constexpr auto inputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                                 formula::Measured<CementVolume> { formula::Rational { 300 } });
+    constexpr auto inputs = formula::environment(formula::Measured<Rise> { formula::Rational { 180 } },
+                                                 formula::Measured<Run> { formula::Rational { 300 } });
     auto const broken =
-        formula::checked_evaluate<Length>(formula::var<WaterVolume> / formula::var<CementVolume>, inputs);
+        formula::checked_evaluate<Length>(formula::var<Rise> / formula::var<Run>, inputs);
     return broken.has_value() ? 0 : 1;
 }
 ```
@@ -2875,31 +2875,31 @@ missing entry is caught there rather than by a consumer.
 /// A quantity is a type. It carries its own symbol, its own description and the
 /// unit its values are stated in, and it is distinct from every other quantity
 /// even when the unit is the same.
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
-struct WaterCementRatio:
-    formula::Quantity<WaterCementRatio, "w/c", "ratio of water to cement", formula::unit::One>
+struct Gradient:
+    formula::Quantity<Gradient, "s", "road gradient", formula::unit::One>
 {
 };
 
 /// The formula is written once, with ordinary operators, and is a compile-time
 /// entity: this line builds a type, not a computation.
-inline constexpr auto waterCementRatio = formula::var<WaterVolume> / formula::var<CementVolume>;
+inline constexpr auto gradient = formula::var<Rise> / formula::var<Run>;
 
 int main()
 {
-    auto const batch = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                            formula::Measured<CementVolume> { formula::Rational { 300 } });
+    auto const batch = formula::environment(formula::Measured<Rise> { formula::Rational { 180 } },
+                                            formula::Measured<Run> { formula::Rational { 300 } });
 
-    formula::Outcome<WaterCementRatio> const result =
-        formula::evaluate<WaterCementRatio>(waterCementRatio, batch);
+    formula::Outcome<Gradient> const result =
+        formula::evaluate<Gradient>(gradient, batch);
 
     std::printf("%s = %f (%s)\n",
-                formula::Describe<WaterCementRatio>::symbol.data(),
+                formula::Describe<Gradient>::symbol.data(),
                 result.measurement().value().to_double(),
                 result.is_value() ? "computed" : "no value");
     return 0;
@@ -2909,7 +2909,7 @@ int main()
 Expected output, which `formula_add_example` pins exactly:
 
 ```
-w/c = 0.600000 (computed)
+s = 0.600000 (computed)
 ```
 
 - [ ] **Step 4: Write `examples/expressions.cpp`**

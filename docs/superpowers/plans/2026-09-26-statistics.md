@@ -238,14 +238,14 @@ So a "fixed multiple of s" and a "critical value from a table indexed by n" are 
 - Task 4 builds it, and task 7 reuses it. It is never written twice.
 
 **Refusals, each gated so that one mistake draws one message (class 2):**
-- A placeholder evaluated **outside** its binder, with a plain `Environment`: `"formula: precision_level is meaningful only inside the limit expression of precision_limit"`, and the matching sentence for `pass_mean`/`pass_count` and `without_outliers`.
+- A placeholder evaluated **outside** the expression that binds it, with a plain `Environment`: `"formula: precision_level is meaningful only inside the limit expression of precision_limit"`, and the matching sentence for `pass_mean`/`pass_count` and `without_outliers`.
 - A placeholder in the **level** expression of the very `precision_limit` that binds it (the level cannot depend on itself). The same holds for a placeholder inside the **sample** a rejection reads.
 - A `precision_level<Q>` whose `Q` has a different dimension from the level expression.
 - Nesting one `precision_limit` inside another's limit expression is allowed. The inner binding shadows the outer, and the trace says which level each limit was evaluated at. A test pins that the inner limit reads the inner level.
 
 **The spike measures:**
 - that a wrapper environment passes through every shipped node kind: arithmetic, lookups, `when`, rounding, `numeric_value_of` and a method's `RoundingRuleNode`;
-- that `if constexpr` detection of "am I inside a binder?" draws exactly one message on cl, clang-cl, clang++ and g++;
+- that `if constexpr` detection of "am I inside the expression that binds me?" draws exactly one message on cl, clang-cl, clang++ and g++;
 - that none of this disturbs `RequireDistinctQuantities` or the gated `RequireProvided` message.
 
 **Spike result (task 1): confirmed.**

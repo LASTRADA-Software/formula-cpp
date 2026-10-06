@@ -17,15 +17,15 @@ is checked for dimensional consistency at compile time, and can be evaluated, tr
 and documented without being rewritten.
 
 It exists to be the foundation for a reusable set of libraries implementing published test
-standards for LASTRADA's lab QA software — asphalt/bitumen first, then concrete, cement, aggregates
+standards for LASTRADA's lab QA software — asphalt/bitumen first, then further construction materials, aggregates
 and geotechnics. Those norm libraries are separate downstream projects. This one ships only the
 machinery.
 
 The shape the owner asked for:
 
 ```cpp
-template <typename WaterVol, typename CementVol>
-constexpr auto water_cement_ratio = formula::Value(WaterVol) / formula::Value(CementVol);
+template <typename Rise, typename Run>
+constexpr auto gradient = formula::Value(Rise) / formula::Value(Run);
 ```
 
 Declarative, parametrisable, composable — and from that single declaration you can get a number,
@@ -144,11 +144,11 @@ A **quantity type** is the identity of a variable in a formula. The declared spe
 after compiling all three candidates (§13):
 
 ```cpp
-struct WaterVolume:
-    formula::Quantity<WaterVolume,                         // tag: the type's own name
-                      "V_w",                               // symbol
-                      "volume of the effective mixing water",
-                      formula::unit::Litre>                // dimension comes from the unit
+struct Rise:
+    formula::Quantity<Rise,                         // tag: the type's own name
+                      "h",                               // symbol
+                      "height gained",
+                      formula::unit::Millimetre>              // dimension comes from the unit
 {
 };
 ```
@@ -289,14 +289,14 @@ Owner-chosen design: a wrapper that is itself an expression, so nesting keeps ev
 reachable from a composed root.
 
 ```cpp
-template <typename WaterVol, typename CementVol>
+template <typename Rise, typename Run>
 constexpr auto wc_ratio = formula::documented(
-    formula::var<WaterVol> / formula::var<CementVol>,
-    { .title     = "Water/cement ratio",
+    formula::var<Rise> / formula::var<Run>,
+    { .title     = "Road gradient",
       .reference = "Example Standard 1:2020",
       .section   = "5.4.2",
       .equation  = "(3)",
-      .text      = "Ratio of the effective water content to the cement content." });
+      .text      = "Ratio of the height gained to the horizontal distance covered." });
 ```
 
 `DocumentedNode` forwards dimension unconditionally and precedence in two layers: the type-level

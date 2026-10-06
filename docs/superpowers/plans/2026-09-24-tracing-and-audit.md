@@ -1098,14 +1098,14 @@ git commit -m "feat(trace): a flat arena a derivation records into"
 ## Task 5: Bounded rendering — `trace_render.hpp`
 
 **This task now also owns a change to `Step`, decided after task 4 shipped.**
-Running the recorder on `documented(var<WaterVolume> / var<CementVolume>)` with
+Running the recorder on `documented(var<Rise> / var<Run>)` with
 180 l and 300 l produced this:
 
 ```
-  #1  variable    V_w  = 9/50
-  #2  variable    V_c  = 3/10
+  #1  variable    h  = 9/50
+  #2  variable    L  = 3/10
   #3  divide           = 3/5   from #1 #2
-  #4  documented       = 3/5   from #3   [Water/cement ratio, Example Standard 1:2020]
+  #4  documented       = 3/5   from #3   [Road gradient, Example Standard 1:2020]
 ```
 
 `9/50` is correct — 180 l *is* 9/50 m3, because a step records its value in the
