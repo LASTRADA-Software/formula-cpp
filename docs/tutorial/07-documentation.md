@@ -62,9 +62,11 @@ report's methods section needs:
 reads, in the order the formula reads them, each with the symbol,
 description and unit its declaration gives. Like the rendering, the symbol
 table describes what the formula reads and names no result, so `f_c` has no
-row; the symbol table of a calculation, in chapter 9, lists each value it
-defines. `page.citations` holds every citation in the formula, with all five
-fields; the program prints the title and the reference.
+row. The symbol table of a calculation lists the values it calculates
+first ([The graph, known while the program
+compiles](../calculations.md#the-graph-known-while-the-program-compiles)).
+`page.citations` holds every citation in the formula, with all five fields;
+the program prints the title and the reference.
 
 ## Output
 
