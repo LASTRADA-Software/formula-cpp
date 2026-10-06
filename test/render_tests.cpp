@@ -251,11 +251,27 @@ TEST_CASE("render: LaTeX spells multiplication, powers and roots its own way", "
     CHECK(formula::render<Dialect::LaTeX>(formula::root<4>(var<Area>)) == "\\sqrt[4]{A}");
 }
 
+namespace
+{
+namespace markdown_render
+{
+    struct RiderMass: formula::Quantity<RiderMass, "m_r", "rider's mass", formula::unit::Kilogram>
+    {
+    };
+    struct BikeMass: formula::Quantity<BikeMass, "m_b", "bike's mass", formula::unit::Kilogram>
+    {
+    };
+} // namespace markdown_render
+} // namespace
+
 TEST_CASE("render: the Markdown dialect emphasises the symbols", "[render]")
 {
+    using markdown_render::BikeMass;
+    using markdown_render::RiderMass;
+
     // A symbol containing an underscore would otherwise be read as emphasis by
     // a Markdown renderer, which is exactly why this dialect exists.
-    CHECK(formula::render<Dialect::Markdown>(var<Rise> / var<Run>) == "`h` / `L`");
+    CHECK(formula::render<Dialect::Markdown>(var<RiderMass> / var<BikeMass>) == "`m_r` / `m_b`");
 }
 
 TEST_CASE("render: the Markdown dialect covers every node kind, not only the variable it was built for", "[render]")
