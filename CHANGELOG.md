@@ -60,7 +60,7 @@ change is recorded here.
   program's: a test compares what the program prints with the `.expected.txt` beside it, ignoring
   only line endings, so a page cannot show output its program does not print.
 - **Coverage reporting**: a workflow measures the test suite's coverage of `include/` and reports
-  it to Codecov.
+  it to Codecov; the upload runs once the repository has a `CODECOV_TOKEN` secret.
 
 ### Changed
 
@@ -94,6 +94,11 @@ change is recorded here.
   `at_most()` or designated initialisers instead, which are unaffected. Code that read `present` reads
   `lowPresent || highPresent`, or each end on its own. A unit that declared bounds with `bounds()` gives the same
   answers as before.
+- **A bound formula is an operand**: a formula bound with `yields<Q>(...)` can be used inside another formula, where
+  it stands for the formula it holds, with its type and value: `yields<Strength>(var<Load> / loadedArea)`. That holds
+  on either side of an arithmetic operator or a comparison, and for what a function that builds a formula is given
+  -- `sqrt`, `rounded`, `documented`, `sum`, a lookup's key and the rest. Such a use was refused in favour of
+  `.expression`, which still compiles and means the same. `yields` around a bound formula is still refused.
 - The guides and the examples that need a simple exact division use a road gradient,
   `s = h / L`. The documentation home page opens with the README's example, a concrete
   specimen's compressive strength, and links `examples/cycling_speed.cpp` as a larger example.

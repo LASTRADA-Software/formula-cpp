@@ -49,8 +49,8 @@ row whose band holds `key`:
 The template arguments are the table's structure: the unit its bands are
 stated in, the bands, and the unit its values are stated in. The braced list
 holds one value per band, in the order the bands are declared. The corrected
-strength uses the factor's `.expression`, as any formula that reads a bound
-formula does.
+strength multiplies by `sizeFactor` as it is: a bound formula used inside
+another stands for the formula it holds.
 
 Rendered, the lookup shows every band and the value it gives, each value as
 an exact fraction: 21/20 is 1.05, and 19/20 is 0.95.

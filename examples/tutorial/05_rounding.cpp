@@ -31,9 +31,8 @@ constexpr formula::DecimalRounding tenthMpaHalfEven { unit::Megapascal,
 
 // --8<-- [start:formulas]
 constexpr auto loadedArea = formula::yields<Area>(var<SideA> * var<SideB>);
-constexpr auto strength = formula::yields<Strength>(formula::rounded<tenthMpa>(var<Load> / loadedArea.expression));
-constexpr auto strengthHalfEven =
-    formula::yields<Strength>(formula::rounded<tenthMpaHalfEven>(var<Load> / loadedArea.expression));
+constexpr auto strength = formula::yields<Strength>(formula::rounded<tenthMpa>(var<Load> / loadedArea));
+constexpr auto strengthHalfEven = formula::yields<Strength>(formula::rounded<tenthMpaHalfEven>(var<Load> / loadedArea));
 // --8<-- [end:formulas]
 } // namespace
 

@@ -26,8 +26,8 @@ calculated, so each is a quantity of its own:
 ```
 
 `var<Area>` in the volume's and the strength's definitions reads the value
-the area's definition calculates; it is not the area's expression written out
-again, so no `.expression` is needed. A quantity that is read and never
+the area's definition calculates; it is not the area's formula written into
+theirs, so the area is calculated once. A quantity that is read and never
 defined is an input: here the two sides, the height, the mass and the load.
 
 The order the definitions are given in does not matter. The calculation works

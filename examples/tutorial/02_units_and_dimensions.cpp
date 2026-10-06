@@ -31,7 +31,7 @@ using StrengthInNewtons =
 
 // --8<-- [start:formulas]
 constexpr auto loadedArea = formula::yields<Area>(var<SideA> * var<SideB>);
-constexpr auto strength = formula::yields<Strength>(var<Load> / loadedArea.expression);
+constexpr auto strength = formula::yields<Strength>(var<Load> / loadedArea);
 // --8<-- [end:formulas]
 } // namespace
 

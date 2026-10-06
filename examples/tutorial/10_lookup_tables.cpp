@@ -34,7 +34,7 @@ inline constexpr formula::BandTable<3> EdgeBands {
 constexpr auto sizeFactor = formula::yields<SizeFactor>(
     formula::banded_lookup<unit::Millimetre, EdgeBands, unit::One>(var<Edge>, { 1.05_r, 1, 0.95_r }));
 
-constexpr auto correctedStrength = formula::yields<CorrectedStrength>(var<Strength> * sizeFactor.expression);
+constexpr auto correctedStrength = formula::yields<CorrectedStrength>(var<Strength> * sizeFactor);
 // --8<-- [end:lookup]
 
 // --8<-- [start:report]

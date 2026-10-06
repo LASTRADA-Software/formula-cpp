@@ -28,7 +28,7 @@ constexpr formula::DecimalRounding tenthMpa { unit::Megapascal,
 // --8<-- [start:formulas]
 constexpr auto loadedArea = formula::yields<Area>(var<SideA> * var<SideB>);
 constexpr auto strength =
-    formula::yields<Strength>(formula::documented(formula::rounded<tenthMpa>(var<Load> / loadedArea.expression),
+    formula::yields<Strength>(formula::documented(formula::rounded<tenthMpa>(var<Load> / loadedArea),
                                                   { .title = "Compressive strength",
                                                     .reference = "Example Standard 12:2020",
                                                     .section = "6.1",

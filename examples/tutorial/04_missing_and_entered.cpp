@@ -21,7 +21,7 @@ using SideA = formula::Quantity<struct SideATag, "a", "first side of the loaded 
 using SideB = formula::Quantity<struct SideBTag, "b", "second side of the loaded face", unit::Millimetre>;
 
 constexpr auto loadedArea = formula::yields<Area>(var<SideA> * var<SideB>);
-constexpr auto strength = formula::yields<Strength>(var<Load> / loadedArea.expression);
+constexpr auto strength = formula::yields<Strength>(var<Load> / loadedArea);
 } // namespace
 
 int main()

@@ -596,9 +596,9 @@ constexpr auto earthworksCost = formula::yields<EarthworksCost>(
 There is no separate composition step and no wrapper type. The outer formula
 is simply a larger expression tree, so the dimension check, evaluation,
 rendering, tracing and `document()` all treat the reused sub-tree the way
-they treat any other node. Only the outer formula names its result with
-`yields`, because only it is evaluated: a formula bound to its result is the
-top of a formula, not an operand of one
+they treat any other node. A formula bound to its result with `yields` is an
+operand too, and stands for the formula it holds; the outer formula names its
+own result with its own `yields`
 ([Naming the result once](#naming-the-result-once)).
 
 **Provenance travels upward through the seam.** The outer formula was never
@@ -694,29 +694,37 @@ formula names its result quantity with yields; evaluate it for that
 quantity, or name none*. Two dimensionless quantities are exactly the case
 this is for, since their dimensions agree and nothing else would notice.
 
-**`documented()` goes inside.** A bound formula is not a node: it is the top
-of a formula, not a part of one. So it wraps a documented formula, whose
-citation stays with the formula, and not the other way round:
+**`documented()` goes inside.** A bound formula wraps a documented formula,
+whose citation stays with the formula:
 
 ```cpp
 constexpr auto citedGradient = formula::yields<Gradient>(formula::documented(
     var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020" }));
 ```
 
-`documented(yields<Gradient>(...), ...)` does not compile, because `documented`
-takes a node. Nor does a bound formula go inside another bound formula:
-`yields<Gradient>(boundGradient)` is refused where it is written, even for the same
-quantity -- *this formula is bound to its result quantity already; bind the
-formula it holds (.expression), or use it as it is*.
+`documented(yields<Gradient>(...), ...)` documents the formula the bound one
+holds and is not bound itself, so its result is named by a `yields` around it.
+A bound formula is not bound again: `yields<Gradient>(boundGradient)` is
+refused where it is written, even for the same quantity -- *this formula is
+bound to its result quantity already; bind the formula it holds (.expression),
+or use it as it is*.
 
-**Reuse goes through `.expression`.** For the same reason, a bound formula is
-not an operand of another formula, nor a side of a comparison; either use is
-refused with *a bound formula is not an operand; use its .expression*. The formula it holds is an operand, as any formula is
+**A bound formula is an operand.** Inside another formula -- an operand, a side
+of a comparison, or what a function such as `sqrt`, `rounded` or `sum` is
+given -- a bound formula stands for the formula it holds, with its type and
+value
 ([Composing a formula from other formulas](#composing-a-formula-from-other-formulas)).
-Here `OtherRise` and `OtherRun` are lengths in metres, as `Rise` and `Run`
-are:
+The outer formula's result is named by its own `yields`. The inner binding's
+quantity is not part of the outer formula: its rendering and its trace show the
+formula the bound one holds, not the quantity it names. Here `OtherRise` and
+`OtherRun` are lengths in metres, as `Rise` and `Run` are:
 
 ```cpp
 // The height a climb of another length gains at the same gradient.
-constexpr auto otherRise = formula::yields<OtherRise>(var<OtherRun> * boundGradient.expression);
+constexpr auto otherRise = formula::yields<OtherRise>(var<OtherRun> * boundGradient);
 ```
+
+`.expression` is the formula a bound formula holds. A verb given the bound
+formula evaluates it for the quantity it names, so evaluating the same formula
+for another quantity takes `.expression`:
+`checked_evaluate<Q>(boundGradient.expression, climb)`.

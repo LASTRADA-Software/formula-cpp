@@ -34,10 +34,10 @@ The area becomes a formula, and the strength formula uses it:
 ```
 
 A formula can use another formula. `loadedArea` is bound to its result,
-`Area`, by `yields`, so it is evaluated as an `Area`. A bound formula
-(`yields<Q>(...)`) is the top of a formula rather than a part of one, so
-another formula reuses it through its `.expression`, the formula it holds,
-which is an operand like any other
+`Area`, by `yields`, so it is evaluated as an `Area`. The strength formula
+divides the load by `loadedArea`, which stands there for the formula it holds,
+`var<SideA> * var<SideB>`; the strength formula names its own result,
+`Strength`
 ([Naming the result once](../expressions.md#naming-the-result-once)).
 
 An expression has a dimension, not a unit. `var<SideA> * var<SideB>`
@@ -110,8 +110,8 @@ before the program can run.
 
 ## Summary
 
-- `.expression` -- the formula a bound formula holds; it is how one formula
-  uses another.
+- `.expression` -- the formula a bound formula holds; it is how that formula
+  is evaluated for a quantity other than the one bound.
 - `formula::checked_evaluate<Q>` -- evaluates a formula for the quantity `Q`,
   stated in `Q`'s declared unit.
 - A quantity's declared unit -- decides how its value is stated; conversion

@@ -220,8 +220,8 @@ inline constexpr formula::BandTable<3> ClassBands {
 // The nested shape: a banded lookup whose operand is an interpolating lookup.
 [[nodiscard]] constexpr auto classFactor()
 {
-    return formula::yields<SizeCorrection>(formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(
-        sizeCurveFactor().expression, { 91.9_r, 101.3_r, 108.7_r }));
+    return formula::yields<SizeCorrection>(
+        formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(sizeCurveFactor(), { 91.9_r, 101.3_r, 108.7_r }));
 }
 
 // The whole method: a measured strength corrected by two tables at once. The
@@ -232,7 +232,7 @@ inline constexpr formula::BandTable<3> ClassBands {
 [[nodiscard]] constexpr auto correctedStrength(LookupExampleShape shape)
 {
     return formula::yields<CorrectedStrength>(
-        formula::documented(var<MeasuredStrength> * sizeFactor().expression * shapeFactor(shape).expression,
+        formula::documented(var<MeasuredStrength> * sizeFactor() * shapeFactor(shape),
                             { .title = "Corrected compressive strength",
                               .reference = "Example Standard 8:2020",
                               .section = "7.3",
