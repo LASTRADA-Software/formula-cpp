@@ -18,7 +18,7 @@
 //
 // Every formula and citation below is INVENTED for this library's own
 // documentation -- generic physics with fictional `Example Standard`
-// citations, matching every test and example elsewhere in this repository.
+// citations, as every citation of a standard elsewhere in this repository is.
 // No real standard is named or transcribed anywhere in this file.
 
 #include <formula-cpp/document.hpp>

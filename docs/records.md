@@ -410,5 +410,4 @@ f_c\ \text{of }\mathrm{second\ reference}
 
 ## Every number here is invented
 
-The keys, batches, loads and strengths on this page are invented, as in every
-other example in this repository.
+The keys, batches, loads and strengths on this page are invented.

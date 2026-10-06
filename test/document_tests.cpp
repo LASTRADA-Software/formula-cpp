@@ -57,7 +57,7 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 
 using formula::var;
 
-// Invented, as every citation in this repository must be.
+// Invented, as every citation of a standard in this repository is.
 constexpr auto ratio = formula::documented(
     var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020", .section = "5.4.2" });
 
@@ -66,8 +66,8 @@ constexpr auto perCent = formula::documented(
 
 // A two-variable predicate -- var<ReplicateA> against var<ReplicateB>, not a
 // variable against an inert constant -- so a symbol-table test can tell
-// whether each side was walked. Invented, as every citation and verdict in
-// this repository must be.
+// whether each side was walked. Invented, as every citation of a standard
+// in this repository is.
 constexpr auto replicateAgreement =
     formula::constraint(var<ReplicateA> > var<ReplicateB>,
                         formula::Verdict { "repeat the test" },
@@ -591,7 +591,7 @@ inline constexpr BreakpointTable<3> ProfilePoints {
         var<CoreLength>, { rat(787, 1000), rat(-907, 1000), rat(1319, 1000) });
 }
 
-// Invented, as every citation in this repository must be.
+// Invented, as every citation of a standard in this repository is.
 constexpr formula::Citation layerSource { .title = "Layer correction table",
                                           .reference = "Example Standard 2:2021",
                                           .section = "7.3" };
@@ -1006,7 +1006,7 @@ struct Excess: formula::Quantity<Excess, "L_e", "an invented excess of rise over
 {
 };
 
-// Invented, as every citation in this repository must be.
+// Invented, as every citation of a standard in this repository is.
 inline constexpr formula::Citation ratioClause { .title = "Road grade",
                                                  .reference = "Example Standard 3:2022",
                                                  .section = "4.1" };
@@ -1221,7 +1221,7 @@ struct Sized
 {
 };
 
-// Invented, as every citation in this repository must be.
+// Invented, as every citation of a standard in this repository is.
 constexpr formula::Citation sizeAnnex { .reference = "Example Standard 7:2019", .section = "B.2" };
 
 /// A strength scaled by a size factor a jurisdiction derives from the

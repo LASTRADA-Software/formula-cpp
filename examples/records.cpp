@@ -19,8 +19,7 @@
 //   4. A record not yet made gives no answer, never zero.
 //   5. A role's name is written into formulas, so it must read as a name.
 //
-// Every number here is invented, as in every other example in this
-// repository; nothing here cites a standard.
+// Every number here is invented, and nothing here cites a standard.
 
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/format.hpp>

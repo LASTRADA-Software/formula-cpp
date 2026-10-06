@@ -23,7 +23,7 @@
 //      says beside each verdict whose check it was.
 //
 // Every citation here is invented -- generic physics with fictional Example
-// Standard references, exactly as every other example in this repository is.
+// Standard references, as every citation of a standard in this repository is.
 
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/format.hpp>
