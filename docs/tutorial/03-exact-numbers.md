@@ -1,8 +1,8 @@
 # 3. Exact numbers
 
 This chapter measures the specimen as it really is, to a tenth of a
-millimetre and a tenth of a kilonewton. It shows why every result the library
-calculates is exact, what an exact result looks like when it has no decimal,
+millimetre and a tenth of a kilonewton. It shows why `checked_evaluate`'s
+results are exact, what an exact result looks like when it has no decimal,
 and how to round one for reading.
 
 The program is chapter 2's, without the second strength quantity, with
@@ -18,9 +18,11 @@ The specimen's sides measure 150.2 mm and 149.8 mm, and it carried 675.4 kN:
 
 The `_r` literal, from `formula::literals`, makes an exact `formula::Rational`
 from its spelling: `150.2_r` is 751/5, exactly 150.2, never the `double`
-nearest it. The library calculates with `Rational`, a fraction of two
-integers, so nothing is rounded on the way in or during the calculation. The
-usual example of binary floating point going wrong holds exactly:
+nearest it. `checked_evaluate` calculates in `Rational`, a fraction of two
+128-bit integers, so nothing is rounded on the way in or during the
+calculation. A value too large for a `Rational` is reported as an error,
+never rounded ([Limits](../numbers.md#limits)). The usual example of binary
+floating point going wrong holds exactly:
 
 ```cpp
 --8<-- "examples/tutorial/03_exact_numbers.cpp:exact-sum"
@@ -69,7 +71,7 @@ it, comes in chapter 5.
 - `_r` -- an exact decimal literal, read from its spelling; in
   `formula::literals`.
 - `formula::Rational` -- an exact fraction of two integers, the number type
-  the library calculates with.
+  `checked_evaluate` calculates in.
 - `{:~.NMode}` -- formats a value rounded to N places in the rounding mode
   named and marked `≈`; a value with an exact decimal prints unrounded.
 

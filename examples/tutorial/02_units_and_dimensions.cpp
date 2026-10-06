@@ -61,7 +61,7 @@ int main()
     // --8<-- [end:evaluate]
 
     // --8<-- [start:evaluate-other-unit]
-    auto const inNewtons = formula::checked_evaluate<StrengthInNewtons>(var<Load> / loadedArea.expression, specimen);
+    auto const inNewtons = formula::checked_evaluate<StrengthInNewtons>(strength.expression, specimen);
     if (!inNewtons)
     {
         std::println("cannot calculate the strength in N/mm2: {}", inNewtons.error());

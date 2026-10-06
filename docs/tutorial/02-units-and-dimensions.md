@@ -34,14 +34,17 @@ The area becomes a formula, and the strength formula uses it:
 ```
 
 A formula can use another formula. `loadedArea` is bound to its result,
-`Area`, by `yields`, so it is evaluated and printed as `A_c`. A bound formula
+`Area`, by `yields`, so it is evaluated as an `Area`. A bound formula
 (`yields<Q>(...)`) is the top of a formula rather than a part of one, so
 another formula reuses it through its `.expression`, the formula it holds,
 which is an operand like any other
 ([Naming the result once](../expressions.md#naming-the-result-once)).
-`var<SideA> * var<SideB>` multiplies millimetres by
-millimetres, so its unit is mm², the unit `Area` declares, and its dimension
-is an area. `yields<Area>` checks that dimension when the program compiles.
+
+An expression has a dimension, not a unit. `var<SideA> * var<SideB>`
+multiplies two lengths, so its dimension is an area, the dimension `Area`
+declares; `yields<Area>` checks that when the program compiles. Evaluation
+works in coherent SI units and converts the answer once, into the result's
+declared unit, so the value is stated in `Area`'s unit, mm².
 
 The measurements are now the two sides and the load:
 
@@ -64,7 +67,8 @@ A second quantity states the same strength in newtons per square millimetre:
 --8<-- "examples/tutorial/02_units_and_dimensions.cpp:other-unit"
 ```
 
-The program evaluates the strength formula's expression for this quantity:
+The program evaluates the expression the strength formula holds,
+`strength.expression`, for this quantity:
 
 ```cpp
 --8<-- "examples/tutorial/02_units_and_dimensions.cpp:evaluate-other-unit"
