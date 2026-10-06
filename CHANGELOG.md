@@ -6,6 +6,14 @@ change is recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- The README, the guides and the examples now lead with a cyclist's steady-state speed from power,
+  and use a road gradient, `s = h / L`, wherever they need a simple exact division. A new example,
+  `examples/cycling_speed.cpp`, calculates the speed's steps exactly on a worksheet, cites the
+  model it follows, evaluates the speed's cube roots in `double`, and reports a `DomainError` on a
+  steep descent, where the formula has no real answer.
+
 ## [0.4.0] - 2026-10-05
 
 The fourth release. Exact numbers hold 128 bits: `Rational` stores a new `formula::Int128`, so realistic laboratory
@@ -156,8 +164,8 @@ each is listed under Changed.
   places. Every earlier spelling stays.
 - `declared_rounding(unit, mode)`, a `DecimalRounding` in the places `unit` declares.
 - `yields<Q>(expression)` names a formula's result quantity once, where the formula is written:
-  `constexpr auto ratio = yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);` then
-  `evaluate(ratio, environment)`. `evaluate`, `checked_evaluate`, `checked_evaluate_series`,
+  `constexpr auto gradient = yields<Gradient>(var<Rise> / var<Run>);` then
+  `evaluate(gradient, environment)`. `evaluate`, `checked_evaluate`, `checked_evaluate_series`,
   `checked_evaluate_rejection`, `explain`, `checked_explain`, `explain_series`, `explain_rejection`
   and `define` take it, and return what they return for the formula it holds and `Q`; `render` and
   `document` write the formula. The result is still never deduced from the expression: `Q` is
@@ -697,9 +705,9 @@ read a level inside an opaque output. `OpaqueOperation` joins the customisation 
 `compute` does its arithmetic through `RepTraits` and never throws.
 `docs/opaque-and-retry.md` is the guide, with `examples/opaque_and_retry.cpp` and gallery entries.
 
-**Quantities declared by alias.** `using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w",
-"effective water content", unit::Litre>;` is supported beside the struct form, everywhere a
-quantity is named, and the two mix in one formula; the guides, the examples and the gallery now
+**Quantities declared by alias.** `using Rise = formula::Quantity<struct RiseTag, "h", "height gained",
+unit::Metre>;` is supported beside the struct form, everywhere a quantity is named, and the two
+can be used together in one formula; the guides, the examples and the gallery now
 lead with it. An alias cannot be forward-declared, and two aliases with all four arguments equal
 are one type; `docs/quantities.md` sets out what each spelling costs.
 
