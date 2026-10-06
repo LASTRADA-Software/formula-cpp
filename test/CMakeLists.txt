@@ -342,6 +342,11 @@ formula_add_negative_test(unit_dimension_mismatch
 formula_add_negative_test(unit_currency_mismatch
     "formula: these two units measure different dimensions" EXPECT_COUNT 1)
 
+# docs/tutorial/02-units-and-dimensions.md includes this file's mistake.
+formula_add_negative_test(tutorial_load_plus_area
+    "formula: the two sides of this addition or subtraction measure different dimensions"
+    EXPECT_COUNT 1)
+
 # A dimensionless unit with a scale and no symbol: refused where a quantity
 # declared in it is read or measured, where a constant is stated in it, and
 # where a table is keyed in it -- once each.

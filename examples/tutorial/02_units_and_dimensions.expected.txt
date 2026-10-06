@@ -1,0 +1,3 @@
+A_c = 22500 mm2 (derived)
+f_c = 30 MPa (derived)
+f_c = 30 N/mm2 (derived)

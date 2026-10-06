@@ -46,6 +46,8 @@ nav:
   - Tutorial:
       - tutorial/index.md
       - 1. First formula: tutorial/01-first-formula.md
+      - 2. Units and dimensions: tutorial/02-units-and-dimensions.md
+      - 3. Exact numbers: tutorial/03-exact-numbers.md
   - Guides:
       - Numbers: numbers.md
       - Numeric headroom: numeric-headroom.md

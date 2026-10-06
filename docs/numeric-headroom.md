@@ -157,6 +157,8 @@ Each program's largest integers over everything it evaluates at run time.
 |---|---|---|---|---|
 | example `readme` | 25 | 20 | 25 | 102 |
 | example `tutorial_01_first_formula` | 25 | 20 | 25 | 102 |
+| example `tutorial_02_units_and_dimensions` | 25 | 20 | 25 | 102 |
+| example `tutorial_03_exact_numbers` | 44 | 25 | 44 | 83 |
 | example `simple` | 12 | 12 | 12 | 115 |
 | example `exact_numbers` | 9 | 10 | 9 | 117 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 105 |

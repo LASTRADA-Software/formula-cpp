@@ -28,5 +28,7 @@ an invented `Example Standard`.
 ## Core track
 
 1. [First formula](01-first-formula.md) -- one formula, evaluated and checked.
+2. [Units and dimensions](02-units-and-dimensions.md) -- sides, areas and unit conversion; a mistake that does not compile.
+3. [Exact numbers](03-exact-numbers.md) -- why the results are exact, and how to round them for reading.
 
 ## Advanced track
