@@ -59,8 +59,9 @@ Every step up to `a` and `b` is an exact lookup, sum, product or quotient: the
 gradient (`3/100` on the climb), the force, `a` and `b` are exact rationals,
 never rounded. The cube roots have no exact value, so the speed is evaluated
 in `double` (`formula::checked_evaluate_si<double>`) from the exact `a` and
-`b`. On an 8 % descent at no power, Cardano's square root has no real answer,
-and the program reports a `DomainError` instead of a speed. The same
+`b`, by Cardano's formula, which solves the cubic for the speed in closed
+form. On an 8 % descent at no power, Cardano's square root has no real
+answer, and the program reports a `DomainError` instead of a speed. The same
 calculation also says what its symbols mean and where it comes from: see
 [One calculation, four answers](#one-calculation-four-answers).
 
