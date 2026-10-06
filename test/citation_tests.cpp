@@ -25,8 +25,8 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 
 using formula::var;
 
-// Every citation in this repository is invented. Naming a real standard would
-// put copyrighted material in a public repository.
+// Every citation of a standard in this repository is invented. Naming a real
+// standard would put copyrighted material in a public repository.
 constexpr auto ratio = formula::documented(var<Rise> / var<Run>,
                                            { .title = "Road gradient",
                                              .reference = "Example Standard 1:2020",

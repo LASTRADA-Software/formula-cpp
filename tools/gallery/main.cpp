@@ -660,8 +660,8 @@ int main(int argc, char** argv)
            "and evaluate it. **Do not edit it by hand** -- change the generator and "
            "regenerate instead; `gallery.is-current` fails CI when the two disagree.\n\n";
     out << "Every formula and citation on this page is invented -- generic physics with "
-           "fictional `Example Standard` citations, exactly as every test and example "
-           "elsewhere in this repository is. See [the home page](index.md).\n\n";
+           "fictional `Example Standard` citations, as every citation of a standard elsewhere "
+           "in this repository is. See [the home page](index.md).\n\n";
 
     write_formula(out, density);
     write_formula(out, circularArea);

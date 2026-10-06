@@ -19,7 +19,7 @@
 //    wrong every time except that one.
 //
 // Every formula and citation here is invented -- generic physics with
-// fictional Example Standard references, exactly as every other example in
+// fictional Example Standard references, as every citation of a standard in
 // this repository is.
 
 #include <formula-cpp/format.hpp>

@@ -245,11 +245,11 @@ s_pc = 3 % (derived)
 
 ## The three dialects
 
-`formula::Dialect` (`render.hpp`) has three values -- `Plain`, `Markdown` and
-`LaTeX` -- and `formula::render<D>(node)` spells the same formula three
-different ways depending on which is asked for. The plain and LaTeX
-renderings below are `examples/citations.cpp`'s own output for `gradient`,
-the road gradient from the section above:
+`formula::Dialect` (`render.hpp`) has three values -- `Plain`, `Markdown`
+and `LaTeX` -- and `formula::render<D>(node)` spells the same formula three
+different ways depending on which is asked for. The three renderings below
+are `examples/citations.cpp`'s own output for `gradient`, the road gradient
+from the section above:
 
 ```
 plain: h / L
@@ -446,12 +446,13 @@ and the generator disagree. Building a documentation page for your own
 formulas is the same walk over your own tree; the gallery is the worked
 example for it, so this guide points there rather than repeating it.
 
-## Every citation here is invented
+## Every citation of a standard here is invented
 
-Every citation in this repository -- in the tests, in `examples/citations.cpp`
-and in the gallery -- names a fictional `Example Standard`, never a real one.
-Publishing this repository with a real standard's clause numbers and
-equations transcribed into it would put copyrighted material in a public
-repository, so the library's own documentation of its citation feature is,
-deliberately, the one place that feature is never used for its intended
-purpose.
+Every citation of a standard in this repository -- in the tests, in
+`examples/citations.cpp` and in the gallery -- names a fictional
+`Example Standard`, never a real one. Publishing this repository with a real
+standard's clause numbers and equations transcribed into it would put
+copyrighted material in a public repository, so no standard is ever cited
+for real here. The one real reference, in `examples/cycling_speed.cpp`,
+cites a published paper by its title, authors, journal and year only, and
+quotes none of its text.
