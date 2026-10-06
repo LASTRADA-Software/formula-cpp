@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // How fast a cyclist rides on a given power: the steady-state speed of a rider
-// and bike on a road, with no wind, after the model Martin et al. validated.
+// and bike on a road, with no wind, by a simplified form of the model Martin et
+// al. (1998) validated, without drivetrain or bearing losses.
 //
 // The power a rider holds balances what slows them down -- rolling resistance
 // and gravity, both in proportion to the weight, and air drag, in proportion
@@ -46,8 +47,8 @@ using namespace formula::literals;
 
 // ---- Units the library does not ship ----
 //
-// Each is declared over its dimension: four coherent combinations of SI units,
-// and the kilometre an hour, which is not coherent.
+// Each names its dimension and its symbol. The first four are coherent: SI
+// units multiplied and divided with no factor. The kilometre an hour is not.
 inline constexpr formula::Unit MetrePerSecondSquared { .dimension = formula::dim::Acceleration,
                                                        .symbolText = formula::symbol("m/s2"),
                                                        .decimals = 5 };

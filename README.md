@@ -5,58 +5,140 @@ Declarative, traceable, self-documenting formulas for C++23. Header-only, no dep
 Write a formula once, with ordinary operators. Get back a number, a rendering, and a
 documentation page — from the same declaration.
 
-```cpp
-namespace unit = formula::unit;
-using formula::var;
-
-// A quantity carries its own symbol, description and unit, and its tag makes it a type of its own.
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
-
-// The formula and its citation, declared together: documented() attaches the
-// citation to the division, and forwards that division's dimension unchanged.
-constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
-                                           { .title = "Water/cement ratio",
-                                             .reference = "Example Standard 1:2020",
-                                             .section = "5.4.2",
-                                             .equation = "(3)",
-                                             .text = "Ratio of water content to cement content." });
-```
-
-That single declaration answers four different questions: what the formula
-is, as plain text and as LaTeX; what its symbols mean and where it comes from;
-and what it computes.
+How fast does a cyclist ride on 250 W? `examples/cycling_speed.cpp` answers
+with the steady-state speed from power. Every input is a quantity, carrying
+its own symbol, description and unit, and its tag makes it a type of its own:
 
 ```cpp
-std::string const plain = formula::render(ratio);
-std::string const latex = formula::render<formula::Dialect::LaTeX>(ratio);
-formula::Documentation const documentation = formula::document(ratio);
-auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
-                                         formula::Measured<CementVolume> { 300 });
-auto const result = formula::checked_evaluate<WaterCementRatio>(ratio, inputs);
+// ---- The inputs ----
+using RiderMass = formula::Quantity<struct RiderMassTag, "m_r", "rider's mass", unit::Kilogram>;
+using BikeMass = formula::Quantity<struct BikeMassTag, "m_b", "bike's mass", unit::Kilogram>;
+using DragArea = formula::Quantity<struct DragAreaTag, "C_dA", "drag area", unit::SquareMetre>;
+using AirDensity = formula::Quantity<struct AirDensityTag, "rho", "density of the air", unit::KilogramPerCubicMetre>;
+using Power = formula::Quantity<struct PowerTag, "P", "power the rider holds", unit::Watt>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
 ```
 
-`examples/citations.cpp` prints the four answers:
+So is every value it calculates, from `Gradient` (`s`) to `Speed` (`v`, in
+m/s). Each step is a formula written with ordinary operators, named for what
+it yields, and the speed's formula is declared together with its citation:
+
+```cpp
+// ---- The steps ----
+inline constexpr auto gradient = formula::yields<Gradient>(var<Rise> / var<Run>);
+inline constexpr auto totalMass = formula::yields<TotalMass>(var<RiderMass> + var<BikeMass>);
+inline constexpr auto resistingForce =
+    formula::yields<ResistingForce>(var<TotalMass> * gravity * (var<RollingCoefficient> + var<Gradient>) );
+inline constexpr auto dragFactor = formula::yields<DragFactor>(formula::Rational { 1, 2 } * var<AirDensity> * var<DragArea>);
+inline constexpr auto powerTerm = formula::yields<PowerTerm>(var<Power> / (2 * var<DragFactor>) );
+inline constexpr auto forceTerm = formula::yields<ForceTerm>(var<ResistingForce> / (3 * var<DragFactor>) );
+
+// The speed, read from a and b by name, so its rendering stays one line.
+inline constexpr auto discriminant = formula::pow<2>(var<PowerTerm>) + formula::pow<3>(var<ForceTerm>);
+inline constexpr auto speed = formula::yields<Speed>(formula::documented(
+    formula::cbrt(var<PowerTerm> + formula::sqrt(discriminant))
+        + formula::cbrt(var<PowerTerm> - formula::sqrt(discriminant)),
+    { .title = "Validation of a mathematical model for road cycling power",
+      .reference = "J. C. Martin, D. L. Milliken, J. E. Cobb, K. L. McFadden and A. R. Coggan, "
+                   "Journal of Applied Biomechanics, 1998",
+      .text = "A simplified form of the model, without drivetrain or bearing losses: the power a rider holds "
+              "balances rolling resistance, gravity and air drag; in steady state, with no wind and a small "
+              "gradient, P = v * (m * g * (C_rr + s) + 1/2 * rho * C_dA * v^2), solved here for v." }));
+```
+
+`ride(surface)` puts the steps, after the rolling coefficient the road surface
+looks up, into one `formula::calculation`. That one declaration answers four
+different questions: what the formula is, as plain text and as LaTeX; what
+its symbols mean and where it comes from; and what it computes.
+
+```cpp
+auto const decimals = formula::NumberStyle::exact_decimal();
+auto const onAsphalt = ride(RoadSurface::Asphalt);
+
+// ---- 1. The calculation, one step a line ----
+std::println("the calculation, in the order it calculates:\n{}\n", formula::render(onAsphalt, { .numbers = decimals }));
+std::println("in LaTeX:\n{}\n",
+             formula::render<formula::Dialect::LaTeX>(onAsphalt, latexSymbols, { .numbers = decimals }));
+
+// ---- 2. Its symbol table and its citation ----
+formula::Documentation const page = formula::document(onAsphalt, { .numbers = decimals });
+```
+
+```cpp
+auto const flat = ride_on(RoadSurface::Asphalt, riding(250, 0));
+if (!flat)
+{
+    std::println("flat road at 250 W: {}", formula::describe(flat.error()));
+    return 1;
+}
+std::println("\nflat road, asphalt, 250 W:     {} ({:.1HalfEven})", flat->inMetresPerSecond, flat->inKilometresPerHour);
+```
+
+The program prints the steps in the order they are calculated. Its first
+line, left out here, is the rolling coefficient's exact lookup, which renders
+the whole table of surfaces:
 
 ```
-plain: V_w / V_c
-latex: \frac{V_w}{V_c}
-symbol: V_w = effective water content [l]
-symbol: V_c = cement content [l]
-citation: Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)
-w/c = 0.6 (derived)
+s = h / L
+m = m_r + m_b
+F = m * 9.80665 m/s2 * (C_rr + s)
+k = 0.5 * rho * C_dA
+a = P / (2 * k)
+b = F / (3 * k)
+v = root3(a + sqrt(a^2 + b^3)) + root3(a - sqrt(a^2 + b^3))
 ```
 
-`0.6` is exact, and `derived` says the library computed it rather than a
-person typing it in. The text comes from `render.hpp` and `document.hpp`, and
-the printing from `format.hpp`; the umbrella header `formula.hpp` holds the
-rest (see [Copy the headers](#copy-the-headers)).
+The speed, in LaTeX:
+
+```
+v = \sqrt[3]{a + \sqrt{a^{2} + b^{3}}} + \sqrt[3]{a - \sqrt{a^{2} + b^{3}}}
+```
+
+The symbol table's calculated rows, before the seven inputs:
+
+```
+its symbol table:
+  C_rr         rolling resistance coefficient
+  s            road gradient
+  m     kg     mass of rider and bike
+  F     N      rolling resistance and gravity together
+  k     kg/m   air drag per square of speed
+  a     m3/s3  power over twice the drag factor
+  b     m2/s2  force over three times the drag factor
+  v     m/s    steady-state speed
+```
+
+And the citation, with the speed on the flat, up a 3 % climb
+(`riding(250, 30)`: 30 m over 1000 m) and on cobbles:
+
+```
+the speed, after:
+  Validation of a mathematical model for road cycling power
+  J. C. Martin, D. L. Milliken, J. E. Cobb, K. L. McFadden and A. R. Coggan, Journal of Applied Biomechanics, 1998
+
+flat road, asphalt, 250 W:     10.332 m/s (37.2 km/h)
+3 % climb, asphalt, 250 W:     6.783 m/s (24.4 km/h)
+flat road, cobbles, 250 W:     8.335 m/s (30.0 km/h)
+```
+
+Every step up to `a` and `b` is a sum, product or quotient of exact numbers:
+the gradient (`3/100` on the climb), the resisting force, `a` and `b` are
+calculated as exact rationals on a worksheet, with no rounding. The speed's cube roots have no
+exact value, so `ride_on()` evaluates the speed's formula in `double`, with
+`formula::checked_evaluate_si<double>`, from the exact `a` and `b`. On an 8 %
+descent at no power, the square root in Cardano's formula has no real answer,
+and the program reports a `DomainError` instead of a speed.
+
+The text comes from `render.hpp` and `document.hpp`, and the printing from
+`format.hpp`; the umbrella header `formula.hpp` holds the rest (see [Copy the
+headers](#copy-the-headers)).
 
 A quantity can also be declared as a struct deriving from `formula::Quantity`,
-`struct WaterVolume: formula::Quantity<WaterVolume, ...> {};`. Both spellings
-are supported, and mix in one formula; [the quantities
-guide](docs/quantities.md#declaring-a-quantity) says what each costs.
+`struct RiderMass: formula::Quantity<RiderMass, "m_r", "rider's mass", unit::Kilogram> {};`.
+Both spellings are supported, and can be used together in one formula; [the
+quantities guide](docs/quantities.md#declaring-a-quantity) says what each
+costs.
 
 ## See it work
 
@@ -135,32 +217,32 @@ from "this is zero", and the difference matters when someone signs off on it.
 
 ### A number a person typed in never masquerades as a computed one
 
-The `0.5_r` below needs `using namespace formula::literals;` in scope, as the
+The `0.05_r` below needs `using namespace formula::literals;` in scope, as the
 example has it:
 
 ```cpp
-auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
-                                        formula::Measured<CementVolume> { 300 },
-                                        formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
-auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
-if (!ratio)
+auto const climb = formula::environment(formula::Measured<Rise> { 90 },
+                                        formula::Measured<Run> { 3000 },
+                                        formula::entered(formula::Measured<Gradient> { 0.05_r }));
+auto const slope = formula::checked_evaluate(gradient, climb);
+if (!slope)
 {
-    std::println("water/cement ratio: {}", ratio.error());
+    std::println("road gradient: {}", slope.error());
     return 1;
 }
-std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
+std::println("{} = {} ({})", formula::symbol_of<Gradient>(), *slope, slope->source());
 ```
 
 ```
-w/c = 0.5 (manually entered)
+s = 0.05 (manually entered)
 ```
 
-The evaluation is checked before its outcome is read: `ratio.error()` would
-say, in words, what arithmetic failed. Here `waterCementRatio` is
-`formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>)`, and
-`0.5_r` is the exact decimal one half, never a `double`. The formula would
-have computed 0.6. A person entered 0.5, so that is the answer — and
-`ratio->source()` is `ValueSource::ManuallyEntered`, printed above, so a report
+The evaluation is checked before its outcome is read: `slope.error()` would
+say, in words, what arithmetic failed. Here `gradient` is
+`formula::yields<Gradient>(var<Rise> / var<Run>)`, and `0.05_r` is the exact
+decimal one twentieth, never a `double`. The formula would have computed
+90 m / 3000 m = 0.03. A surveyor entered 0.05, so that is the answer — and
+`slope->source()` is `ValueSource::ManuallyEntered`, printed above, so a report
 can show which numbers were derived and which were asserted.
 
 ### Arithmetic that does not drift
@@ -215,31 +297,35 @@ fails if it ever stops matching what the generator produces.
 
 `explain()` evaluates a formula exactly as `evaluate()` does and also returns
 a `Trace` — one step per node, each naming the earlier steps it consumed.
-`render_trace()` turns that into text, bounded by a limit you choose:
+`render_trace()` turns that into text, bounded by a limit you choose.
+`examples/tracing.cpp` explains a road gradient, `s = h / L`, with a citation
+attached, from a rise of 90 m over a run entered as 3 km:
 
 ```cpp
-auto const explained = formula::explain<WaterCementRatio>(ratio, inputs);
+auto const explained = formula::explain<Gradient>(gradient, inputs);
 
 // render_trace has no default for maxSteps: TraceRenderOptions::maxSteps
 // is a StepLimit, which has no default constructor, so a caller who
 // writes render_trace(explained.trace, {}) does not compile, rather than
 // risking an unbounded dump of a derivation many times this size.
-std::print("{}", formula::render_trace(explained.trace, { .maxSteps = 10 }));
+std::string const rendered = formula::render_trace(explained.trace, { .maxSteps = 10 });
+std::print("{}", rendered);
 ```
 
 ```
-1. V_w = 180 l
-2. V_c = 300 l
-3. #1 / #2 = 3/5
-4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
+1. h = 90 m
+2. L = 3 km
+3. #1 / #2 = 3/100
+4. #3 = 3/100 [Road gradient, Example Standard 1:2020, 5.4.2, (3)]
 ```
 
 Every value is shown in the unit written after it: an input in the unit it was
-declared in, not the coherent unit the arithmetic actually ran on — that is
-`9/50` cubic metres above, and nobody typed cubic metres. A computed value
-borrows the unit of the values it was computed from where that is safe, and is
-otherwise shown in the coherent unit, spelt from the base units (`kg/m^3`);
-only a dimensionless value, like the ratio above, is a bare number. When the
+declared in, not the coherent unit the arithmetic actually ran on — the run is
+declared in kilometres, so it reads `3 km`, though the division worked on
+3000 m. A computed value borrows the unit of the values it was computed from
+where that is safe, and is otherwise shown in the coherent unit, spelt from
+the base units (`kg/m^3`); only a dimensionless value, like the gradient
+above, is a bare number. When the
 environment overrides the result instead of letting the formula derive it,
 `explained.trace` comes back empty — nothing ran, so nothing was recorded —
 and `explained.outcome.is_overridden()` says so instead: an overridden number
