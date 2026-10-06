@@ -5,24 +5,10 @@ Declarative, traceable, self-documenting formulas for C++23. Header-only, no dep
 Write a formula once, with ordinary operators. Get back a number, a rendering, and a
 documentation page — from the same declaration.
 
-How fast does a cyclist ride on 250 W? `examples/cycling_speed.cpp` answers
-with the steady-state speed from power. Every input is a quantity, carrying
-its own symbol, description and unit, and its tag makes it a type of its own:
-
-```cpp
-// ---- The inputs ----
-using RiderMass = formula::Quantity<struct RiderMassTag, "m_r", "rider's mass", unit::Kilogram>;
-using BikeMass = formula::Quantity<struct BikeMassTag, "m_b", "bike's mass", unit::Kilogram>;
-using DragArea = formula::Quantity<struct DragAreaTag, "C_dA", "drag area", unit::SquareMetre>;
-using AirDensity = formula::Quantity<struct AirDensityTag, "rho", "density of the air", unit::KilogramPerCubicMetre>;
-using Power = formula::Quantity<struct PowerTag, "P", "power the rider holds", unit::Watt>;
-using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
-using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
-```
-
-So is every value it calculates, from `Gradient` (`s`) to `Speed` (`v`, in
-m/s). Each step is a formula written with ordinary operators, named for what
-it yields, and the speed's formula is declared together with its citation:
+How fast does a cyclist ride on 250 W? `examples/cycling_speed.cpp` works out
+the steady-state speed from power. Each step is a formula, named for the
+quantity it yields — a type carrying its own symbol, description and unit —
+and the speed's formula carries its citation:
 
 ```cpp
 // ---- The steps ----
@@ -47,10 +33,69 @@ inline constexpr auto speed = formula::yields<Speed>(formula::documented(
               "gradient, P = v * (m * g * (C_rr + s) + 1/2 * rho * C_dA * v^2), solved here for v." }));
 ```
 
-`ride(surface)` puts the steps, after the rolling coefficient the road surface
-looks up, into one `formula::calculation`. That one declaration answers four
-different questions: what the formula is, as plain text and as LaTeX; what
-its symbols mean and where it comes from; and what it computes.
+`ride(surface)` puts them into one `formula::calculation`, after a step that
+looks up the rolling coefficient by the road surface. Rendered, the lookup
+spells out its whole table on one line; the steps after it read:
+
+```
+s = h / L
+m = m_r + m_b
+F = m * 9.80665 m/s2 * (C_rr + s)
+k = 0.5 * rho * C_dA
+a = P / (2 * k)
+b = F / (3 * k)
+v = root3(a + sqrt(a^2 + b^3)) + root3(a - sqrt(a^2 + b^3))
+```
+
+The speeds it calculates at 250 W:
+
+```
+flat road, asphalt, 250 W:     10.332 m/s (37.2 km/h)
+3 % climb, asphalt, 250 W:     6.783 m/s (24.4 km/h)
+flat road, cobbles, 250 W:     8.335 m/s (30.0 km/h)
+```
+
+Every step up to `a` and `b` is an exact lookup, sum, product or quotient: the
+gradient (`3/100` on the climb), the force, `a` and `b` are exact rationals,
+never rounded. The cube roots have no exact value, so the speed is evaluated
+in `double` (`formula::checked_evaluate_si<double>`) from the exact `a` and
+`b`. On an 8 % descent at no power, Cardano's square root has no real answer,
+and the program reports a `DomainError` instead of a speed. The same
+calculation also says what its symbols mean and where it comes from: see
+[One calculation, four answers](#one-calculation-four-answers).
+
+A quantity can also be declared as a struct deriving from `formula::Quantity`,
+`struct RiderMass: formula::Quantity<RiderMass, "m_r", "rider's mass", unit::Kilogram> {};`.
+Both spellings are supported, and can be used together in one formula; [the
+quantities guide](docs/quantities.md#declaring-a-quantity) says what each
+costs.
+
+## See it work
+
+Every block below is real code from `examples/`, with the output those programs
+actually print. The one mistake that must not compile is shown from
+`test/negative/`, which pins it.
+
+### One calculation, four answers
+
+The inputs of the cycling example are quantities, as every value it
+calculates is:
+
+```cpp
+// ---- The inputs ----
+using RiderMass = formula::Quantity<struct RiderMassTag, "m_r", "rider's mass", unit::Kilogram>;
+using BikeMass = formula::Quantity<struct BikeMassTag, "m_b", "bike's mass", unit::Kilogram>;
+using DragArea = formula::Quantity<struct DragAreaTag, "C_dA", "drag area", unit::SquareMetre>;
+using AirDensity = formula::Quantity<struct AirDensityTag, "rho", "density of the air", unit::KilogramPerCubicMetre>;
+using Power = formula::Quantity<struct PowerTag, "P", "power the rider holds", unit::Watt>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
+```
+
+`ride(RoadSurface::Asphalt)` is the calculation for an asphalt road. Rendering
+it, as plain text and as LaTeX, and documenting it, are three calls; the
+documentation, `page`, holds the symbol table the program prints, and the
+citation:
 
 ```cpp
 auto const decimals = formula::NumberStyle::exact_decimal();
@@ -63,39 +108,19 @@ std::println("in LaTeX:\n{}\n",
 
 // ---- 2. Its symbol table and its citation ----
 formula::Documentation const page = formula::document(onAsphalt, { .numbers = decimals });
+std::println("its symbol table:");
+for (formula::SymbolEntry const& entry: page.symbols)
+    std::println("  {:<5} {:<6} {}", entry.symbol, entry.unit, entry.description);
 ```
 
-```cpp
-auto const flat = ride_on(RoadSurface::Asphalt, riding(250, 0));
-if (!flat)
-{
-    std::println("flat road at 250 W: {}", formula::describe(flat.error()));
-    return 1;
-}
-std::println("\nflat road, asphalt, 250 W:     {} ({:.1HalfEven})", flat->inMetresPerSecond, flat->inKilometresPerHour);
-```
-
-The program prints the steps in the order they are calculated. Its first
-line, left out here, is the rolling coefficient's exact lookup, which renders
-the whole table of surfaces:
-
-```
-s = h / L
-m = m_r + m_b
-F = m * 9.80665 m/s2 * (C_rr + s)
-k = 0.5 * rho * C_dA
-a = P / (2 * k)
-b = F / (3 * k)
-v = root3(a + sqrt(a^2 + b^3)) + root3(a - sqrt(a^2 + b^3))
-```
-
-The speed, in LaTeX:
+The plain rendering is shown above. In LaTeX, the speed's line reads:
 
 ```
 v = \sqrt[3]{a + \sqrt{a^{2} + b^{3}}} + \sqrt[3]{a - \sqrt{a^{2} + b^{3}}}
 ```
 
-The symbol table's calculated rows, before the seven inputs:
+The symbol table lists the eight calculated values first, then the seven
+inputs; its calculated rows read:
 
 ```
 its symbol table:
@@ -109,42 +134,38 @@ its symbol table:
   v     m/s    steady-state speed
 ```
 
-And the citation, with the speed on the flat, up a 3 % climb
-(`riding(250, 30)`: 30 m over 1000 m) and on cobbles:
+and the citation, from `page.citations`:
 
 ```
 the speed, after:
   Validation of a mathematical model for road cycling power
   J. C. Martin, D. L. Milliken, J. E. Cobb, K. L. McFadden and A. R. Coggan, Journal of Applied Biomechanics, 1998
-
-flat road, asphalt, 250 W:     10.332 m/s (37.2 km/h)
-3 % climb, asphalt, 250 W:     6.783 m/s (24.4 km/h)
-flat road, cobbles, 250 W:     8.335 m/s (30.0 km/h)
 ```
 
-Every step up to `a` and `b` is a sum, product or quotient of exact numbers:
-the gradient (`3/100` on the climb), the resisting force, `a` and `b` are
-calculated as exact rationals on a worksheet, with no rounding. The speed's cube roots have no
-exact value, so `ride_on()` evaluates the speed's formula in `double`, with
-`formula::checked_evaluate_si<double>`, from the exact `a` and `b`. On an 8 %
-descent at no power, the square root in Cardano's formula has no real answer,
-and the program reports a `DomainError` instead of a speed.
+The value comes from the example's `ride_on(surface, inputs)`. `riding(watts,
+rise)` is the environment of the inputs: a rider of 75 kg on a bike of
+8.5 kg, with a drag area of 0.32 m², in air of 1.225 kg/m³, holding `watts` on
+a road rising `rise` over 1000 m. `ride_on` calculates every step up to `a` and
+`b` exactly on a `formula::worksheet` of `ride(surface)` and those inputs,
+evaluates the speed's formula in `double` from them, rounds it to the
+millimetre a second and converts it to km/h. Each result is checked before it
+is read:
+
+```cpp
+auto const flat = ride_on(RoadSurface::Asphalt, riding(250, 0));
+if (!flat)
+{
+    std::println("flat road at 250 W: {}", formula::describe(flat.error()));
+    return 1;
+}
+std::println("\nflat road, asphalt, 250 W:     {} ({:.1HalfEven})", flat->inMetresPerSecond, flat->inKilometresPerHour);
+```
+
+`riding(250, 30)` is the 3 % climb, 30 m over 1000 m.
 
 The text comes from `render.hpp` and `document.hpp`, and the printing from
 `format.hpp`; the umbrella header `formula.hpp` holds the rest (see [Copy the
 headers](#copy-the-headers)).
-
-A quantity can also be declared as a struct deriving from `formula::Quantity`,
-`struct RiderMass: formula::Quantity<RiderMass, "m_r", "rider's mass", unit::Kilogram> {};`.
-Both spellings are supported, and can be used together in one formula; [the
-quantities guide](docs/quantities.md#declaring-a-quantity) says what each
-costs.
-
-## See it work
-
-Every block below is real code from `examples/`, with the output those programs
-actually print. The one mistake that must not compile is shown from
-`test/negative/`, which pins it.
 
 ### A dimensional mistake is a compile error, not a wrong number
 
@@ -323,19 +344,18 @@ Every value is shown in the unit written after it: an input in the unit it was
 declared in, not the coherent unit the arithmetic actually ran on — the run is
 declared in kilometres, so it reads `3 km`, though the division worked on
 3000 m. A computed value borrows the unit of the values it was computed from
-where that is safe, and is otherwise shown in the coherent unit, spelt from
-the base units (`kg/m^3`); only a dimensionless value, like the gradient
-above, is a bare number. When the
-environment overrides the result instead of letting the formula derive it,
-`explained.trace` comes back empty — nothing ran, so nothing was recorded —
-and `explained.outcome.is_overridden()` says so instead: an overridden number
-shows *that a person entered it*, a different fact from how it was reached and
-arguably a more important one. Tracing costs nothing when nobody asks for it:
-a sink is passed by value, and the untraced path — `evaluate()`,
-`checked_evaluate()` — defaults to one that does nothing, adding no
-instruction the evaluator would not already emit once the call inlines,
-measured on all four compilers this library targets. See
-[the tracing guide](docs/tracing.md).
+where that is safe, and is otherwise shown in the coherent unit, spelt from the
+base units (`kg/m^3`); only a dimensionless value, like the gradient above, is
+a bare number. When the environment overrides the result instead of letting the
+formula derive it, `explained.trace` comes back empty — nothing ran, so nothing
+was recorded — and `explained.outcome.is_overridden()` says so instead: an
+overridden number shows *that a person entered it*, a different fact from how
+it was reached and arguably a more important one. Tracing costs nothing when
+nobody asks for it: a sink is passed by value, and the untraced path —
+`evaluate()`, `checked_evaluate()` — defaults to one that does nothing, adding
+no instruction the evaluator would not already emit once the call inlines,
+measured on all four compilers this library targets. See [the tracing
+guide](docs/tracing.md).
 
 ### A published table that a value falls outside of gives no number at all
 
@@ -398,8 +418,10 @@ because all of it came from the same line of code.
 | [Opaque operations and bounded retry](docs/opaque-and-retry.md) | A named operation such as a least-squares line through a curve, or through raw observations with R², and a regression on several regressors, traced by its inputs and outputs with its inside marked as not shown, and a step repeated until it is accepted, at most a fixed number of times, ending in exactly one of six ways -- the method's verdict when it runs out |
 | [Gallery](docs/gallery.md) | A documentation page the library generated about itself |
 
-Every example in the documentation uses generic physics with invented `Example Standard`
-citations. Real standards are copyrighted, so none of their content appears in this repository.
+Every citation of a standard in the documentation is an invented `Example Standard`. Real
+standards are copyrighted, so none of their content appears in this repository. The one real
+reference, in `examples/cycling_speed.cpp`, cites a published paper by its title, authors,
+journal and year only, and quotes none of its text.
 
 Each guide has a matching runnable program under `examples/`.
 
