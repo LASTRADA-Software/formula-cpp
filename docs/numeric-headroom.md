@@ -64,11 +64,12 @@ of their evaluations overflowed. Three findings decided the remedy:
   below). Storing them in the declared unit would change the evaluator's rule
   that every leaf is converted to SI, and a variance node has no declared unit
   to work in.
-- **So the stored integer was widened.** `Rational` stores its numerator and
-  denominator in `formula::Int128`, 128 bits: the compiler's own 128-bit
+- **So the stored integer is 128 bits wide.** `Rational` stores its numerator
+  and denominator in `formula::Int128`, 128 bits: the compiler's own 128-bit
   integer computes where it has one (GCC, Clang), and portable `constexpr`
-  code everywhere else (cl, clang-cl). A computation that answered at 64 bits
-  gives the same answer; some that were refused with `Overflow` now answer.
+  code everywhere else (cl, clang-cl). A computation that fits in 64 bits
+  gives the same answer at 128; some that 64-bit integers would refuse with
+  `Overflow` answer.
 
 ## Why a fraction's integers grow
 
@@ -155,6 +156,22 @@ Each program's largest integers over everything it evaluates at run time.
 
 | program | numerator bits | denominator bits | intermediate bits | headroom |
 |---|---|---|---|---|
+| example `readme` | 25 | 20 | 25 | 102 |
+| example `tutorial_01_first_formula` | 25 | 20 | 25 | 102 |
+| example `tutorial_02_units_and_dimensions` | 25 | 20 | 25 | 102 |
+| example `tutorial_03_exact_numbers` | 44 | 25 | 44 | 83 |
+| example `tutorial_04_missing_and_entered` | 25 | 20 | 25 | 102 |
+| example `tutorial_05_rounding` | 29 | 20 | 29 | 98 |
+| example `tutorial_06_constraints` | 10 | 13 | 13 | 114 |
+| example `tutorial_07_documentation` | 25 | 20 | 25 | 102 |
+| example `tutorial_08_tracing` | 44 | 25 | 44 | 83 |
+| example `tutorial_09_worksheets` | 30 | 30 | 25 | 97 |
+| example `tutorial_10_lookup_tables` | 25 | 20 | 25 | 102 |
+| example `tutorial_11_methods_and_overlays` | 52 | 35 | 52 | 75 |
+| example `tutorial_12_series` | 25 | 25 | 25 | 102 |
+| example `tutorial_13_statistics` | 28 | 20 | 28 | 99 |
+| example `tutorial_14_records` | 25 | 25 | 25 | 102 |
+| example `tutorial_15_opaque_and_retry` | 27 | 20 | 27 | 100 |
 | example `simple` | 12 | 12 | 12 | 115 |
 | example `exact_numbers` | 9 | 10 | 9 | 117 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 105 |

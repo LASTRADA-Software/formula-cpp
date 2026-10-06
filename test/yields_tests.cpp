@@ -239,47 +239,436 @@ TEST_CASE("yields: every verb hands on the sink and the vocabulary it is given",
     CHECK(written(formula::explain_rejection(settledMass, fixtureA, renamedMass).trace) == renamedRejection);
 }
 
-TEST_CASE("yields: a bound formula is not an operand, and arithmetic over formulas is untouched", "[yields]")
+TEST_CASE("yields: a bound formula is an operand, standing for the formula it holds", "[yields]")
 {
-    // Asked of a type, arithmetic over a bound formula is answered without
-    // the refusal firing: the refused operators name their return type.
-    using Bound = std::remove_const_t<decltype(ratio)>;
-    using Refused = formula::detail::RefusedBoundValue<formula::Describe<Gradient>::dimension>;
-    STATIC_REQUIRE(std::is_same_v<decltype(var<Rise> * std::declval<Bound>()), Refused>);
-    STATIC_REQUIRE(std::is_same_v<decltype(std::declval<Bound>() + formula::Rational { 1 }), Refused>);
-    STATIC_REQUIRE(std::is_same_v<decltype(-std::declval<Bound>()), Refused>);
-    STATIC_REQUIRE(formula::detail::refused_already<Refused>());
+    // On either side of each arithmetic operator, beside a formula, a bare
+    // `Rational` or another bound formula, and negated: the type the
+    // `.expression` spelling gives.
+    constexpr auto one = formula::number(rat(1));
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio + one), decltype(ratio.expression + one)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(one + ratio), decltype(one + ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio - one), decltype(ratio.expression - one)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(one - ratio), decltype(one - ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(var<Rise> * ratio), decltype(var<Rise> * ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio * var<Rise>), decltype(ratio.expression * var<Rise>)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(var<Rise> / ratio), decltype(var<Rise> / ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio / var<Rise>), decltype(ratio.expression / var<Rise>)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio + rat(1)), decltype(ratio.expression + rat(1))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(rat(1) - ratio), decltype(rat(1) - ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio * rat(2)), decltype(ratio.expression * rat(2))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(rat(2) / ratio), decltype(rat(2) / ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio * ratio), decltype(ratio.expression * ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(-ratio), decltype(-ratio.expression)>);
 
-    // The formula it holds is an operand as any formula is, and so is every
-    // other operand those operators could have taken.
-    using Held = std::remove_const_t<decltype(ratio.expression)>;
-    STATIC_REQUIRE(std::is_same_v<decltype(var<Rise> * ratio.expression),
-                                  formula::BinaryNode<formula::BinaryOperator::Multiply, formula::VarNode<Rise>, Held>>);
+    // Beside a series, a bound formula is broadcast as the formula it holds
+    // is, and a bound series combines element by element as its series does.
+    constexpr auto retainedInKilograms = formula::yields<RetainedKilograms>(formula::series<Retained, 5>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::series<Retained, 5> * ratio),
+                                  decltype(formula::series<Retained, 5> * ratio.expression)>);
     STATIC_REQUIRE(
-        std::is_same_v<decltype(ratio.expression + formula::Rational { 1 }),
-                       formula::BinaryNode<formula::BinaryOperator::Add, Held, formula::ConstantNode<unit::One>>>);
-    STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<Rise>(var<Run> * ratio.expression, batch))
-                   == formula::Rational { 163 });
+        std::is_same_v<decltype(retainedInKilograms / rat(2)), decltype(retainedInKilograms.expression / rat(2))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(-retainedInKilograms), decltype(-retainedInKilograms.expression)>);
+
+    // The value is the formula's: 307 mm times 163/307 is 163 mm.
+    STATIC_REQUIRE(formula::checked_evaluate<Rise>(var<Run> * ratio, batch)
+                   == formula::checked_evaluate<Rise>(var<Run> * ratio.expression, batch));
+    STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<Rise>(var<Run> * ratio, batch)) == rat(163));
+
+    // Written as the formula it holds: the bound quantity is not named.
+    CHECK(formula::render(var<Run> * ratio) == formula::render(var<Run> * ratio.expression));
 }
 
-TEST_CASE("yields: a bound formula is not a comparand, and comparisons of formulas are untouched", "[yields]")
+namespace
 {
-    // Asked of a type, a comparison over a bound formula is answered without
-    // the refusal firing, and it is no equality a concept can use.
+using Load = formula::Quantity<struct YieldsLoadTag, "F", "maximum load", unit::Kilonewton>;
+using Area = formula::Quantity<struct YieldsAreaTag, "A_c", "loaded area", unit::SquareMillimetre>;
+using Strength = formula::Quantity<struct YieldsStrengthTag, "f_c", "compressive strength", unit::Megapascal>;
+using SideA = formula::Quantity<struct YieldsSideATag, "a", "first side of the loaded face", unit::Millimetre>;
+using SideB = formula::Quantity<struct YieldsSideBTag, "b", "second side of the loaded face", unit::Millimetre>;
+
+constexpr auto loadedArea = formula::yields<Area>(var<SideA> * var<SideB>);
+constexpr auto strength = formula::yields<Strength>(var<Load> / loadedArea);
+} // namespace
+
+TEST_CASE("yields: a bound formula inside another bound formula", "[yields]")
+{
+    STATIC_REQUIRE(std::is_same_v<decltype(strength.expression), decltype(var<Load> / loadedArea.expression)>);
+
+    // 675 kN over a 150 mm by 150 mm face is 30 MPa.
+    constexpr auto specimen = formula::environment(
+        formula::Measured<SideA> { 150 }, formula::Measured<SideB> { 150 }, formula::Measured<Load> { 675 });
+    constexpr auto result = formula::checked_evaluate(strength, specimen);
+    STATIC_REQUIRE(std::is_same_v<std::remove_const_t<decltype(result)>,
+                                  std::expected<formula::Outcome<Strength>, formula::ArithmeticError>>);
+    REQUIRE(result.has_value());
+    CHECK(result->measurement().value() == rat(30));
+
+    // The same formula written in one piece.
+    constexpr auto nested = formula::yields<Strength>(var<Load> / formula::yields<Area>(var<SideA> * var<SideB>));
+    STATIC_REQUIRE(std::is_same_v<decltype(nested), decltype(strength)>);
+    CHECK(formula::render(nested) == formula::render(var<Load> / (var<SideA> * var<SideB>) ));
+}
+
+namespace
+{
+// Whether a formula of type @p T can be compared with a bare `Rational`: no,
+// for a formula or a bound one -- the comparisons take two formulas.
+template <typename T>
+concept ComparesWithRational = requires(T const& formulaGiven) { formulaGiven < formula::Rational { 1 }; };
+
+// Whether @p T can be added to @p U: no, for a series or a bound one beside
+// something that is no formula.
+template <typename T, typename U>
+concept AddsTo = requires(T const& formulaGiven, U const& other) { formulaGiven + other; };
+} // namespace
+
+TEST_CASE("yields: a bound formula is a comparand, standing for the formula it holds", "[yields]")
+{
+    constexpr auto limit = formula::constant<unit::One>(rat(9, 20));
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio < limit), decltype(ratio.expression < limit)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(limit < ratio), decltype(limit < ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio <= limit), decltype(ratio.expression <= limit)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(limit <= ratio), decltype(limit <= ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio > limit), decltype(ratio.expression > limit)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(limit > ratio), decltype(limit > ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio >= limit), decltype(ratio.expression >= limit)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(limit >= ratio), decltype(limit >= ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio == limit), decltype(ratio.expression == limit)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(limit == ratio), decltype(limit == ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio != limit), decltype(ratio.expression != limit)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(limit != ratio), decltype(limit != ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio == ratio), decltype(ratio.expression == ratio.expression)>);
+
+    // A comparison of formulas is a predicate, not a truth value, so neither
+    // a formula nor a bound one is equality-comparable in a concept's sense.
     using Bound = std::remove_const_t<decltype(ratio)>;
-    using Refused = formula::detail::RefusedBoundValue<formula::Describe<Gradient>::dimension>;
-    constexpr auto limit = formula::constant<unit::One>(formula::Rational { 9, 20 });
+    using Held = std::remove_const_t<decltype(ratio.expression)>;
     using Limit = std::remove_const_t<decltype(limit)>;
-    STATIC_REQUIRE(std::is_same_v<decltype(std::declval<Bound>() >= limit),
-                                  formula::PredicateNode<formula::Comparison::GreaterOrEqual, Refused, Refused>>);
+    STATIC_REQUIRE(!std::equality_comparable<Held>);
     STATIC_REQUIRE(!std::equality_comparable<Bound>);
+    STATIC_REQUIRE(!std::equality_comparable_with<Held, Limit>);
     STATIC_REQUIRE(!std::equality_comparable_with<Bound, Limit>);
 
-    // The formula it holds is compared as any formula is: 163/307 is above
-    // 9/20.
-    using Held = std::remove_const_t<decltype(ratio.expression)>;
-    STATIC_REQUIRE(std::is_same_v<decltype(ratio.expression >= limit),
-                                  formula::PredicateNode<formula::Comparison::GreaterOrEqual, Held, Limit>>);
-    constexpr auto tooShallow = formula::constraint(ratio.expression >= limit, formula::Verdict { "too shallow" });
+    // Asked of something the comparisons of formulas do not take, a bound
+    // formula answers no as the formula it holds does, without an error: a
+    // series compared with a series, a formula with a bare `Rational`.
+    using HeldSeries = std::remove_const_t<decltype(formula::series<Retained, 5>)>;
+    using BoundSeries = formula::Yields<RetainedKilograms, HeldSeries>;
+    STATIC_REQUIRE(!std::equality_comparable<HeldSeries>);
+    STATIC_REQUIRE(!std::equality_comparable<BoundSeries>);
+    STATIC_REQUIRE(!ComparesWithRational<Held>);
+    STATIC_REQUIRE(!ComparesWithRational<Bound>);
+    STATIC_REQUIRE(!AddsTo<HeldSeries, std::nullptr_t>);
+    STATIC_REQUIRE(!AddsTo<BoundSeries, std::nullptr_t>);
+
+    // A bound retry is compared as its retry is -- refused, where it is
+    // written, and so no equality a concept can use -- and a retry beside a
+    // bound formula as beside the formula held. Asked of a type, neither
+    // fires the refusal.
+    using HeldRetry = std::remove_const_t<decltype(fourAttempts)>;
+    using BoundRetry = formula::Yields<Estimate, HeldRetry>;
+    STATIC_REQUIRE(!std::equality_comparable<HeldRetry>);
+    STATIC_REQUIRE(!std::equality_comparable<BoundRetry>);
+    STATIC_REQUIRE(std::is_same_v<decltype(std::declval<BoundRetry>() >= limit), decltype(fourAttempts >= limit)>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(fourAttempts + std::declval<Bound>()), decltype(fourAttempts + ratio.expression)>);
+    STATIC_REQUIRE(std::is_same_v<decltype(-std::declval<BoundRetry>()), decltype(-fourAttempts)>);
+
+    // A constraint over a bound formula checks what one over the formula
+    // checks: 163/307 is above 9/20.
+    constexpr auto tooShallow = formula::constraint(ratio >= limit, formula::Verdict { "too shallow" });
+    constexpr auto heldTooShallow = formula::constraint(ratio.expression >= limit, formula::Verdict { "too shallow" });
+    STATIC_REQUIRE(std::is_same_v<decltype(tooShallow), decltype(heldTooShallow)>);
     STATIC_REQUIRE(formula::check(tooShallow, batch).is_satisfied());
+    STATIC_REQUIRE(formula::check(tooShallow, batch) == formula::check(heldTooShallow, batch));
+}
+
+namespace
+{
+inline constexpr auto threePlaces = formula::DecimalPlaces { 3 };
+inline constexpr auto threeDigits = formula::SignificantDigits { 3 };
+inline constexpr auto halfEven = formula::RoundingMode::HalfEven;
+inline constexpr formula::DecimalRounding thousandth { unit::One, threePlaces, halfEven };
+inline constexpr formula::SignificantRounding threeFigures { unit::One, threeDigits, halfEven };
+inline constexpr formula::Citation sourceCited { .title = "Example Standard", .section = "4.1" };
+
+// A length bound to a quantity of its own, for the lookups and the snap:
+// 163 + 307 = 470 mm.
+using Span = formula::Quantity<struct YieldsSpanTag, "l", "span", unit::Millimetre>;
+constexpr auto span = formula::yields<Span>(var<Rise> + var<Run>);
+inline constexpr formula::BandTable<2> spanBands { formula::band(0, 1, 300, 1), formula::band(300, 1, 900, 1) };
+inline constexpr formula::BreakpointTable<2> spanPoints { formula::breakpoint(0), formula::breakpoint(900) };
+inline constexpr formula::SampleSizeTable<3> countSizes { 3, 4, 5 };
+} // namespace
+
+TEST_CASE("yields: a bound formula as the operand of a function, a rounding or an escape", "[yields]")
+{
+    // function.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::pow<2>(ratio)), decltype(formula::pow<2>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::sqrt(ratio)), decltype(formula::sqrt(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::cbrt(ratio)), decltype(formula::cbrt(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::root<5>(ratio)), decltype(formula::root<5>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::ln(ratio)), decltype(formula::ln(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::log10(ratio)), decltype(formula::log10(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::exp(ratio)), decltype(formula::exp(ratio.expression))>);
+
+    // precision.hpp
+    constexpr auto Repeatability = formula::PrecisionKind::Repeatability;
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::abs(ratio)), decltype(formula::abs(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::precision_limit<Repeatability>(span, var<Rise>)),
+                                  decltype(formula::precision_limit<Repeatability>(span.expression, var<Rise>))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::precision_limit<Repeatability>(var<Rise>, span)),
+                                  decltype(formula::precision_limit<Repeatability>(var<Rise>, span.expression))>);
+
+    // rounding_node.hpp, rounded_root.hpp and rounded_transcendental.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded<unit::One, threePlaces, halfEven>(ratio)),
+                                  decltype(formula::rounded<unit::One, threePlaces, halfEven>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded<thousandth>(ratio)),
+                                  decltype(formula::rounded<thousandth>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_to_digits<unit::One, threeDigits, halfEven>(ratio)),
+                                  decltype(formula::rounded_to_digits<unit::One, threeDigits, halfEven>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_to_digits<threeFigures>(ratio)),
+                                  decltype(formula::rounded_to_digits<threeFigures>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_sqrt<unit::One, threePlaces, halfEven>(ratio)),
+                                  decltype(formula::rounded_sqrt<unit::One, threePlaces, halfEven>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_sqrt<thousandth>(ratio)),
+                                  decltype(formula::rounded_sqrt<thousandth>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_ln<threePlaces, halfEven>(ratio)),
+                                  decltype(formula::rounded_ln<threePlaces, halfEven>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_log10<threePlaces, halfEven>(ratio)),
+                                  decltype(formula::rounded_log10<threePlaces, halfEven>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_exp<threePlaces, halfEven>(ratio)),
+                                  decltype(formula::rounded_exp<threePlaces, halfEven>(ratio.expression))>);
+
+    // escape.hpp
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::numeric_value_of<unit::One, "a gradient is a bare number">(ratio)),
+                       decltype(formula::numeric_value_of<unit::One, "a gradient is a bare number">(ratio.expression))>);
+
+    // The value through a bound operand is the formula's: the square of
+    // 163/307 times (307/163) squared is 1.
+    STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<Gradient>(
+                       formula::pow<2>(ratio) * formula::pow<2>(var<Run> / var<Rise>), batch))
+                   == rat(1));
+}
+
+TEST_CASE("yields: a bound formula documented, and as a branch of when", "[yields]")
+{
+    // citation.hpp: the citation wraps the formula the bound one holds; the
+    // binding does not carry through.
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::documented(ratio, sourceCited)),
+                                  decltype(formula::documented(ratio.expression, sourceCited))>);
+    constexpr auto cited = formula::documented(ratio, { .title = "Road gradient", .reference = "Example Standard 1:2020" });
+    CHECK(formula::document(cited).citations.size() == 1);
+
+    // conditional.hpp
+    constexpr auto half = formula::number(rat(1, 2));
+    constexpr auto steep = ratio > half;
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::when(steep, ratio, half)), decltype(formula::when(steep, ratio.expression, half))>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::when(steep, half, ratio)), decltype(formula::when(steep, half, ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::when(steep, ratio, ratio)),
+                                  decltype(formula::when(steep, ratio.expression, ratio.expression))>);
+}
+
+TEST_CASE("yields: a bound formula as a lookup's key, a count or a snapped value", "[yields]")
+{
+    // lookup.hpp
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::banded_lookup<unit::Millimetre, spanBands, unit::One>(span, { 1, 2 })),
+                       decltype(formula::banded_lookup<unit::Millimetre, spanBands, unit::One>(span.expression, { 1, 2 }))>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::interpolating_lookup<unit::Millimetre, spanPoints, unit::One>(span, { 1, 2 })),
+                       decltype(formula::interpolating_lookup<unit::Millimetre, spanPoints, unit::One>(span.expression,
+                                                                                                       { 1, 2 }))>);
+
+    // critical_value.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::critical_value<countSizes, unit::One>(ratio, { 1, 2, 3 })),
+                                  decltype(formula::critical_value<countSizes, unit::One>(ratio.expression, { 1, 2, 3 }))>);
+
+    // snap.hpp
+    constexpr auto TowardLower = formula::SnapTie::TowardLower;
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::snapped<unit::Millimetre, spanPoints, TowardLower>(span)),
+                                  decltype(formula::snapped<unit::Millimetre, spanPoints, TowardLower>(span.expression))>);
+
+    // The key read is the formula's: 470 mm is in the second band.
+    STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<Gradient>(
+                       formula::banded_lookup<unit::Millimetre, spanBands, unit::One>(span, { 1, 2 }), batch))
+                   == rat(2));
+}
+
+TEST_CASE("yields: a bound series in the series, statistics and conformity builders", "[yields][series]")
+{
+    constexpr auto retainedInKilograms = formula::yields<RetainedKilograms>(formula::series<Retained, 5>);
+    constexpr auto held = retainedInKilograms.expression;
+    using Held = std::remove_const_t<decltype(held)>;
+    STATIC_REQUIRE(std::is_same_v<Held, std::remove_const_t<decltype(formula::series<Retained, 5>)>>);
+
+    // series.hpp
+    constexpr auto FromLast = formula::CumulativeDirection::FromLast;
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::cumulative<FromLast>(retainedInKilograms)),
+                                  decltype(formula::cumulative<FromLast>(held))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::sum(retainedInKilograms)), decltype(formula::sum(held))>);
+    constexpr formula::PlacesTable<5> places { threePlaces, threePlaces, threePlaces, threePlaces, threePlaces };
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_elementwise<unit::Gram, places, halfEven>(retainedInKilograms)),
+                                  decltype(formula::rounded_elementwise<unit::Gram, places, halfEven>(held))>);
+    constexpr formula::DecimalRounding thousandthGram { unit::Gram, threePlaces, halfEven };
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_elementwise<thousandthGram>(retainedInKilograms)),
+                                  decltype(formula::rounded_elementwise<thousandthGram>(held))>);
+
+    // statistics.hpp
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::sample_count(retainedInKilograms)), decltype(formula::sample_count(held))>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::sample_mean(retainedInKilograms)), decltype(formula::sample_mean(held))>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::sample_variance(retainedInKilograms)), decltype(formula::sample_variance(held))>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::sample_range(retainedInKilograms)), decltype(formula::sample_range(held))>);
+
+    // conformity.hpp
+    constexpr formula::LimitRow nonNegative { formula::limit(rat(0)), formula::unbounded };
+    constexpr formula::Envelope<5> envelope { nonNegative, nonNegative, nonNegative, nonNegative, nonNegative };
+    constexpr formula::Verdict negative { "a negative mass" };
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::conformity<unit::Gram>(retainedInKilograms, envelope, negative)),
+                                  decltype(formula::conformity<unit::Gram>(held, envelope, negative))>);
+
+    // The total is the series' own: absent, as one screen was not measured.
+    STATIC_REQUIRE(formula::checked_evaluate<Retained>(formula::sum(retainedInKilograms), inputs)
+                   == formula::checked_evaluate<Retained>(formula::sum(held), inputs));
+}
+
+TEST_CASE("yields: a bound formula in a rejection of outliers and a retry", "[yields][rejection][retry]")
+{
+    // rejection.hpp
+    constexpr auto sixPercentOfMean = formula::yields<Mass>(rat(6, 100) * formula::pass_mean<Mass>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::deviation_from_mean(sixPercentOfMean)),
+                                  decltype(formula::deviation_from_mean(sixPercentOfMean.expression))>);
+    constexpr auto factor = formula::yields<Gradient>(formula::number(rat(7, 4)));
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::deviation_in_stddevs(factor)),
+                                  decltype(formula::deviation_in_stddevs(factor.expression))>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::gap_to_range(factor)), decltype(formula::gap_to_range(factor.expression))>);
+    constexpr auto sample = formula::yields<Mass>(formula::series<Mass, 6>);
+    constexpr auto overBound = formula::without_outliers<MostExtreme, Keep, formula::AtMost<2>, formula::KeepAtLeast<4>>(
+        sample, sixPercent, repeatTest, exampleCited);
+    STATIC_REQUIRE(std::is_same_v<decltype(overBound), decltype(rejectionA)>);
+
+    // The rejection over a bound sample settles where rejectionA does.
+    constexpr auto settled = formula::checked_evaluate_rejection<Mass>(overBound, fixtureA);
+    REQUIRE(settled.has_value());
+    CHECK(settled->outcome().measurement().value() == rat(321, 8));
+
+    // retry.hpp
+    constexpr auto fromZero = formula::yields<Estimate>(formula::constant<unit::Gram>(rat(0)));
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::starting_from(fromZero)), decltype(formula::starting_from(fromZero.expression))>);
+    constexpr auto attempt = formula::yields<Estimate>(formula::constant<unit::Gram>(rat(152, 25))
+                                                       + formula::previous_attempt<Estimate> / rat(2));
+    constexpr auto risesLittle =
+        formula::previous_attempt<Estimate> - formula::this_attempt<Estimate> >= formula::constant<unit::Gram>(rat(-19, 25));
+    constexpr formula::Verdict repeat { "repeat the determination" };
+    constexpr auto AtFirstAttempt = formula::FirstJudged::AtFirstAttempt;
+    constexpr auto bound = formula::retry<Estimate, 4, AtFirstAttempt>(
+        formula::starting_from(fromZero), attempt, risesLittle, repeat, exampleCited);
+    STATIC_REQUIRE(std::is_same_v<decltype(bound), decltype(fourAttempts)>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::retry<Estimate, 4, AtFirstAttempt>(attempt, risesLittle, repeat, exampleCited)),
+                       decltype(formula::retry<Estimate, 4, AtFirstAttempt>(
+                           attempt.expression, risesLittle, repeat, exampleCited))>);
+}
+
+namespace
+{
+inline constexpr formula::Citation fitCited { .reference = "Example Standard 12" };
+inline constexpr auto riseRun = formula::curve(formula::series<Rise, 4>, formula::series<Run, 4>);
+inline constexpr formula::BandTable<2> runClasses { formula::band(0, 1, 300, 1), formula::band(300, 1, 900, 1) };
+} // namespace
+
+TEST_CASE("yields: a bound formula in a curve, an opaque call and a fit", "[yields][opaque]")
+{
+    // curve.hpp
+    constexpr auto runs = formula::yields<Run>(formula::series<Run, 4>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::curve(formula::series<Rise, 4>, runs)),
+                                  decltype(formula::curve(formula::series<Rise, 4>, runs.expression))>);
+    constexpr auto rises = formula::yields<Rise>(formula::series<Rise, 4>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::curve(rises, formula::series<Run, 4>)),
+                                  decltype(formula::curve(rises.expression, formula::series<Run, 4>))>);
+    constexpr auto boundCurve = formula::yields<Run>(riseRun);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::interpolate_at(boundCurve, span)),
+                                  decltype(formula::interpolate_at(riseRun, span.expression))>);
+    constexpr auto NonDecreasing = formula::Monotone::NonDecreasing;
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::splice<NonDecreasing>(boundCurve, riseRun)),
+                                  decltype(formula::splice<NonDecreasing>(riseRun, riseRun))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::splice<NonDecreasing>(riseRun, boundCurve)),
+                                  decltype(formula::splice<NonDecreasing>(riseRun, riseRun))>);
+
+    // opaque.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::opaque<formula::LinearLeastSquares>(fitCited, boundCurve)),
+                                  decltype(formula::opaque<formula::LinearLeastSquares>(fitCited, riseRun))>);
+    constexpr auto boundFit = formula::yields<Run>(formula::linear_least_squares(riseRun, fitCited));
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::opaque_output<"intercept">(boundFit)),
+                                  decltype(formula::opaque_output<"intercept">(boundFit.expression))>);
+    constexpr auto twoPlaces = formula::DecimalPlaces { 2 };
+    constexpr formula::DecimalRounding hundredthMillimetre { unit::Millimetre, twoPlaces, halfEven };
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::rounded_output<"intercept", unit::Millimetre, twoPlaces, halfEven>(boundFit)),
+                       decltype(formula::rounded_output<"intercept", unit::Millimetre, twoPlaces, halfEven>(
+                           boundFit.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::rounded_output<"intercept", hundredthMillimetre>(boundFit)),
+                                  decltype(formula::rounded_output<"intercept", hundredthMillimetre>(boundFit.expression))>);
+
+    // least_squares.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::linear_least_squares(boundCurve, fitCited)),
+                                  decltype(formula::linear_least_squares(riseRun, fitCited))>);
+    constexpr auto runObservations = formula::yields<Run>(formula::observations<Run, 8>);
+    constexpr auto riseObservations = formula::observations<Rise, 8>;
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::linear_least_squares(riseObservations, runObservations, fitCited)),
+                       decltype(formula::linear_least_squares(riseObservations, runObservations.expression, fitCited))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::regressors(riseObservations, runObservations)),
+                                  decltype(formula::regressors(riseObservations, runObservations.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::multiple_least_squares(
+                                      formula::regressors(riseObservations), runObservations, fitCited)),
+                                  decltype(formula::multiple_least_squares(
+                                      formula::regressors(riseObservations), runObservations.expression, fitCited))>);
+
+    // binning.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::binned<unit::Millimetre, runClasses>(runObservations)),
+                                  decltype(formula::binned<unit::Millimetre, runClasses>(runObservations.expression))>);
+}
+
+namespace
+{
+struct SteepVariant
+{
+};
+struct YieldsReference
+{
+};
+struct YieldsBatch
+{
+};
+} // namespace
+
+TEST_CASE("yields: a bound formula as a variant, an overlay's formula and a read from a record", "[yields][method]")
+{
+    // method.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::variant<SteepVariant>(ratio)),
+                                  decltype(formula::variant<SteepVariant>(ratio.expression))>);
+
+    // overlay.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::replace_variant<SteepVariant>(ratio, sourceCited)),
+                                  decltype(formula::replace_variant<SteepVariant>(ratio.expression, sourceCited))>);
+    constexpr auto halfRun = formula::yields<Run>(var<Run> / rat(2));
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::add_derived<Rise>(halfRun, sourceCited)),
+                                  decltype(formula::add_derived<Rise>(halfRun.expression, sourceCited))>);
+
+    // record.hpp
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::from_record<YieldsReference>(ratio)),
+                                  decltype(formula::from_record<YieldsReference>(ratio.expression))>);
+    constexpr auto sameBatch = formula::same_lineage<YieldsBatch>();
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::from_record<YieldsReference>(ratio, sameBatch)),
+                                  decltype(formula::from_record<YieldsReference>(ratio.expression, sameBatch))>);
 }

@@ -94,6 +94,7 @@
 #include <formula-cpp/observations.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -519,9 +520,11 @@ template <typename Fitted>
 
 /// Anything but a curve handed to `linear_least_squares`: refused in this
 /// library's words. The return type is deduced, so that the refusal is
-/// instantiated wherever the call is (`cumulative`, `series.hpp`).
+/// instantiated wherever the call is (`cumulative`, `series.hpp`). A bound
+/// formula is taken by its own overload below, which hands on the formula it
+/// holds.
 template <typename NotCurve>
-    requires(!CurveExpression<NotCurve>)
+    requires(!CurveExpression<NotCurve>) && (!detail::AnyBound<NotCurve>)
 [[nodiscard]] constexpr auto linear_least_squares(NotCurve, Citation citation) noexcept
 {
     static_assert(detail::RequireFitOfCurve<NotCurve>::value);
@@ -533,9 +536,10 @@ template <typename NotCurve>
 
 /// Two loose series handed to `linear_least_squares`: refused in this
 /// library's words. A curve pairs the domain with its values, which two
-/// series would have to re-derive.
+/// series would have to re-derive. A bound formula on either side is taken by
+/// its own overload below, which hands on the formula it holds.
 template <typename Domain, typename Values>
-    requires(!(ObservationsNode<Domain> && ObservationsNode<Values>) )
+    requires(!(ObservationsNode<Domain> && ObservationsNode<Values>) ) && (!detail::AnyBound<Domain, Values>)
 [[nodiscard]] constexpr auto linear_least_squares(Domain, Values, Citation citation) noexcept
 {
     static_assert(detail::RequireFitOfCurve<Domain, Values>::value);
@@ -560,6 +564,33 @@ template <ObservationsNode X, ObservationsNode Y>
         return detail::refused_observation_fit(citation);
     else
         return opaque<LinearLeastSquaresOfObservations>(citation, pointObservations, valueObservations);
+}
+
+/// A bound formula as the curve `linear_least_squares` fits: the formula it
+/// holds, in its place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto linear_least_squares(Bound boundCurve, Citation citation) noexcept
+{
+    return linear_least_squares(boundCurve.expression, citation);
+}
+
+/// A bound formula as either observations `linear_least_squares` pairs: the
+/// formula it holds, in its place (`yields.hpp`).
+template <typename X, typename Y>
+    requires detail::AnyBound<X, Y>
+[[nodiscard]] constexpr auto linear_least_squares(X pointObservations, Y valueObservations, Citation citation) noexcept
+{
+    return linear_least_squares(detail::as_operand(pointObservations), detail::as_operand(valueObservations), citation);
+}
+
+/// Bound observations without a citation: refused as the observations they
+/// hold are (`yields.hpp`).
+template <typename X, typename Y>
+    requires detail::AnyBound<X, Y> && ObservationsNode<detail::operand_t<X>> && ObservationsNode<detail::operand_t<Y>>
+[[nodiscard]] constexpr auto linear_least_squares(X pointObservations, Y valueObservations) noexcept
+{
+    return linear_least_squares(detail::as_operand(pointObservations), detail::as_operand(valueObservations));
 }
 
 /// Raw observations handed to `linear_least_squares` without a citation:
@@ -725,6 +756,16 @@ template <typename... Xs>
 [[nodiscard]] constexpr Regressors<Xs...> regressors(Xs... regressorInputs) noexcept
 {
     return Regressors<Xs...> { std::tuple<Xs...> { regressorInputs... } };
+}
+
+/// A bound formula as any regressor: the formula it holds, in its place
+/// (`yields.hpp`). Declared as the overload above is, and constrained further,
+/// so that it is the one chosen for a bound formula.
+template <typename... Xs>
+    requires detail::AnyBound<Xs...>
+[[nodiscard]] constexpr auto regressors(Xs... regressorInputs) noexcept
+{
+    return regressors(detail::as_operand(regressorInputs)...);
 }
 
 namespace detail
@@ -898,6 +939,16 @@ template <typename... Xs, typename Y>
             regressorSet.inputs);
     else
         return detail::refused_regression(citation);
+}
+
+/// A bound formula as the values of a multiple regression: the formula it
+/// holds, in its place (`yields.hpp`). Declared as the overload above is, and
+/// constrained further, so that it is the one chosen for a bound formula.
+template <typename... Xs, typename Y>
+    requires detail::AnyBound<Y>
+[[nodiscard]] constexpr auto multiple_least_squares(Regressors<Xs...> regressorSet, Y valueInput, Citation citation) noexcept
+{
+    return multiple_least_squares(regressorSet, valueInput.expression, citation);
 }
 
 /// Without a citation: refused, as a fit without one is.

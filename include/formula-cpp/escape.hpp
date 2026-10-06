@@ -31,6 +31,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 namespace formula
 {
@@ -108,7 +109,7 @@ struct NumericValueNode: NodeBase
     static constexpr std::string_view justification = Justification.view();
 
     /// Dimensionless, by construction. That is the whole point: what comes out
-    /// is a bare number, and the type system now says so honestly rather than
+    /// is a bare number, and the type system says so honestly rather than
     /// carrying a dimension that the rule downstream will contradict.
     static constexpr Dimension dimension = dim::Scalar;
     /// Whether its operand was refused -- see `detail::refused_already`.
@@ -123,6 +124,15 @@ template <Unit U, detail::FixedString Justification, Node Operand>
 [[nodiscard]] constexpr auto numeric_value_of(Operand operand) noexcept
 {
     return NumericValueNode<U, Justification, Operand> { {}, operand };
+}
+
+/// A bound formula as `numeric_value_of`'s operand: the formula it holds, in
+/// its place (`yields.hpp`).
+template <Unit U, detail::FixedString Justification, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto numeric_value_of(Bound boundFormula) noexcept
+{
+    return numeric_value_of<U, Justification>(boundFormula.expression);
 }
 
 /// Evaluates the operand and converts its value from the coherent unit into

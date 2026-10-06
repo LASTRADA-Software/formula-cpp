@@ -153,12 +153,11 @@ template <Described Q, typename F>
 /// the question this library cannot -- `combine<Density>(mass, volume,
 /// [](Rational m, Rational v) { return m / v; })`.
 ///
-/// An earlier signature deduced the result as the right-hand operand's
-/// quantity, so `combine(mass, volume, divide)` was statically a `Measured`
-/// of volume reporting a volume's symbol and unit for a value that was a
-/// density. Measured: the branch's own test and example were both written
-/// against that signature and read as if correct -- a wrong label on a right
-/// number, and worse than a wrong number because it looks authoritative.
+/// Deducing the result from an operand would label it wrongly: taken as the
+/// right-hand operand's quantity, `combine(mass, volume, divide)` would be
+/// statically a `Measured` of volume, reporting a volume's symbol and unit for
+/// a value that is a density -- a wrong label on a right number, and worse
+/// than a wrong number because it looks authoritative and reads as correct.
 ///
 /// Not "absent if both": a formula with one missing input has no answer, and
 /// producing one from the inputs that happen to be present is precisely the

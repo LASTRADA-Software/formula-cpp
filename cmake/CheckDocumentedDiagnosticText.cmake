@@ -76,7 +76,11 @@ set(opening "formula: ")
 set(checked 0)
 set(problems "")
 
-file(GLOB documents "${SOURCE_DIR}/docs/*.md")
+# Every page of the documentation, the tutorial's included, but not the
+# internal planning documents under docs/superpowers/, which the site does not
+# publish (mkdocs.yml, exclude_docs).
+file(GLOB_RECURSE documents "${SOURCE_DIR}/docs/*.md")
+list(FILTER documents EXCLUDE REGEX "/docs/superpowers/")
 foreach(document IN LISTS documents)
     file(RELATIVE_PATH documentName "${SOURCE_DIR}" "${document}")
     file(READ "${document}" rest)

@@ -89,9 +89,9 @@ composed dimensions match the named constants: yes
 ```
 
 Composing from constants rather than writing exponents by hand keeps the
-representation swappable, and that has been put to the test: `Dimension` has
-since grown past the seven SI base quantities, to hold the named base
-dimensions described below, and not one of these call sites had to change.
+representation swappable: `Dimension` holds more than the seven SI base
+quantities -- the named base dimensions described below as well -- and a call
+site composed from constants does not depend on how many there are.
 
 ## Rational exponents
 
@@ -412,12 +412,11 @@ lowDenominator, highNumerator, highDenominator)` declares both,
 `formula::at_least(numerator, denominator)` a minimum only, and
 `formula::at_most(numerator, denominator)` a maximum only. Both ends are
 inclusive, and a unit that declares neither reports `NotChecked`. Each flag is
-a `BoundsEnd`, which reads as a `bool` but only a `bool` sets, so a `Bounds`
-written positionally before the two flags existed no longer compiles: in
-`{ true, 0, 1, 100, 1 }`, once 0 to 100, the 0 lands on `highPresent`. Only
-`{}` and `{ false }`, which declare no bounds, and `{ true }`, which once meant
-0 to 0 and now declares a minimum of 0, still compile. Write `bounds()`,
-`at_least()`, `at_most()` or designated initialisers.
+a `BoundsEnd`, which reads as a `bool` but can be set only from a `bool`, so a
+positional initialiser that puts a number where a flag belongs does not
+compile: in `{ true, 0, 1, 100, 1 }` the 0 would land on `highPresent`. `{}`
+and `{ false }` declare no bounds, and `{ true }` declares a minimum of 0.
+Write `bounds()`, `at_least()`, `at_most()` or designated initialisers.
 
 Limits known only at run time -- a specification row, a catalogue entry -- need
 no unit to carry them. `formula::checked_within(value, lowEnd, highEnd)` takes

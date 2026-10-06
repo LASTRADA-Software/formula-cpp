@@ -1,0 +1,5 @@
+k = lookup(a, 0 to under 100 mm gives 21/20, 100 to under 200 mm gives 1, 200 to under 300 mm gives 19/20)
+a = 150 mm: k = 1, f_cs = 30 MPa
+a = 100 mm: k = 1, f_cs = 30 MPa
+a = 250 mm: k = 0.95, f_cs = 28.5 MPa
+a = 300 mm: no size factor: argument outside the domain of the operation

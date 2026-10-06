@@ -187,7 +187,7 @@ diagnostic readable.
 its dimension (`unit.dimension`), so a separate dimension parameter would
 state it a second time and let the two disagree. That is not a hypothetical
 risk: a spelling with a dimension parameter, with `dim::Mass` paired against
-`unit::Litre`, compiled without a diagnostic on every compiler it was tried
+`unit::Litre`, compiles without a diagnostic on every compiler it was tried
 on. `Quantity::dimension` is derived from the unit instead, so there is
 no second place for it to disagree with, and no spelling that lets a caller
 write the contradiction at all.
@@ -302,16 +302,15 @@ happen to be present is the wrong number this layer exists to prevent.
 **`Result` is named by the caller and is not deduced from either operand.**
 Combining two quantities generally produces a third -- a mass and a volume
 combine into a density, not into either operand's own quantity -- and there
-is no honest default `combine` could deduce instead. An earlier signature
-deduced the result as the right-hand operand's quantity, so
-`combine(mass, volume, divide)` was statically a measurement of *volume*,
-reporting a volume's symbol and unit for a value that was actually a
-density: a wrong label on a right number, worse than a wrong number because
-it looks authoritative. Write `formula::combine<Density>(mass, volume,
-[](Rational m, Rational v) { return m / v; })` instead. From the worked
-example, a present volume combined with an absent mass, into a `Density`
-that shares neither operand's tag, symbol or unit, printed as `std::format`
-writes an absent `Measured`:
+is no honest default `combine` could deduce instead. Deducing the result as
+the right-hand operand's quantity would make `combine(mass, volume, divide)`
+statically a measurement of *volume*, reporting a volume's symbol and unit
+for a value that is actually a density: a wrong label on a right number,
+worse than a wrong number because it looks authoritative. Write
+`formula::combine<Density>(mass, volume, [](Rational m, Rational v) { return m / v; })`
+instead. From the worked example, a present volume combined with an absent
+mass, into a `Density` that shares neither operand's tag, symbol or unit,
+printed as `std::format` writes an absent `Measured`:
 
 ```
 a present volume combined with an absent mass: (not measured)

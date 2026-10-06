@@ -189,7 +189,11 @@ endif()
 set(problems "")
 set(checked 0)
 
-file(GLOB documents "${SOURCE_DIR}/docs/*.md")
+# Every page of the documentation, the tutorial's included, but not the
+# internal planning documents under docs/superpowers/, which the site does not
+# publish (mkdocs.yml, exclude_docs).
+file(GLOB_RECURSE documents "${SOURCE_DIR}/docs/*.md")
+list(FILTER documents EXCLUDE REGEX "/docs/superpowers/")
 if(documents STREQUAL "")
     message(FATAL_ERROR "CheckDocumentedDiagnostics.cmake: found no documents under ${SOURCE_DIR}/docs")
 endif()

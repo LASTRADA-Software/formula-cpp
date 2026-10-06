@@ -1,0 +1,8 @@
+text:  round(F / (a * b), to 1 dp of MPa)
+LaTeX: \operatorname{round}_{1\,\mathrm{MPa}}(\frac{F}{a \cdot b})
+symbols:
+  F     kN     maximum load
+  a     mm     first side of the loaded face
+  b     mm     second side of the loaded face
+cited: Compressive strength, Example Standard 12:2020
+f_c = 30 MPa

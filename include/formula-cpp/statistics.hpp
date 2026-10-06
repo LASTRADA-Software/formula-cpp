@@ -37,6 +37,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -254,6 +255,15 @@ template <Node N>
     return ConstantNode<unit::One> { {}, Rational { 1 } };
 }
 
+/// A bound formula as `sample_count`'s sample: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto sample_count(Bound boundSample) noexcept
+{
+    return sample_count(boundSample.expression);
+}
+
 /// The mean of @p sampleSource: `sample_mean(series<Mass, 6>)`.
 template <SampleSource S>
 [[nodiscard]] constexpr auto sample_mean(S sampleSource) noexcept
@@ -269,6 +279,15 @@ template <Node N>
 {
     static_assert(detail::RequireSampleSource<N>::value);
     return singleValue;
+}
+
+/// A bound formula as `sample_mean`'s sample: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto sample_mean(Bound boundSample) noexcept
+{
+    return sample_mean(boundSample.expression);
 }
 
 /// The sample variance: the squared deviations from the mean, totalled and
@@ -329,6 +348,15 @@ template <Node N>
     return singleValue * singleValue;
 }
 
+/// A bound formula as `sample_variance`'s sample: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto sample_variance(Bound boundSample) noexcept
+{
+    return sample_variance(boundSample.expression);
+}
+
 /// The range of @p sampleSource: `sample_range(series<Mass, 6>)`.
 template <SampleSource S>
 [[nodiscard]] constexpr auto sample_range(S sampleSource) noexcept
@@ -344,6 +372,15 @@ template <Node N>
 {
     static_assert(detail::RequireSampleSource<N>::value);
     return singleValue;
+}
+
+/// A bound formula as `sample_range`'s sample: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto sample_range(Bound boundSample) noexcept
+{
+    return sample_range(boundSample.expression);
 }
 
 namespace detail

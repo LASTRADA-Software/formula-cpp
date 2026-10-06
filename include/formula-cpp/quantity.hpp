@@ -170,12 +170,12 @@ namespace detail
 ///         static constexpr Dimension dimension = formula::unit::Celsius.dimension;
 ///     };
 /// **Empty on purpose.** It would be nicer for this to `static_assert` with a
-/// helpful message, and that was the first design; it is wrong. A
-/// `static_assert` failure is not in the immediate context, so it is a hard
-/// error rather than a substitution failure -- which means the `Described`
-/// concept below, whose whole job is to answer "is this type described?",
-/// would fail to COMPILE for every type that is not, instead of answering no.
-/// Measured on clang: `static_assert(!Described<int>)` did not compile.
+/// helpful message; that would be wrong. A `static_assert` failure is not in
+/// the immediate context, so it is a hard error rather than a substitution
+/// failure -- which means the `Described` concept below, whose whole job is to
+/// answer "is this type described?", would fail to COMPILE for every type that
+/// is not, instead of answering no. With one, `static_assert(!Described<int>)`
+/// does not compile (measured on clang).
 ///
 /// So the primary stays empty, `Described` works by member detection, and the
 /// helpful diagnostic lives in `RequireDescribed` below, where it can be asked
@@ -209,17 +209,16 @@ struct Describe<T>
 /// True when `T` has metadata, however it was declared.
 ///
 /// Answers rather than explodes for a type that has none -- see the note on the
-/// primary template above for why that took a redesign.
+/// primary template above for why.
 ///
 /// All four members `Measured` and `checked_convert_to` actually read, not
-/// merely the two that were enough to satisfy the concept's own author. A type
-/// specialising only `symbol` and `unit` used to pass this concept, pass
-/// `RequireDescribed`, and only then fail deep inside `checked_convert_to` with
-/// the compiler's own "no member named 'dimension'" -- exactly the raw
-/// diagnostic `RequireDescribed` exists to replace, delivered from the one
-/// place it was supposed to be caught first. Measured: a `Describe`
-/// specialisation naming only `symbol` and `unit` satisfied the two-member
-/// concept and only broke three calls deeper.
+/// merely two of them. Were the concept to ask only for `symbol` and `unit`, a
+/// type specialising those two would pass it, pass `RequireDescribed`, and
+/// only then fail deep inside `checked_convert_to` with the compiler's own "no
+/// member named 'dimension'" -- exactly the raw diagnostic `RequireDescribed`
+/// exists to replace, delivered from the one place it is supposed to be caught
+/// first. Measured: a `Describe` specialisation naming only `symbol` and
+/// `unit` satisfies a two-member concept and breaks only three calls deeper.
 template <typename T>
 concept Described = requires {
     { Describe<T>::symbol } -> std::convertible_to<std::string_view>;

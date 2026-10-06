@@ -1,0 +1,3 @@
+675.4 kN, half away from zero: f_c = 30 MPa
+676.125 kN, half away from zero: f_c = 30.1 MPa
+676.125 kN, half to even:        f_c = 30 MPa

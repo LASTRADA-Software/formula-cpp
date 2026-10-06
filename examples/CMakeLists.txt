@@ -40,6 +40,73 @@ function(formula_add_example name source expectedOutput)
         PASS_REGULAR_EXPRESSION "${expectedOutput}.*overflow census: ")
 endfunction()
 
+# An example whose whole output a page includes: built and run as every
+# example is, and its output compared with the file beside its source that
+# has the source's own stem and `.expected.txt` (`tutorial/01_first_formula.cpp`
+# is compared with `tutorial/01_first_formula.expected.txt`, whatever `name`
+# is). The comparison normalises line endings and nothing else. The pass
+# regex given to formula_add_example is "." -- any output -- because the
+# comparison is the real check, and restating the output as a regex would be
+# a second copy to keep in step.
+function(formula_add_pinned_example name source)
+    formula_add_example(${name} "${source}" ".")
+    string(REGEX REPLACE "\\.cpp$" ".expected.txt" expected "${source}")
+    if(expected STREQUAL source)
+        message(FATAL_ERROR "formula_add_pinned_example(${name}): ${source} is not a .cpp file, so it has no <stem>.expected.txt")
+    endif()
+    add_test(NAME "example.${name}.output"
+        COMMAND "${CMAKE_COMMAND}"
+                -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-${name}>"
+                -D "EXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/${expected}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/CheckExpectedOutput.cmake")
+endfunction()
+
+# The README's program: the shortest complete use of the library. README.md
+# shows its source and output, pinned below; docs/index.md includes both.
+formula_add_pinned_example(readme readme.cpp)
+
+# The output check must catch a difference, not only pass on a match: run
+# against an expected file that says 31 MPa, it must report one.
+add_test(NAME example.readme.output-detects-a-difference
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-readme>"
+            -D "EXPECTED=${PROJECT_SOURCE_DIR}/test/fixtures/readme-wrong.expected.txt"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckExpectedOutput.cmake")
+set_tests_properties(example.readme.output-detects-a-difference PROPERTIES
+    PASS_REGULAR_EXPRESSION "differs from")
+
+# README.md shows examples/readme.cpp: its one ```cpp block must be a run of
+# that source's lines, and its one ```text block a run of the lines it prints.
+# GitHub renders the README directly, so it cannot include them as the site's
+# pages do.
+add_test(NAME docs.readme-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/readme.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+add_test(NAME docs.readme-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-readme>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+
+# The tutorial's programs: docs/tutorial/ includes their code and output.
+formula_add_pinned_example(tutorial_01_first_formula tutorial/01_first_formula.cpp)
+formula_add_pinned_example(tutorial_02_units_and_dimensions tutorial/02_units_and_dimensions.cpp)
+formula_add_pinned_example(tutorial_03_exact_numbers tutorial/03_exact_numbers.cpp)
+formula_add_pinned_example(tutorial_04_missing_and_entered tutorial/04_missing_and_entered.cpp)
+formula_add_pinned_example(tutorial_05_rounding tutorial/05_rounding.cpp)
+formula_add_pinned_example(tutorial_06_constraints tutorial/06_constraints.cpp)
+formula_add_pinned_example(tutorial_07_documentation tutorial/07_documentation.cpp)
+formula_add_pinned_example(tutorial_08_tracing tutorial/08_tracing.cpp)
+formula_add_pinned_example(tutorial_09_worksheets tutorial/09_worksheets.cpp)
+formula_add_pinned_example(tutorial_10_lookup_tables tutorial/10_lookup_tables.cpp)
+formula_add_pinned_example(tutorial_11_methods_and_overlays tutorial/11_methods_and_overlays.cpp)
+formula_add_pinned_example(tutorial_12_series tutorial/12_series.cpp)
+formula_add_pinned_example(tutorial_13_statistics tutorial/13_statistics.cpp)
+formula_add_pinned_example(tutorial_14_records tutorial/14_records.cpp)
+formula_add_pinned_example(tutorial_15_opaque_and_retry tutorial/15_opaque_and_retry.cpp)
+
 formula_add_example(simple simple.cpp "s = 0.03 \\(derived\\)")
 formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes.*all checks passed: yes")
 formula_add_example(dimensions_and_units dimensions_and_units.cpp "all checks passed: yes")
@@ -311,23 +378,14 @@ add_test(NAME docs.display-output
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
             -D "CALL_TABLES=ON"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
-# README.md's ```text blocks are judged against this example too: its
-# std::format block is this program's output, and any ```text block added to
-# README later must be as well.
-add_test(NAME docs.readme-display-output
-    COMMAND "${CMAKE_COMMAND}"
-            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-display>"
-            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
-            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
 add_test(NAME docs.display-snippets
     COMMAND "${CMAKE_COMMAND}"
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/display.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
 
-# README.md and docs/index.md quote this program's three speeds at 250 W
-# verbatim, and say that the descent at no power has no real answer. Pinned
-# here, in the order the program prints them, in a bracket argument for the
-# reason the constraints example above gives: the literal `.` and `(...)`
-# around each speed need escaping in the regex.
+# The program's three speeds at 250 W, and the descent at no power that has
+# no real answer, pinned in the order the program prints them, in a bracket
+# argument for the reason the constraints example above gives: the literal
+# `.` and `(...)` around each speed need escaping in the regex.
 formula_add_example(cycling_speed cycling_speed.cpp [==[flat road, asphalt, 250 W: +10\.332 m/s \(37\.2 km/h\).*3 % climb, asphalt, 250 W: +6\.783 m/s \(24\.4 km/h\).*flat road, cobbles, 250 W: +8\.335 m/s \(30\.0 km/h\).*8 % descent, asphalt, 0 W: +argument outside the domain.*all checks passed: yes]==])

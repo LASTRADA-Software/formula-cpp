@@ -689,6 +689,15 @@ template <CumulativeDirection D, Node N>
     return detail::RefusedSeries<N::dimension> {};
 }
 
+/// A bound formula as `cumulative`'s series: the formula it holds, in its place
+/// (`yields.hpp`).
+template <CumulativeDirection D, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto cumulative(Bound boundSeries) noexcept
+{
+    return cumulative<D>(boundSeries.expression);
+}
+
 namespace detail
 {
     /// Fails to compile when `rounded_elementwise` is given a single value.
@@ -721,6 +730,23 @@ template <DecimalRounding R, Node N>
 {
     static_assert(detail::RequireRoundElementwiseOfSeries<N>::value);
     return detail::RefusedSeries<N::dimension> {};
+}
+
+/// A bound formula as `rounded_elementwise`'s series: the formula it holds, in
+/// its place (`yields.hpp`).
+template <Unit U, auto Places, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_elementwise(Bound boundSeries) noexcept
+{
+    return rounded_elementwise<U, Places, Mode>(boundSeries.expression);
+}
+
+/// See the overload above, rounded as @p R names.
+template <DecimalRounding R, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_elementwise(Bound boundSeries) noexcept
+{
+    return rounded_elementwise<R>(boundSeries.expression);
 }
 
 /// The total of every element of a series: **one value**, and so a `Node`,
@@ -760,6 +786,15 @@ template <Node N>
 {
     static_assert(detail::RequireSumOfSeries<N>::value);
     return singleValue;
+}
+
+/// A bound formula as `sum`'s series: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto sum(Bound boundSeries) noexcept
+{
+    return sum(boundSeries.expression);
 }
 
 /// An evaluated series in the coherent unit of its dimension: one value per

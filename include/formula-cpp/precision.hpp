@@ -83,6 +83,7 @@
 #include <formula-cpp/snap.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -121,6 +122,15 @@ template <Node Operand>
 [[nodiscard]] constexpr auto abs(Operand operand) noexcept
 {
     return AbsoluteValueNode<Operand> { {}, operand };
+}
+
+/// A bound formula as `abs`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto abs(Bound boundFormula) noexcept
+{
+    return abs(boundFormula.expression);
 }
 
 /// Evaluates the operand and takes its magnitude. Absence and errors pass
@@ -337,14 +347,13 @@ namespace detail
     /// g++ 13.3 and 14.2, clang++ 20.1 with libstdc++ and with libc++: one
     /// declared in namespace `formula` with no specialisation here is refused
     /// (`RequireLevelChildrenFor`), where a placeholder inside it would
-    /// otherwise hide from every check below without a word -- as
-    /// `DerivedQuantityNode`, and then the series `sum` and elementwise
-    /// nodes, once did. On a front end whose spelling of a type this cannot
-    /// read, every kind reaching the primary is refused rather than passed as
-    /// a consumer's. One divergence between those toolchains: a class
-    /// declared *inside a function* in `formula` spells as `formula::f()::X`
-    /// on cl and g++ but as `X` on clang, so there it would read as a
-    /// consumer's; the library declares no local node kinds.
+    /// otherwise hide from every check below without a word. On a front end
+    /// whose spelling of a type this cannot read, every kind reaching the
+    /// primary is refused rather than passed as a consumer's. One divergence
+    /// between those toolchains: a class declared *inside a function* in
+    /// `formula` spells as `formula::f()::X` on cl and g++ but as `X` on
+    /// clang, so there it would read as a consumer's; the library declares no
+    /// local node kinds.
     /// `level_check_sees_every_node` walks the vocabulary's every-kind method
     /// (`vocabulary_tests.cpp`) as a second net.
     ///
@@ -840,6 +849,15 @@ template <PrecisionKind K, Node Level, Node Limit>
 [[nodiscard]] constexpr auto precision_limit(Level levelExpression, Limit limitExpression) noexcept
 {
     return PrecisionLimitNode<K, Level, Limit> { {}, levelExpression, limitExpression };
+}
+
+/// A bound formula as the level or the limit of `precision_limit`: the
+/// formula it holds, in its place (`yields.hpp`).
+template <PrecisionKind K, typename Level, typename Limit>
+    requires detail::AnyBound<Level, Limit>
+[[nodiscard]] constexpr auto precision_limit(Level levelExpression, Limit limitExpression) noexcept
+{
+    return precision_limit<K>(detail::as_operand(levelExpression), detail::as_operand(limitExpression));
 }
 
 namespace detail

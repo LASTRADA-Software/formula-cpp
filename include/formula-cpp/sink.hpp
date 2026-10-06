@@ -63,8 +63,8 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 ///
 /// A sink defines both or neither: the evaluator asks for the pair in one
 /// `requires` (`detail::HearsSeries`), so a sink defining only one is told
-/// nothing. This sink defines neither and pays nothing, and a sink written
-/// before series existed keeps compiling and is told nothing about them.
+/// nothing. This sink defines neither and pays nothing, and any sink that
+/// defines neither compiles and is told nothing about series.
 /// `RecordingSink` (`trace.hpp`) defines both.
 ///
 /// **Optional hooks.** Each is asked for through its own `requires`, so a

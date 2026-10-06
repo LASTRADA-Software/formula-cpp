@@ -1,0 +1,9 @@
+f_c = 30 MPa
+1. F = 3377/5 kN
+2. a = 751/5 mm
+3. b = 749/5 mm
+4. #2 * #3 = 562499/25000000 m^2
+5. #1 / #4 = 16885000000000/562499 kg/(m s^2)
+6. round(#5, to 1 dp of MPa) = 30 MPa [nearest, ties away from zero]
+7. #6 = 30 MPa [Compressive strength, Example Standard 12:2020, 6.1, (1)]
+entered by hand: f_c = 31 MPa (manually entered), steps traced: 0

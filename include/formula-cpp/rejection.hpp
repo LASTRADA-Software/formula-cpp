@@ -230,11 +230,29 @@ template <Node Limit>
     return DeviationFromMean<Limit> { limitExpression };
 }
 
+/// A bound formula as `deviation_from_mean`'s limit: the formula it holds, in
+/// its place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto deviation_from_mean(Bound boundLimit) noexcept
+{
+    return deviation_from_mean(boundLimit.expression);
+}
+
 /// abs(x - pass mean) / s against @p limitExpression: `deviation_in_stddevs(number(1.75_r))`.
 template <Node Limit>
 [[nodiscard]] constexpr DeviationInStddevs<Limit> deviation_in_stddevs(Limit limitExpression) noexcept
 {
     return DeviationInStddevs<Limit> { limitExpression };
+}
+
+/// A bound formula as `deviation_in_stddevs`'s limit: the formula it holds, in
+/// its place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto deviation_in_stddevs(Bound boundLimit) noexcept
+{
+    return deviation_in_stddevs(boundLimit.expression);
 }
 
 /// gap / range for the two extremes against @p limitExpression:
@@ -243,6 +261,15 @@ template <Node Limit>
 [[nodiscard]] constexpr GapToRange<Limit> gap_to_range(Limit limitExpression) noexcept
 {
     return GapToRange<Limit> { limitExpression };
+}
+
+/// A bound formula as `gap_to_range`'s limit: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto gap_to_range(Bound boundLimit) noexcept
+{
+    return gap_to_range(boundLimit.expression);
 }
 
 namespace detail
@@ -694,6 +721,18 @@ template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, Node N,
     return RejectionNode<P, L, AtMostT, KeepAtLeastT, detail::RefusedSeries<N::dimension>, Criterion> {
         detail::RefusedSeries<N::dimension> {}, criterion, declared, cited
     };
+}
+
+/// A bound formula as `without_outliers`'s sample: the formula it holds, in its
+/// place (`yields.hpp`).
+template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename Bound, typename Criterion>
+    requires detail::AnyBound<Bound> && detail::is_criterion<Criterion>
+[[nodiscard]] constexpr auto without_outliers(Bound boundSample,
+                                              Criterion criterion,
+                                              Verdict declared,
+                                              Citation cited = {}) noexcept
+{
+    return without_outliers<P, L, AtMostT, KeepAtLeastT>(boundSample.expression, criterion, declared, cited);
 }
 
 // ---------------------------------------------------------------- outcome

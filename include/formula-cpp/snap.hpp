@@ -27,6 +27,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -195,6 +196,15 @@ template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
 [[nodiscard]] constexpr SnapNode<KeyUnit, Permitted, Tie, Operand> snapped(Operand snappedOperand) noexcept
 {
     return SnapNode<KeyUnit, Permitted, Tie, Operand> { {}, snappedOperand };
+}
+
+/// A bound formula as `snapped`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto snapped(Bound boundFormula) noexcept
+{
+    return snapped<KeyUnit, Permitted, Tie>(boundFormula.expression);
 }
 
 /// Evaluates the operand, converts it into `KeyUnit`, and snaps it

@@ -342,6 +342,11 @@ formula_add_negative_test(unit_dimension_mismatch
 formula_add_negative_test(unit_currency_mismatch
     "formula: these two units measure different dimensions" EXPECT_COUNT 1)
 
+# docs/tutorial/02-units-and-dimensions.md includes this file's mistake.
+formula_add_negative_test(tutorial_load_plus_area
+    "formula: the two sides of this addition or subtraction measure different dimensions"
+    EXPECT_COUNT 1)
+
 # A dimensionless unit with a scale and no symbol: refused where a quantity
 # declared in it is read or measured, where a constant is stated in it, and
 # where a table is keyed in it -- once each.
@@ -602,12 +607,29 @@ formula_add_negative_test(yields_retry_evaluate
 formula_add_negative_test(yields_opaque_call_evaluate
     "formula: an opaque call is not a value, since an operation may have several outputs" EXPECT_COUNT 6
     REJECT "no matching")
-formula_add_negative_test(yields_as_operand
-    "formula: a bound formula is not an operand; use its .expression" EXPECT_COUNT 1
+# A bound formula used as part of another stands for the formula it holds, so
+# a dimensional mistake through one is refused once, in the words that
+# formula draws.
+formula_add_negative_test(yields_operand_dimension_mismatch
+    "formula: the two sides of this addition or subtraction measure different dimensions" EXPECT_COUNT 1
     REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
-formula_add_negative_test(yields_compared
-    "formula: a bound formula is not an operand; use its .expression" EXPECT_COUNT 1
+formula_add_negative_test(yields_comparand_dimension_mismatch
+    "formula: the two sides of this comparison measure different dimensions" EXPECT_COUNT 1
     REJECT "no matching" "invalid operands" "no match for")
+# The same for the functions that build a formula, where the formula held is
+# refused: a replacement with no citation, a fit of no curve, a fit of
+# observations with no citation.
+formula_add_negative_test(yields_replacement_without_citation
+    "formula: replace_variant<Tag>(expression) was given no citation" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(yields_fit_not_a_curve
+    "formula: linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value series with curve(domain, values), or read both with observations<Q, Capacity>"
+    EXPECT_COUNT 1
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
+formula_add_negative_test(yields_fit_observations_uncited
+    "formula: linear_least_squares needs a citation, the reason the method fits a line here; pass {} when it gives none"
+    EXPECT_COUNT 1
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension" "has no output of that name")
 formula_add_negative_test(yields_not_a_value
     "formula: this bound formula is not an expression of one value" EXPECT_COUNT 1
     REJECT "no matching")
@@ -2947,6 +2969,8 @@ add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
             -D "PROJECT_VERSION=${PROJECT_VERSION}"
+            -D "README=${PROJECT_SOURCE_DIR}/README.md"
+            -D "TUTORIAL=${PROJECT_SOURCE_DIR}/docs/tutorial/01-first-formula.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckVersionConsistency.cmake")
 
 add_test(NAME hygiene.spdx
@@ -3008,6 +3032,21 @@ add_test(NAME hygiene.no-real-standards-fallback
             -D "CHECK_SCRIPT=${PROJECT_SOURCE_DIR}/cmake/CheckNoRealStandards.cmake"
             -D "WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/no-real-standards-fallback"
             -P "${PROJECT_SOURCE_DIR}/cmake/TestNoRealStandardsFallback.cmake")
+
+# The current-state check, tested on a tree written to break it.
+add_test(NAME hygiene.docs-current-state-self-test
+    COMMAND "${CMAKE_COMMAND}"
+            -D "CHECK_SCRIPT=${PROJECT_SOURCE_DIR}/cmake/CheckDocsCurrentState.cmake"
+            -D "WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/docs-current-state-self-test"
+            -P "${PROJECT_SOURCE_DIR}/cmake/TestDocsCurrentState.cmake")
+
+# User documentation -- README.md, docs/ (not docs/superpowers/) and the doc
+# comments that form the API reference -- describes the library as it is now.
+# History belongs in CHANGELOG.md. See CONTRIBUTING.md, "Documentation".
+add_test(NAME hygiene.docs-current-state
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckDocsCurrentState.cmake")
 
 # A compiler diagnostic quoted in docs/ names a header and a line number, and
 # the number goes stale the moment anyone inserts a line above it -- which

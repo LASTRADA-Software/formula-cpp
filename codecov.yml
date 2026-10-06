@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# Coverage is reported on every pull request but never blocks one.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+ignore:
+  - "test/**"
+  - "examples/**"
+  - "tools/**"
+  - "support/**"
+  - "**/_deps/**"
+  - ".cache/**"

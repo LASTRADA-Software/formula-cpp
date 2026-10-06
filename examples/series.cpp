@@ -77,7 +77,7 @@ inline constexpr auto retainedInAll = formula::yields<Retained>(formula::sum(for
 
 // The grading curve: the percentage passing at each screen, and read at a
 // point between two of them.
-inline constexpr auto grading = formula::curve(formula::domain<unit::Metre, screens>, passing.expression);
+inline constexpr auto grading = formula::curve(formula::domain<unit::Metre, screens>, passing);
 inline constexpr auto passingAt173 =
     formula::yields<Passing>(formula::interpolate_at(grading, formula::constant<unit::Metre>(173)));
 
@@ -104,9 +104,8 @@ inline constexpr formula::Envelope<5> gradingEnvelope {
     formula::LimitRow { formula::limit(61), formula::limit(79) },
     formula::LimitRow { formula::limit(83), formula::limit(99) }
 };
-inline constexpr auto gradingCheck = formula::conformity<unit::Percent>(passing.expression,
-                                                                        gradingEnvelope,
-                                                                        formula::Verdict { "outside the grading envelope" });
+inline constexpr auto gradingCheck =
+    formula::conformity<unit::Percent>(passing, gradingEnvelope, formula::Verdict { "outside the grading envelope" });
 
 // ---- 6. Snapping, and splicing two curves --------------------------------------
 //
@@ -114,7 +113,7 @@ inline constexpr auto gradingCheck = formula::conformity<unit::Percent>(passing.
 // round, and snapped to the nearest declared screen.
 inline constexpr auto halfPassing =
     formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(formula::interpolate_at(
-        formula::curve(passing.expression, formula::domain<unit::Metre, screens>), formula::constant<unit::Percent>(50)));
+        formula::curve(passing, formula::domain<unit::Metre, screens>), formula::constant<unit::Percent>(50)));
 
 // A coarse analysis and a fine one, at invented openings of their own.
 inline constexpr formula::BreakpointTable<3> coarseScreens { formula::breakpoint(103),
@@ -139,7 +138,7 @@ inline constexpr formula::BandTable<3> sizeClasses { formula::band(0, 127),
                                                      formula::band(197, 331) };
 inline constexpr auto counted =
     formula::yields<Count>(formula::binned<unit::Metre, sizeClasses>(formula::observations<ParticleSize, 8>));
-inline constexpr auto shares = counted.expression / formula::sum(counted.expression);
+inline constexpr auto shares = counted / formula::sum(counted);
 
 // ---- Printing --------------------------------------------------------------------
 

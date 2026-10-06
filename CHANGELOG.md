@@ -53,6 +53,14 @@ change is recorded here.
   `transform` or `combine`. Nor does one that cannot be called with a `Rational`, which is refused with
   `formula: a checked_transform callback must be callable with a Rational`, or, for `checked_combine`, with
   `formula: a checked_combine callback must be callable with two Rationals`.
+- **A tutorial** on the documentation site, in two tracks: nine chapters that build one
+  compressive-strength test step by step, and six independent chapters on the rest of the library.
+  Its code and output are included from programs the test suite builds and runs.
+- `cmake/CheckExpectedOutput.cmake` pins each tutorial program's whole output, and the README
+  program's: a test compares what the program prints with the `.expected.txt` beside it, ignoring
+  only line endings, so a page cannot show output its program does not print.
+- **Coverage reporting**: a workflow measures the test suite's coverage of `include/` and reports
+  it to Codecov; the upload runs once the repository has a `CODECOV_TOKEN` secret.
 
 ### Changed
 
@@ -86,15 +94,27 @@ change is recorded here.
   `at_most()` or designated initialisers instead, which are unaffected. Code that read `present` reads
   `lowPresent || highPresent`, or each end on its own. A unit that declared bounds with `bounds()` gives the same
   answers as before.
-- The README and the documentation home page now lead with the cyclist's speed from power. The
-  guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
-  division.
+- **A bound formula is an operand**: a formula bound with `yields<Q>(...)` can be used inside another formula, where
+  it stands for the formula it holds, with its type and value: `yields<Strength>(var<Load> / loadedArea)`. That holds
+  on either side of an arithmetic operator or a comparison, and for what a function that builds a formula is given
+  -- `sqrt`, `rounded`, `documented`, `sum`, a lookup's key and the rest. Such a use was refused in favour of
+  `.expression`, which still compiles and means the same. `yields` around a bound formula is still refused.
+- The guides and the examples that need a simple exact division use a road gradient,
+  `s = h / L`. The documentation home page opens with the README's example, a concrete
+  specimen's compressive strength, and links `examples/cycling_speed.cpp` as a larger example.
 - `_r` literals take a 128-bit mantissa, so every integer up to 2^127 - 1 in magnitude can be written as one
   (`12'345'678'901'234'567'890_r` compiles), and `Rational::from_decimal` and `_r` scale by powers of ten from
   10^-38 to 10^38 rather than stopping at 10^18. `from_decimal` folds a mantissa's trailing zeros into a negative
   exponent first, so `from_decimal(10, -39)` is 1/10^38. A zero literal with an exponent beyond ±1000, such as
   `0e1001_r`, now reads as 0 rather than being refused, as the same text does at run time. Only refusals turn into
   answers: every value that answered before is unchanged.
+- The README is a short landing page: badges, a link to the documentation, a minimal example,
+  and installation with CPM, `find_package` or the headers alone. The vcpkg section is removed,
+  as no port is published.
+- The documentation describes the library as it is now; what changed, and when, is recorded only
+  in this changelog. A test enforces it.
+- `LICENSE` is the Apache License 2.0 text verbatim. The previous file differed from it in its
+  terms, not only its layout; the copyright line is unchanged.
 
 ## [0.4.0] - 2026-10-05
 

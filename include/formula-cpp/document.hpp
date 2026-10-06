@@ -242,7 +242,7 @@ struct Documentation
 
 namespace detail
 {
-    /// A distinct address per @tparam Q, used to deduplicate the symbol table
+    /// A distinct address per @tparam Q, which deduplicates the symbol table
     /// by quantity *type* without reaching for RTTI (`typeid`, `<typeindex>`).
     ///
     /// **Writable, and deliberately not `constexpr` or `const`.** Identical
@@ -269,8 +269,7 @@ namespace detail
     /// that would be one function with two behaviours. `inline` makes the
     /// object one per program and the question moot -- measured on cl 19.51,
     /// clang-cl 22 and g++ 13.3, which agree. Without it the object would be
-    /// one per translation unit on g++ and one per program on the other two,
-    /// a difference this library has already been bitten by once elsewhere.
+    /// one per translation unit on g++ and one per program on the other two.
     template <typename Q>
     inline bool quantityIdentity = false;
 
@@ -366,17 +365,15 @@ namespace detail
     // Not load-bearing, just this file's convention: every collect() call's
     // first argument is a `Walk<V>&`, so `formula::detail` -- Walk's namespace --
     // is always in ADL's search set, which is why every overload below is
-    // found regardless of declaration order. Re-measured when the three lookup
-    // overloads below were added: deleting all 17 declarations in this block
-    // and rebuilding the whole test suite succeeds on cl 19.51, clang-cl 22,
-    // clang 20.1.8 and g++ 14.2. Every one of those is a conformant two-phase
-    // lookup -- `CMakeLists.txt` puts `/permissive-` on every cl compile line
-    // as an INTERFACE requirement of the library, read off this file's own
-    // entry in `compile_commands.json` rather than assumed -- so no leg of
-    // that measurement rested on MSVC's permissive mode. (The earlier wording
-    // said "all five", which was the count when this was first measured.)
-    // That is an implementation detail, not a guarantee, so each overload
-    // stays declared here rather than relying on it.
+    // found regardless of declaration order. Deleting all 17 declarations in
+    // this block and rebuilding the whole test suite succeeds on cl 19.51,
+    // clang-cl 22, clang 20.1.8 and g++ 14.2. Every one of those is a
+    // conformant two-phase lookup -- `CMakeLists.txt` puts `/permissive-` on
+    // every cl compile line as an INTERFACE requirement of the library, read
+    // off this file's own entry in `compile_commands.json` rather than
+    // assumed -- so no leg of that measurement rested on MSVC's permissive
+    // mode. That is an implementation detail, not a guarantee, so each
+    // overload stays declared here rather than relying on it.
 
     template <Vocabulary V, Described Q>
     void collect(Walk<V>& walk, VarNode<Q> const& node);
@@ -548,9 +545,6 @@ namespace detail
 
     template <Vocabulary V, Dimension Dim>
     void collect(Walk<V>& walk, RefusedRetryValue<Dim> const& node);
-
-    template <Vocabulary V, Dimension Dim>
-    void collect(Walk<V>& walk, RefusedBoundValue<Dim> const& node);
 
     template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
     void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node);
@@ -886,7 +880,7 @@ namespace detail
     }
 
     /// The escape hatch still reads a variable, even though what it produces
-    /// no longer carries a dimension.
+    /// carries no dimension.
     template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
     void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node)
     {
@@ -1228,13 +1222,6 @@ namespace detail
     /// second error to the refusal that produced it.
     template <Vocabulary V, Dimension Dim>
     void collect(Walk<V>&, RefusedRetryValue<Dim> const&)
-    {
-    }
-
-    /// A refused bound formula used as an operand names nothing, as a refused
-    /// retry names nothing.
-    template <Vocabulary V, Dimension Dim>
-    void collect(Walk<V>&, RefusedBoundValue<Dim> const&)
     {
     }
 

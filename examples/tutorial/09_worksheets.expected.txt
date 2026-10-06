@@ -1,0 +1,4 @@
+first run:             rho = 2400 kg/m3, f_c = 30 MPa, recomputed 4, reused 0
+load 676.125 kN:       rho = 2400 kg/m3, f_c = 30.1 MPa, recomputed 1, reused 0
+what if mass 8.25 kg:  rho = ≈2444.4 kg/m3, f_c = 30.1 MPa, recomputed 1, reused 0
+the worksheet itself:  rho = 2400 kg/m3, f_c = 30.1 MPa, recomputed 0, reused 0

@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Measures how much of the library the test suite runs, and reports it to
+# Codecov. Only include/ is counted: the tests, examples and fetched
+# dependencies are what does the running, not what is measured. The report is
+# informational (codecov.yml): it never fails a pull request.
+#
+# Uploading needs the CODECOV_TOKEN repository secret, which the repository
+# owner adds once on codecov.io and in Settings > Secrets. Without it -- in a
+# repository that has not set it up, or a pull request from a fork, which gets
+# no secrets -- the upload is skipped with a notice and the job still shows
+# whether the suite passed. With it, a failed upload fails the job.
+name: Coverage
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/CPM
+  # The same Clang as build.yml's Linux legs.
+  CLANG_VERSION: "22"
+
+jobs:
+  coverage:
+    name: Linux-clang-coverage
+    runs-on: ubuntu-24.04
+    env:
+      # A step's `if:` cannot read `secrets`; it reads this instead.
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore CPM cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-${{ runner.os }}-${{ hashFiles('test/CMakeLists.txt') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      - uses: seanmiddleditch/gha-setup-ninja@v6
+
+      # Retried as a whole, for the reason build.yml gives. llvm-N carries
+      # llvm-profdata-N and llvm-cov-N, which clang-N does not pull in.
+      - name: Install Clang ${{ env.CLANG_VERSION }}
+        run: |
+          for attempt in 1 2 3; do
+            if wget -q https://apt.llvm.org/llvm.sh \
+               && chmod +x llvm.sh \
+               && sudo ./llvm.sh ${{ env.CLANG_VERSION }} \
+               && sudo apt-get install -y clang-${{ env.CLANG_VERSION }} llvm-${{ env.CLANG_VERSION }}; then
+              exit 0
+            fi
+            echo "::warning::Clang install attempt $attempt failed; retrying"
+            sleep $((attempt * 15))
+          done
+          echo "::error::Clang ${{ env.CLANG_VERSION }} could not be installed after 3 attempts"
+          exit 1
+
+      - name: Configure
+        run: cmake --preset clang-coverage -DCMAKE_CXX_COMPILER=clang++-${{ env.CLANG_VERSION }} -DCMAKE_C_COMPILER=clang-${{ env.CLANG_VERSION }}
+
+      - name: Build
+        run: cmake --build --preset clang-coverage
+
+      # ctest runs every test case in a process of its own. %m merges all the
+      # processes of one binary into one raw profile, rather than leaving one
+      # profile per process (%p), each as large as the binary's counters.
+      - name: Test
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/out/profiles/%m.profraw
+        run: ctest --preset clang-coverage
+
+      - name: Export the coverage of include/
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          profiles=(out/profiles/*.profraw)
+          if (( ${#profiles[@]} == 0 )); then
+            echo "::error::the tests wrote no raw profile under out/profiles"
+            exit 1
+          fi
+          llvm-profdata-${{ env.CLANG_VERSION }} merge -sparse "${profiles[@]}" -o out/coverage.profdata
+
+          # Every test and example executable, and nothing else: CMake's
+          # scripts and any shared object are left out by the ELF check and
+          # the name.
+          binaries=()
+          while IFS= read -r -d '' file; do
+            if cmp -s -n 4 "$file" <(printf '\177ELF'); then
+              binaries+=("$file")
+            fi
+          done < <(find out/build/clang-coverage -type f -perm -u+x -name 'formula-cpp-*' \
+                     ! -name '*.so' ! -name '*.so.*' -print0 | sort -z)
+          if (( ${#binaries[@]} == 0 )); then
+            echo "::error::no formula-cpp-* executable under out/build/clang-coverage"
+            exit 1
+          fi
+          printf 'measuring %s\n' "${binaries[@]}"
+
+          # llvm-cov takes the first binary positionally and every other one
+          # after -object. System headers are left out with the rest.
+          others=()
+          for exe in "${binaries[@]:1}"; do others+=(-object "$exe"); done
+          llvm-cov-${{ env.CLANG_VERSION }} export -format=lcov -instr-profile=out/coverage.profdata \
+            "${binaries[0]}" "${others[@]}" \
+            -ignore-filename-regex='^/usr/|(^|/)(test|examples|tools|support|_deps|\.cache)/' \
+            > out/coverage.lcov
+          if [[ ! -s out/coverage.lcov ]]; then
+            echo "::error::llvm-cov wrote an empty LCOV report"
+            exit 1
+          fi
+
+      - name: Upload to Codecov
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v5
+        with:
+          files: out/coverage.lcov
+          disable_search: true
+          token: ${{ env.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
+      - name: Skip the upload without a Codecov token
+        if: env.CODECOV_TOKEN == ''
+        run: echo "::notice::Coverage was measured but not uploaded -- this repository has no CODECOV_TOKEN secret, or this pull request comes from a fork, which gets no secrets."

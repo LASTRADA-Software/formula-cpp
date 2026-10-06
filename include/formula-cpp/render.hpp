@@ -18,10 +18,10 @@
 /// **Ruling, decided here once and binding on every other surface: a
 /// half-open interval is spelled `<low> to under <high>`, never `[low,
 /// high)`.** A band really is `[103, 197)` (`band.hpp`), and that is exactly
-/// the character sequence CommonMark reads as a link label -- a defect once
-/// published, when `round[to 1 dp of mm](d)` reached a page with its operand
-/// silently dropped. The guard test in `render_tests.cpp` asserts
-/// that no Markdown rendering contains `](` or a bare `[`, and a band written
+/// the character sequence CommonMark reads as a link label -- the defect by
+/// which `round[to 1 dp of mm](d)` would reach a page with its operand
+/// silently dropped. The guard test in `render_tests.cpp` asserts that no
+/// Markdown rendering contains `](` or a bare `[`, and a band written
 /// the mathematician's way would defeat it. `to under` is not a compromise
 /// spelling: it *says* the exclusion in words, where a reader has to know the
 /// bracket convention to see it, and it survives every Markdown flavour
@@ -730,10 +730,10 @@ namespace detail
     ///
     /// **Not LaTeX.** LaTeX sets a key's name inside the `\mathrm{...}` of the
     /// row it stands in, and `lookup_words_in_dialect` escapes the whole row
-    /// with `latex_math_words` (`detail/latex_math.hpp`). This function once
-    /// escaped for LaTeX text mode, inside `\text{...}` -- `\_`,
+    /// with `latex_math_words` (`detail/latex_math.hpp`). This function does
+    /// not escape for LaTeX text mode, inside `\text{...}` -- `\_`,
     /// `\textbackslash{}`, `{\ttfamily\char34}` -- which a TeX engine reads
-    /// and the site's MathJax, without `textmacros`, shows backslash and all.
+    /// but the site's MathJax, without `textmacros`, shows backslash and all.
     ///
     /// **Markdown** backslash-escapes the six characters that open inline
     /// markup -- a backslash, a backtick, `*`, `_`, `[`, `]` -- and writes six
@@ -1119,9 +1119,7 @@ namespace detail
     /// `$...$` and `\[...\]`, **and** wrapping these in amsmath's `multline*`
     /// does not help anyway (measured: 571pt worst, slightly *worse* than the
     /// plain display, because `multline` also breaks only at an explicit `\\`
-    /// and never at `\allowbreak`). An earlier revision of this comment
-    /// claimed `multline` fixed it; it does not, and the claim was reasoned
-    /// rather than measured.
+    /// and never at `\allowbreak`).
     ///
     /// What does help, for a caller who genuinely needs a wide table in a
     /// display, is `breqn`'s `dmath`: 5 overfull boxes over the same 22
@@ -1134,21 +1132,7 @@ namespace detail
     /// deleting it as tidy-up would quietly take the remedy away with it.
     ///
     /// The residual is named rather than rounded off to "clean": all 5 boxes
-    /// that survive `dmath` are **exact** lookups, 8.3pt to 13.3pt. An earlier
-    /// measurement of `dmath` sampled four renderings and happened to include
-    /// no exact lookup at all, which is the degenerate-fixture rule landing on
-    /// a measurement set rather than on a test fixture.
-    ///
-    /// **This paragraph has been wrong twice, both times the same way, and
-    /// that is the useful thing in it.** The first draft said amsmath's
-    /// `multline` was the remedy; typesetting it gave 571pt, slightly *worse*
-    /// than a plain display, because `multline` also breaks only at an
-    /// explicit `\\`. The draft that replaced it said `dmath` owed nothing to
-    /// `\allowbreak` -- measured against a "control" that turned out to be
-    /// byte-identical to the treatment, because the strip silently never
-    /// applied. An instrument that cannot report a difference will report no
-    /// difference. Anything added here comes from two files diffed before they
-    /// are trusted.
+    /// that survive `dmath` are **exact** lookups, 8.3pt to 13.3pt.
     ///
     /// `render_tests.cpp` pins what a unit test can pin: that every field
     /// separator carries `\allowbreak`, and that a lookup never emits `\\`. It
@@ -2517,15 +2501,6 @@ template <Dialect D, Dimension Dim, Vocabulary V>
     return "(refused)";
 }
 
-/// A refused bound formula used as an operand (`detail::RefusedBoundValue`,
-/// `yields.hpp`) renders as a refused retry does; this only keeps a `render`
-/// of it from adding a second, compiler-worded error.
-template <Dialect D, Dimension Dim, Vocabulary V>
-[[nodiscard]] std::string render_node(detail::RefusedBoundValue<Dim> const&, V const&)
-{
-    return "(refused)";
-}
-
 namespace detail
 {
     /// Renders @p node through the `render_node` it has, and refuses a node of
@@ -2559,8 +2534,8 @@ namespace detail
     ///
     /// Step 2 comes before step 3 for a consumer's node that **derives from
     /// one of this library's**, `struct Labelled: formula::VarNode<Q>`: it
-    /// renders through its own one-argument overload, as it did before
-    /// vocabularies existed, rather than as the base it derives from. That
+    /// renders through its own one-argument overload, which a vocabulary
+    /// leaves unchanged, rather than as the base it derives from. That
     /// node's own text is then in the declared symbols; to receive the
     /// vocabulary it defines the two-argument form **instead**. Were it to
     /// define both, the one-argument form would win, because its two-argument

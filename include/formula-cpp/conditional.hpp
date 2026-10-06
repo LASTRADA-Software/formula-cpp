@@ -44,6 +44,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 namespace formula
 {
@@ -102,6 +103,15 @@ template <Predicate P, Node Then, Node Else>
 [[nodiscard]] constexpr auto when(P predicate, Then thenBranch, Else elseBranch) noexcept
 {
     return WhenNode<P, Then, Else> { {}, predicate, thenBranch, elseBranch };
+}
+
+/// A bound formula as either branch of `when`: the formula it holds, in its
+/// place (`yields.hpp`).
+template <Predicate P, typename Then, typename Else>
+    requires detail::AnyBound<Then, Else>
+[[nodiscard]] constexpr auto when(P predicate, Then thenBranch, Else elseBranch) noexcept
+{
+    return when(predicate, detail::as_operand(thenBranch), detail::as_operand(elseBranch));
 }
 
 /// Evaluates `predicate`; if it holds, evaluates and returns `thenBranch`, if

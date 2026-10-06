@@ -104,7 +104,7 @@ class MeasuredSeries
     /// element nobody typed absent, silently, for `({ { a, b, c } })`,
     /// `{ { { a, b, c } } }` and `({})` alike, and through `entered(...)` and
     /// `EnteredSeries` too. A template parameter cannot be deduced from a
-    /// braced list, so every such spelling now fails to compile, in the
+    /// braced list, so every such spelling fails to compile, in the
     /// compiler's words, since no correct reading of them exists to point at.
     /// (For `({ { a, b, c } })` g++ 13.3 and 14.2 also reach the constructor
     /// below through the copy constructor, and add its count message, which

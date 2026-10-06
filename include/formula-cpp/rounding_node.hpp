@@ -23,6 +23,7 @@
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 namespace formula
 {
@@ -115,6 +116,23 @@ template <DecimalRounding R, Node Operand>
     return rounded<R.unit, R.places, R.mode>(toRound);
 }
 
+/// A bound formula as `rounded`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <Unit U, DecimalPlaces Places, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded(Bound boundFormula) noexcept
+{
+    return rounded<U, Places, Mode>(boundFormula.expression);
+}
+
+/// See the overload above, rounded as @p R names.
+template <DecimalRounding R, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded(Bound boundFormula) noexcept
+{
+    return rounded<R>(boundFormula.expression);
+}
+
 /// `operand` rounded to `Digits` significant digits of `U`.
 template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
 [[nodiscard]] constexpr auto rounded_to_digits(Operand operand) noexcept
@@ -127,6 +145,23 @@ template <SignificantRounding S, Node Operand>
 [[nodiscard]] constexpr auto rounded_to_digits(Operand toRound) noexcept
 {
     return rounded_to_digits<S.unit, S.digits, S.mode>(toRound);
+}
+
+/// A bound formula as `rounded_to_digits`'s operand: the formula it holds, in
+/// its place (`yields.hpp`).
+template <Unit U, SignificantDigits Digits, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_to_digits(Bound boundFormula) noexcept
+{
+    return rounded_to_digits<U, Digits, Mode>(boundFormula.expression);
+}
+
+/// See the overload above, rounded as @p S names.
+template <SignificantRounding S, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_to_digits(Bound boundFormula) noexcept
+{
+    return rounded_to_digits<S>(boundFormula.expression);
 }
 
 /// Rounding per representation, including the unit conversion it needs.

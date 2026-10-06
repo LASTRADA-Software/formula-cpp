@@ -404,16 +404,16 @@
 ///
 /// It also means the **interpolation** does no arithmetic on a row hit, so no
 /// row can be reported as an overflow *of the interpolation*. That is the whole
-/// of the guarantee, and an earlier revision of this comment claimed more: that
-/// a row whose value is representable can never come back as an `Overflow` at
-/// all. It can. `checked_evaluate_si` still hands the answer to
-/// `detail::in_si`, which converts it out of `ResultUnit` into the coherent
-/// unit, and **a unit conversion is arithmetic** -- a row stating `2^126`
-/// kilometres is a perfectly representable `Rational` that overflows on the way
-/// to metres. That path is shared with the banded and the exact lookup, which
-/// have it for exactly the same reason, and nothing about it is particular to
-/// interpolation. `lookup_tests.cpp` pins both halves: a row hit that overflows
-/// in the conversion, and an interpolation that overflows in the interpolation.
+/// of the guarantee: it does not mean a row whose value is representable can
+/// never come back as an `Overflow` at all. It can. `checked_evaluate_si` hands
+/// the answer to `detail::in_si`, which converts it out of `ResultUnit` into
+/// the coherent unit, and **a unit conversion is arithmetic** -- a row stating
+/// `2^126` kilometres is a perfectly representable `Rational` that overflows on
+/// the way to metres. That path is shared with the banded and the exact
+/// lookup, which have it for exactly the same reason, and nothing about it is
+/// particular to interpolation. `lookup_tests.cpp` pins both halves: a row hit
+/// that overflows in the conversion, and an interpolation that overflows in
+/// the interpolation.
 ///
 /// **There is no extrapolation.** A value below the first row or above the last
 /// one is a miss -- `ArithmeticError::DomainError` through `Evaluated<Rep>`,
@@ -476,6 +476,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -602,19 +603,18 @@ namespace detail
 ///
 /// **It is every node's own member type, not only the factories' parameter
 /// type, and the difference was measured rather than argued.** With a raw
-/// array on the node and this wrapper only on the factory, the guard covered
-/// every route *except the one that needs no factory*: every lookup node is a
-/// public aggregate with public members, so
+/// array on the node and this wrapper only on the factory, the guard would
+/// cover every route *except the one that needs no factory*: every lookup node
+/// is a public aggregate with public members, so
 ///
 ///     inline constexpr ExactLookupNode<ThreeKeys, unit::One> node {
 ///         {}, { 0.781_r }, Shape::Prism };
 ///
-/// compiled (it is now refused), linked, and evaluated the two rows nobody
-/// typed as `0` -- checked against the installed package on all three node
-/// kinds, all three of which did it. The factory's parameter type cannot see
+/// would compile, link, and evaluate the two rows nobody typed as `0` --
+/// measured on all three node kinds. The factory's parameter type cannot see
 /// that call, because there is no call. Making the member itself a
-/// `Corrections<N>` is what closes it: the braced list now initialises this
-/// type, a short one selects the arity-mismatch constructor below, and its
+/// `Corrections<N>` closes it: the braced list initialises this type, a short
+/// one selects the arity-mismatch constructor below, and its
 /// `static_assert` names both counts at the offending line.
 /// `lookup_short_corrections_no_factory.cpp` and its two siblings pin exactly
 /// that, one per node kind, and reverting any one member to a raw array fails
@@ -623,10 +623,9 @@ namespace detail
 /// Nodes therefore declare `Corrections<N> corrections;` with **no default
 /// member initialiser**, and that omission is load bearing: `{}` for a table
 /// of three rows is a count of zero, which is the very mistake being refused,
-/// so a node cannot be default-constructed and must state its contents. No
-/// consumer noticed the change -- `operator[]` below keeps
-/// `node.corrections[index]` meaning what it always meant in the renderer, the
-/// tracer and the evaluator alike.
+/// so a node cannot be default-constructed and must state its contents.
+/// `operator[]` below lets the renderer, the tracer and the evaluator alike
+/// read `node.corrections[index]` as an array index.
 ///
 /// **Asked whether a node is default-constructible, the traits and the
 /// concepts answer `false`, cleanly**, and so does anything holding a lookup
@@ -666,14 +665,12 @@ namespace detail
 ///    before it, refuses first. `method_lookup_tests.cpp` has a row for each
 ///    member, and fails on cl too for every one but `Method::variantSet`.
 ///
-/// **`corrections` is no longer a range, and `operator[]` is const and returns
-/// by value.** So `for (auto& correction: node.corrections)`,
+/// **`corrections` is not a range, and `operator[]` is const and returns by
+/// value.** So `for (auto& correction: node.corrections)`,
 /// `auto& correction = node.corrections[index]` and
-/// `node.corrections[index] = ...` no longer compile, where they did while the
-/// member was a `std::array`. `values` stays public and is the route for all
-/// three -- this is a transparent aggregate of a table's contents, not an
-/// encapsulation. Written down because **no in-tree consumer needed changing**,
-/// which is exactly why nothing in this repository will remind anybody.
+/// `node.corrections[index] = ...` do not compile. `values` is public and is
+/// the route for all three -- this is a transparent aggregate of a table's
+/// contents, not an encapsulation.
 ///
 /// A named type with two arity-disjoint constructor templates rather than
 /// one constrained by `requires` alone: the *matching*-arity constructor
@@ -738,13 +735,10 @@ struct Corrections
     std::array<Rational, N> values {};
 
     /// The correction at @p rowIndex, so that every consumer reads a table's
-    /// contents the way it read them when this was a bare `std::array`.
-    ///
-    /// Present so that becoming a node's member type costs the rest of the
-    /// library nothing: `node.corrections[index]` means what it always meant,
-    /// in the renderer, the tracer and the evaluator alike. `values` stays
-    /// public alongside it -- this is a transparent aggregate of the table's
-    /// contents, not an encapsulation.
+    /// contents as it would an array's: `node.corrections[index]` reads the
+    /// same in the renderer, the tracer and the evaluator. `values` is public
+    /// alongside it -- this is a transparent aggregate of the table's contents,
+    /// not an encapsulation.
     [[nodiscard]] constexpr Rational operator[](std::size_t rowIndex) const noexcept
     {
         return values[rowIndex];
@@ -818,17 +812,25 @@ struct BandedLookupNode: NodeBase
 /// three non-operand parameters unstated at the call site's argument list:
 /// a table's structure is the author's declared intent, not something
 /// inferred from whatever `corrections` happens to look like. The braced
-/// list at the call site still reads exactly as it did before `Corrections`
-/// existed -- only its target type changed, from `std::array<Rational, N>`
-/// to `Corrections<N>` -- because the call site's target type is already
-/// known from the explicit template arguments, so list-initialisation finds
-/// `Corrections`'s constructor the same way it found `std::array`'s
-/// aggregate initialisation before.
+/// list at the call site reads as a plain array initialiser would, although
+/// its target type is `Corrections<N>`, because the call site's target type
+/// is already known from the explicit template arguments, so
+/// list-initialisation finds `Corrections`'s constructor the same way it
+/// would find `std::array`'s aggregate initialisation.
 template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
 [[nodiscard]] constexpr BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> banded_lookup(
     Operand operand, Corrections<Bands.size()> corrections) noexcept
 {
     return BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> { {}, corrections, operand };
+}
+
+/// A bound formula as `banded_lookup`'s key: the formula it holds, in its place
+/// (`yields.hpp`).
+template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto banded_lookup(Bound boundKey, Corrections<Bands.size()> corrections) noexcept
+{
+    return banded_lookup<KeyUnit, Bands, ResultUnit>(boundKey.expression, corrections);
 }
 
 /// Evaluates the operand, converts its value into `KeyUnit`, and looks up the
@@ -926,12 +928,11 @@ using KeyTable = std::array<Key, N>;
 /// bearing rather than a typo: **Doxygen 1.9.8 -- the version `pages.yml`
 /// installs -- reads a leading `::` as an explicit link request even inside a
 /// code span**, and fails the build under `WARN_AS_ERROR = FAIL_ON_WARNINGS`
-/// when it cannot resolve the name. Newer Doxygen does not, which is exactly
-/// how this reached the branch: it was verified against 1.18.0 on a
-/// contributor's machine and was red for the one CI actually runs. The `%` is
-/// stripped from the generated HTML, so nothing leaks onto the page. Same
-/// treatment, same reason, on `Outcome`'s `::%value(...)` in this file's
-/// comment above.
+/// when it cannot resolve the name. Newer Doxygen does not, so a local build
+/// with a newer version passes without the `%` and only the version CI
+/// installs catches its absence. The `%` is stripped from the generated HTML,
+/// so nothing leaks onto the page. Same treatment, same reason, on
+/// `Outcome`'s `::%value(...)` in this file's comment above.
 template <KeyTable Keys>
 using KeyOf = typename std::remove_cvref_t<decltype(Keys)>::value_type;
 
@@ -1152,15 +1153,14 @@ struct RequireValidKeyTable: detail::KeyChecks<Keys, std::make_index_sequence<Ke
 /// cannot reach the node through an operand or through the `Environment`.
 ///
 /// Both `static_assert`s sit in the class body rather than in the factory,
-/// and the property that buys is narrower than it first looks -- stated
-/// precisely here because an earlier revision of this comment claimed more
-/// than it could deliver, and the difference was measured. Discarding
-/// the factory's result is **not** what distinguishes the two placements:
-/// `exact_lookup` returns `ExactLookupNode` *by value*, so calling it
-/// completes the class whichever placement is chosen, and an assert in the
-/// factory body fires on any call, discarded or not. What the class body
-/// buys is this: `ExactLookupNode` is a public aggregate with public members,
-/// so a caller can declare one **without ever calling the factory** --
+/// and the property that buys is narrower than it first looks, so it is
+/// stated precisely here. Discarding the factory's result is **not** what
+/// distinguishes the two placements: `exact_lookup` returns `ExactLookupNode`
+/// *by value*, so calling it completes the class whichever placement is
+/// chosen, and an assert in the factory body fires on any call, discarded or
+/// not. What the class body buys is this: `ExactLookupNode` is a public
+/// aggregate with public members, so a caller can declare one **without ever
+/// calling the factory** --
 ///
 ///     inline constexpr ExactLookupNode<Duplicated, unit::One> node {
 ///         {}, { 1.127_r, 0.863_r, 1.043_r }, Shape::Cube };
@@ -1607,8 +1607,7 @@ namespace detail
     /// choice affects is how large the intermediates get, which is to say how
     /// far the computation gets before it has to report `Overflow`.
     ///
-    /// **Neither order dominates**, and the comment that used to stand here
-    /// claimed one did. Both directions:
+    /// **Neither order dominates.** Both directions:
     ///
     ///  - keys `{0, 10}` with values `{0, 2^126}`, asked at 5: dividing first
     ///    answers `2^125` exactly; multiplying first would form `5 * 2^126` and
@@ -1631,8 +1630,7 @@ namespace detail
     /// Both of those tables are in `lookup_tests.cpp`, asserted as behaviour --
     /// one showing the chosen order returning a value the rejected order could
     /// not, one showing the chosen order refusing a table the rejected order
-    /// could have answered. The order was previously pinned by nothing at all:
-    /// the entire suite compiled unchanged under either.
+    /// could have answered.
     ///
     /// `highKey - lowKey` cannot be zero: `RequireValidBreakpointTable` has
     /// already refused a table whose rows do not strictly ascend, so there is
@@ -1868,6 +1866,15 @@ template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
     Operand operand, Corrections<Points.size()> corrections) noexcept
 {
     return InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> { {}, corrections, operand };
+}
+
+/// A bound formula as `interpolating_lookup`'s key: the formula it holds, in
+/// its place (`yields.hpp`).
+template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto interpolating_lookup(Bound boundKey, Corrections<Points.size()> corrections) noexcept
+{
+    return interpolating_lookup<KeyUnit, Points, ResultUnit>(boundKey.expression, corrections);
 }
 
 /// Evaluates the operand, converts its value into `KeyUnit`, and answers from

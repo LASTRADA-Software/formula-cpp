@@ -154,7 +154,7 @@ bug -- an overridden number was not derived, so there is nothing to trace --
 but it means `explained.trace.steps[explained.trace.root()]`, the pattern the
 snippet above uses, reads past the end of an empty vector whenever the result
 happens to be an override. Check `empty()` before reading `root()`, the way
-the snippet above now does.
+the snippet above does.
 
 One difference is not about cost but about **where** the call can happen.
 `evaluate` and `checked_evaluate` are `constexpr` and remain usable in a
@@ -832,7 +832,7 @@ constructor, so there is no zero for `{}` to produce; `{.maxSteps = 10}` and
 gets one -- `numbers`, the notation every value is written in, defaults to
 fractions, and [Displaying numbers](display.md) shows the decimal styles --
 while this one does not, because a sensible default does not exist. An
-unbounded render of a derivation with a hundred thousand steps once collapsed
+unbounded render of a derivation with a hundred thousand steps would collapse
 into one wall of text long enough to be practically unusable -- the same
 failure mode `trace.hpp`'s flat, index-addressed arena exists to make
 representable without recursion, just at the rendering end instead of the
@@ -895,11 +895,9 @@ are not sequenced. Walk a `Trace` in sequence, never concurrently.
 
 Evaluation has a two-parameter extension point -- a consumer writes their
 own node kind and a `checked_evaluate_si(node, environment)` overload for it,
-found by ADL. Adding a sink parameter to every overload the library ships
-could have broken every such overload by making it invisible to the
-dispatcher; instead, `detail::dispatch` prefers a sink-aware, three-parameter
-overload where one exists for a node and falls back to the older
-two-parameter one where it does not:
+found by ADL. `detail::dispatch` prefers a sink-aware, three-parameter
+overload where one exists for a node and falls back to the two-parameter one
+where it does not, so such an overload stays visible to the dispatcher:
 
 ```cpp
 template <typename Rep, typename N, typename Env, typename Sink>
@@ -912,14 +910,13 @@ template <typename Rep, typename N, typename Env, typename Sink>
 }
 ```
 
-(`sink.hpp`.) A node written against the older, two-parameter extension point
-therefore keeps evaluating correctly, with the right answer, composed with any
-other node exactly as before. What it does **not** do is contribute anything
-to a trace -- there is no overload to call the sink through, so `entered` and
-`produced` are simply never called for that node. `test/sink_tests.cpp` proves
-both halves of this at once, by counting: a `LegacyNode` added to a `Mass`
-gets the right sum, `12`, but the sink only ever hears about the two nodes
-that know it exists:
+(`sink.hpp`.) A node with only the two-parameter overload therefore evaluates
+correctly, with the right answer, composed with any other node. What it does
+**not** do is contribute anything to a trace -- there is no overload to call
+the sink through, so `entered` and `produced` are simply never called for that
+node. `test/sink_tests.cpp` proves both halves of this at once, by counting:
+a `LegacyNode` added to a `Mass` gets the right sum, `12`, but the sink only
+ever hears about the two nodes that know it exists:
 
 ```cpp
 auto const result = formula::checked_evaluate_si<formula::Rational>(expression, environmentOf(5, 1), sink);
@@ -965,7 +962,7 @@ traced, and its line says its inside is not shown -- see
 
 ## Every citation here is invented
 
-Every citation used to demonstrate tracing on this page -- and in
+Every citation that demonstrates tracing on this page -- and in
 `examples/tracing.cpp` and the gallery's derivation -- names a fictional
 `Example Standard`, never a real one, for the reason `docs/citations.md` gives
 in full: a real standard's clause numbers and equations are copyrighted

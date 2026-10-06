@@ -17,6 +17,7 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <string_view>
 
@@ -79,11 +80,20 @@ struct DocumentedNode: NodeBase
 ///
 /// The `Citation` parameter is deliberately **not** deduced. That is what lets
 /// the call site write a braced designated initialiser, which was verified on
-/// cl 19.51, clang-cl 22 and g++ 13.3 before this was written.
+/// cl 19.51, clang-cl 22 and g++ 13.3.
 template <Node Inner>
 [[nodiscard]] constexpr DocumentedNode<Inner> documented(Inner inner, Citation citation) noexcept
 {
     return DocumentedNode<Inner> { {}, inner, citation };
+}
+
+/// A bound formula as `documented`'s formula: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto documented(Bound boundFormula, Citation citation) noexcept
+{
+    return documented(boundFormula.expression, citation);
 }
 
 /// Evaluating a documented expression evaluates what it documents. The wrapper

@@ -19,6 +19,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -194,11 +195,29 @@ template <int Exponent, Node Operand>
     return PowerNode<Exponent, Operand> { {}, operand };
 }
 
+/// A bound formula as `pow`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <int Exponent, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto pow(Bound boundFormula) noexcept
+{
+    return pow<Exponent>(boundFormula.expression);
+}
+
 /// The square root of `operand`.
 template <Node Operand>
 [[nodiscard]] constexpr auto sqrt(Operand operand) noexcept
 {
     return RootNode<2, Operand> { {}, operand };
+}
+
+/// A bound formula as `sqrt`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto sqrt(Bound boundFormula) noexcept
+{
+    return sqrt(boundFormula.expression);
 }
 
 /// The cube root of `operand`.
@@ -208,11 +227,29 @@ template <Node Operand>
     return RootNode<3, Operand> { {}, operand };
 }
 
+/// A bound formula as `cbrt`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto cbrt(Bound boundFormula) noexcept
+{
+    return cbrt(boundFormula.expression);
+}
+
 /// The `Degree`-th root of `operand`: `root<5>(var<Volume>)`.
 template <int Degree, Node Operand>
 [[nodiscard]] constexpr auto root(Operand operand) noexcept
 {
     return RootNode<Degree, Operand> { {}, operand };
+}
+
+/// A bound formula as `root`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <int Degree, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto root(Bound boundFormula) noexcept
+{
+    return root<Degree>(boundFormula.expression);
 }
 
 /// The spelling of pi in a formula.
@@ -226,6 +263,15 @@ template <Node Operand>
     return TranscendentalNode<Transcendental::NaturalLogarithm, Operand> { {}, operand };
 }
 
+/// A bound formula as `ln`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto ln(Bound boundFormula) noexcept
+{
+    return ln(boundFormula.expression);
+}
+
 /// The decimal logarithm of `operand`, a dimensionless expression.
 template <Node Operand>
 [[nodiscard]] constexpr auto log10(Operand operand) noexcept
@@ -233,11 +279,29 @@ template <Node Operand>
     return TranscendentalNode<Transcendental::DecimalLogarithm, Operand> { {}, operand };
 }
 
+/// A bound formula as `log10`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto log10(Bound boundFormula) noexcept
+{
+    return log10(boundFormula.expression);
+}
+
 /// The exponential of `operand`, a dimensionless expression: e raised to it.
 template <Node Operand>
 [[nodiscard]] constexpr auto exp(Operand operand) noexcept
 {
     return TranscendentalNode<Transcendental::Exponential, Operand> { {}, operand };
+}
+
+/// A bound formula as `exp`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto exp(Bound boundFormula) noexcept
+{
+    return exp(boundFormula.expression);
 }
 
 // ---------------------------------------------------------------- evaluation

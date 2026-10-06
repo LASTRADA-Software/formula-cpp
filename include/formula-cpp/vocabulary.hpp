@@ -21,7 +21,7 @@
 /// it: every quantity it does not rename is written as `Describe<Q>::symbol`
 /// says, and `DefaultVocabulary`, which renames nothing, is the default
 /// argument of every surface that takes one -- so a caller who never names a
-/// vocabulary gets exactly the text they got before one existed.
+/// vocabulary gets every symbol exactly as `Describe<Q>::symbol` spells it.
 ///
 /// **Only the symbol changes, never the meaning.** A vocabulary renames how a
 /// quantity is *written*; its description and its unit are properties of the

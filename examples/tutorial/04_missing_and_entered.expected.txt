@@ -1,0 +1,3 @@
+measured:        f_c = 30 MPa (derived)
+b not measured:  f_c = empty
+entered by hand: f_c = 31 MPa (manually entered)

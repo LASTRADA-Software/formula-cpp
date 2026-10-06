@@ -158,6 +158,7 @@
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
 #include <formula-cpp/statistics.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -573,7 +574,7 @@ struct ConstantOverride
 /// an `OverriddenConstantNode<Q>`, which evaluates to @p value without asking
 /// the environment, so a `Q` supplied there is ignored by the overlaid method
 /// and need not be supplied at all. That is what a jurisdiction fixing a
-/// constant means: the value is no longer the specimen's to state.
+/// constant means: the value is not the specimen's to state.
 ///
 /// @p source records where the value comes from -- a national annex, say --
 /// and travels with every node the override leaves behind. Every operation
@@ -786,7 +787,7 @@ struct VariantReplacement
 /// `ReplacedVariantNode`.
 ///
 /// Refused when no variant of the method declares `Tag`, when the method the
-/// overlay produces no longer holds that variant (pinned or pruned away, in
+/// overlay produces does not hold that variant (pinned or pruned away, in
 /// either order), when @p expression measures a different dimension from the
 /// method's, and when one overlay replaces the same variant twice: see the
 /// file comment.
@@ -809,6 +810,24 @@ template <typename Tag, bool Stated = false, Node Expr>
                   "jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that "
                   "states it");
     return VariantReplacement<Tag, Expr> { expression, {} };
+}
+
+/// A bound formula as `replace_variant`'s replacement: the formula it holds, in
+/// its place (`yields.hpp`).
+template <typename Tag, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto replace_variant(Bound boundFormula, Citation source) noexcept
+{
+    return replace_variant<Tag>(boundFormula.expression, source);
+}
+
+/// Refuses a bound replacement with no citation, as `replace_variant` refuses
+/// the formula it holds.
+template <typename Tag, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto replace_variant(Bound boundFormula) noexcept
+{
+    return replace_variant<Tag>(boundFormula.expression);
 }
 
 /// The operation `with_constraints(constraints(...), source)` builds: replace the
@@ -856,7 +875,7 @@ struct ConstraintsOverride
 /// and that includes a later overlay's replacing the only constraints an
 /// earlier overlay's constant or definition reached, which is accepted, as a
 /// later `replace_variant` of the only variant reading one is: the earlier
-/// substitution then no longer applies.
+/// substitution then does not apply.
 ///
 /// @p source cites whose constraints they are, and is required, as
 /// `with_constant`'s is.
@@ -2999,6 +3018,24 @@ template <Described Q, bool Stated = false, Node Expr>
     return QuantityDerivation<Q, Expr> { expression, {} };
 }
 
+/// A bound formula as `add_derived`'s definition: the formula it holds, in its
+/// place (`yields.hpp`).
+template <Described Q, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto add_derived(Bound boundFormula, Citation source) noexcept
+{
+    return add_derived<Q>(boundFormula.expression, source);
+}
+
+/// Refuses a bound definition with no citation, as `add_derived` refuses the
+/// formula it holds.
+template <Described Q, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto add_derived(Bound boundFormula) noexcept
+{
+    return add_derived<Q>(boundFormula.expression);
+}
+
 namespace detail
 {
     template <Described Q, Node Expr>
@@ -3423,8 +3460,8 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// Fails to compile when the method an overlay produces no longer holds
-    /// the variant it replaced -- pruned, or pinned away, before or after.
+    /// Fails to compile when the method an overlay produces does not hold the
+    /// variant it replaced -- pruned, or pinned away, before or after.
     template <typename Tag, bool Held>
     struct RequireReplacementHeld
     {
@@ -3440,8 +3477,8 @@ namespace detail
     /// `replace_variant<Tag>` is judged against the result, as `with_constant`
     /// is, and in two steps so that one mistake gets one message: a tag the
     /// method the overlay was applied to never declared is a mistaken name;
-    /// only a tag it did declare can then be one the produced method no longer
-    /// holds. A tag that is not a plain class type is `VariantReplacement`'s
+    /// only a tag it did declare can then be one the produced method does not
+    /// hold. A tag that is not a plain class type is `VariantReplacement`'s
     /// to refuse, and neither is asked of it.
     ///
     /// Judged here rather than where the replacement is applied, because the
@@ -3624,7 +3661,7 @@ namespace detail
     /// `replace_variant` or `with_constraints` removes every node an earlier
     /// overlay's substitution left, and puts back a plain use, leaves this
     /// rule nothing to find: the later overlay's formula or constraints hold,
-    /// and the earlier constant or definition no longer applies. That is
+    /// and the earlier constant or definition does not apply. That is
     /// "across overlays, the later one holds", accepted rather than refused;
     /// within one overlay the same order is refused as bypassed
     /// (`RequireConstantNotBypassed`).

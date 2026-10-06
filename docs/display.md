@@ -50,9 +50,9 @@ value is **always marked**: `≈0.113`, never `0.113`, so it cannot pass for the
 exact one. Only a rounding you ask for outright, to a number of places
 (`decimal_text`, `std::format`'s `.N`), is written unmarked, as you asked.
 
-Traces, rendered formulas and documentation keep fractions unless asked. Text
-a program wrote before these options existed -- an archived audit trail, a
-pinned test -- reads exactly as it did, unless the program asks for decimals.
+Traces, rendered formulas and documentation keep fractions unless asked, so
+the text a program writes without asking for decimals -- an archived audit
+trail, a pinned test -- stays in fractions.
 
 ## Decimals in a trace
 

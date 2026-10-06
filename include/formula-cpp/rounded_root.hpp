@@ -38,6 +38,7 @@
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cstdint>
 #include <expected>
@@ -322,6 +323,23 @@ template <DecimalRounding R, Node Radicand>
 [[nodiscard]] constexpr auto rounded_sqrt(Radicand radicand) noexcept
 {
     return rounded_sqrt<R.unit, R.places, R.mode>(radicand);
+}
+
+/// A bound formula as `rounded_sqrt`'s radicand: the formula it holds, in its
+/// place (`yields.hpp`).
+template <Unit U, DecimalPlaces Places, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_sqrt(Bound boundRadicand) noexcept
+{
+    return rounded_sqrt<U, Places, Mode>(boundRadicand.expression);
+}
+
+/// See the overload above, rounded as @p R names.
+template <DecimalRounding R, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_sqrt(Bound boundRadicand) noexcept
+{
+    return rounded_sqrt<R>(boundRadicand.expression);
 }
 
 /// Evaluates the radicand, then rounds its square root in `U`.

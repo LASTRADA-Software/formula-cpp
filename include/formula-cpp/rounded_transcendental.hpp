@@ -29,6 +29,7 @@
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <expected>
 #include <optional>
@@ -133,6 +134,15 @@ template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
     return RoundedTranscendentalNode<Transcendental::NaturalLogarithm, Places, Mode, Operand> { {}, operand };
 }
 
+/// A bound formula as `rounded_ln`'s operand: the formula it holds, in its
+/// place (`yields.hpp`).
+template <DecimalPlaces Places, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_ln(Bound boundFormula) noexcept
+{
+    return rounded_ln<Places, Mode>(boundFormula.expression);
+}
+
 /// The decimal logarithm of `operand`, rounded exactly to `Places` decimal places.
 ///
 /// As for `rounded_ln`, every argument a `Rational` holds; a power of ten, 10^-38 up to 10^38, is answered
@@ -141,6 +151,15 @@ template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
 [[nodiscard]] constexpr auto rounded_log10(Operand operand) noexcept
 {
     return RoundedTranscendentalNode<Transcendental::DecimalLogarithm, Places, Mode, Operand> { {}, operand };
+}
+
+/// A bound formula as `rounded_log10`'s operand: the formula it holds, in its
+/// place (`yields.hpp`).
+template <DecimalPlaces Places, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_log10(Bound boundFormula) noexcept
+{
+    return rounded_log10<Places, Mode>(boundFormula.expression);
 }
 
 /// The exponential of `operand`, rounded exactly to `Places` decimal places.
@@ -155,6 +174,15 @@ template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
 [[nodiscard]] constexpr auto rounded_exp(Operand operand) noexcept
 {
     return RoundedTranscendentalNode<Transcendental::Exponential, Places, Mode, Operand> { {}, operand };
+}
+
+/// A bound formula as `rounded_exp`'s operand: the formula it holds, in its
+/// place (`yields.hpp`).
+template <DecimalPlaces Places, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_exp(Bound boundFormula) noexcept
+{
+    return rounded_exp<Places, Mode>(boundFormula.expression);
 }
 
 /// Evaluates the argument, then rounds `F` of it. Under `Rational` this is

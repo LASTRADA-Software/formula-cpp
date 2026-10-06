@@ -1,0 +1,4 @@
+A_c = 22499.96 mm2 (derived)
+f_c = 16885000/562499 MPa (derived)
+f_c, for reading = ≈30.02 MPa
+0.1 + 0.2 == 0.3: yes

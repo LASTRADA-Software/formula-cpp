@@ -1,0 +1,14 @@
+three specimens:
+sample_mean(f_c(i)) = 91/3 MPa, for reading ≈30.33 MPa
+sample_range(f_c(i)) = 1.2 MPa
+five specimens:
+without outliers(f_c(i); abs(x - pass mean) > 3 MPa; most extreme per pass; keep on limit; at most 2; keep at least 3)
+1. f_c = 151/5 MPa; 149/5 MPa; 31 MPa; 152/5 MPa; 36 MPa
+2. 3 MPa
+3. pass 1: 5 values, mean 787/25 MPa
+4. rejected element 5 of 5 (36 MPa) in pass 1: abs(x - mean) = 113/25 MPa > 3 MPa (deviation from mean)
+5. 3 MPa
+6. pass 2: 4 values, mean 607/20 MPa
+7. settled: 1 rejected, 4 remain
+8. sample_mean(#7) = 607/20 MPa
+mean of the specimens kept = 30.35 MPa

@@ -63,15 +63,15 @@
 /// in the type to compare. So this header refuses repeated tags and does not
 /// attempt the general question.
 ///
-/// The first two exist because `variants(...)` over a bare pack accepted
-/// nonsense in silence. Measured on cl 19.51 at `/W4 /WX`, **exit 0, no
-/// diagnostics**: `variants(var<EdgeX>, var<EdgeX>)` -- a pack with no tags
-/// anywhere -- `variants(var<Force>)`, and `variants()`. The first slipped
-/// through rule 3 because a `VarNode` happens to publish a `dimension`; the
-/// second never reached it, a one-element pack having no pair; the third is
-/// vacuous. All three are refused now, at the earliest point where the
-/// mistake is still the author's own call rather than something several
-/// layers away.
+/// The first two exist because `variants(...)` over a bare pack would
+/// otherwise accept nonsense in silence. Measured on cl 19.51 at `/W4 /WX`
+/// without them, **exit 0, no diagnostics**:
+/// `variants(var<EdgeX>, var<EdgeX>)` -- a pack with no tags anywhere --
+/// `variants(var<Force>)`, and `variants()`. The first would slip through
+/// rule 3 because a `VarNode` happens to publish a `dimension`; the second
+/// would never reach it, a one-element pack having no pair; the third is
+/// vacuous. All three are refused, at the earliest point where the mistake is
+/// still the author's own call rather than something several layers away.
 ///
 /// **Variants agree in the quantity they report, and at this layer that means
 /// the dimension.** Variants are heterogeneous by design -- the spec's own
@@ -99,6 +99,7 @@
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -211,6 +212,15 @@ template <typename Tag, SeriesNode Expr>
 {
     static_assert(detail::RequireSingleValueExpression<Expr>::value);
     return VariantCase<Tag, ConstantNode<coherent(Expr::dimension)>> { ConstantNode<coherent(Expr::dimension)> {} };
+}
+
+/// A bound formula as `variant`'s expression: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Tag, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto variant(Bound boundFormula) noexcept
+{
+    return variant<Tag>(boundFormula.expression);
 }
 
 namespace detail
@@ -466,7 +476,7 @@ namespace detail
     /// can be sequenced. The agreement rule is asked **only once every
     /// argument is a variant**: a non-variant has no `dimension` to compare,
     /// and asking anyway buries the one message that matters. Measured on cl
-    /// 19.51 before this gate existed, `variants(42, 43)` reported six errors
+    /// 19.51 without this gate, `variants(42, 43)` would report six errors
     /// -- `C2825`, `C2510` and `C2065`, once for `First` and once for `Other`
     /// -- every one of them the compiler's own wording for "that has no such
     /// member", and not one of them ours. `method_variants_agreement_gated.cpp`
@@ -668,14 +678,14 @@ namespace detail
     /// **A layout is not stated from outside the library, except by
     /// copying one** (see below). The constructor that takes positions and a
     /// count is public, so that braces reach it, and refuses whenever it is
-    /// used, in the library's words. Once it checked the layout and accepted
-    /// any well-formed one, so `{ { 5, 7 }, 9 }` made a two-variant method
+    /// used, in the library's words. Were it to check the layout and accept
+    /// any well-formed one, `{ { 5, 7 }, 9 }` would make a two-variant method
     /// that no overlay touched report its variants as the 6th and 8th of 9.
     /// `select<Kept...>()` is public for the same reason and refuses the same
-    /// way: while it made the selection itself, `decltype(nine.published)
-    /// {}.select<5, 7>()`, taken from a throwaway pack of nine, did the same
-    /// thing with no prune on record. The checked constructor and `kept` are
-    /// private, reached through `PublishedLayoutAccess`, which the overlay
+    /// way: were it to make the selection itself, `decltype(nine.published)
+    /// {}.select<5, 7>()`, taken from a throwaway pack of nine, would do the
+    /// same thing with no prune on record. The checked constructor and `kept`
+    /// are private, reached through `PublishedLayoutAccess`, which the overlay
     /// operations and the negative cases pinning the check use.
     ///
     /// **Why a selection and not the checking constructor.** Which variants a pin
@@ -913,7 +923,7 @@ namespace detail
 /// deliberately: this is a public aggregate with a public member, so a
 /// `Variants<...>` can be declared directly with no factory call anywhere,
 /// and a check placed only in the factory would let that route through. The
-/// lookup tables were once open to the same mistake, and are checked the same
+/// lookup tables would be open to the same mistake, and are checked the same
 /// way.
 template <typename... Cs>
 struct Variants
@@ -1476,12 +1486,12 @@ namespace detail
     /// Fails to compile when a method's rounding rule rounds in a unit that
     /// does not measure the dimension its variants report.
     ///
-    /// A `Megapascal` rule on a method whose variants measure a length used to
-    /// be accepted by `method(...)` and refused only inside `evaluate_method`,
-    /// by the rounding node it builds -- so a method nobody evaluated in a test
-    /// would ship broken. Templated on the variants pack and the rule, the two
-    /// places the two dimensions come from, so that both appear in the
-    /// diagnostic.
+    /// A `Megapascal` rule on a method whose variants measure a length is
+    /// refused where the method is built, rather than only inside
+    /// `evaluate_method` by the rounding node it builds, which would let a
+    /// method nobody evaluated in a test ship broken. Templated on the variants
+    /// pack and the rule, the two places the two dimensions come from, so that
+    /// both appear in the diagnostic.
     template <typename Vs, typename Rounding>
     struct RequireRoundingRuleMeasuresVariants
     {
@@ -1517,14 +1527,13 @@ namespace detail
     /// First its shape: the variants, the rounding rule and the constraints,
     /// each the kind of thing its factory builds. `method(...)` takes three
     /// arguments of unrelated types, so nothing stops an author passing them
-    /// in the wrong order. Before these rules,
-    /// `method(rounding_rule<...>(), variants(...), constraints())` compiled
-    /// on cl 19.51 and clang-cl 22, and failed only at `evaluate_method`, with
-    /// the compiler's own words for it: cl's `C2027: use of undefined type
+    /// in the wrong order. Without these rules,
+    /// `method(rounding_rule<...>(), variants(...), constraints())` would
+    /// compile on cl 19.51 and clang-cl 22 and fail only at `evaluate_method`,
+    /// in the compiler's own words: cl's `C2027: use of undefined type
     /// SelectVariant<...>`, clang-cl's "implicit instantiation of undefined
-    /// template". Each rule names the
-    /// part it refuses, so a swapped pair is reported as the two parts that
-    /// are wrong.
+    /// template". Each rule names the part it refuses, so a swapped pair is
+    /// reported as the two parts that are wrong.
     ///
     /// Then the rounding rule's dimension, only once there is a rule and an
     /// agreed dimension to compare -- see `canAskRoundingRule`.
@@ -1828,10 +1837,9 @@ namespace detail
 ///
 /// **It rounds exactly as a `RoundNode` does**, and derives from one, so the
 /// unit, the places and the mode are stated once. What it adds is provenance.
-/// A method's rule used to be applied through an ordinary `rounded<>` node,
-/// traced as an ordinary `Round` step, which says to how many places a value
-/// was rounded but not whose rule that was: the method's author's, or a
-/// jurisdiction's. A trace records this node as a
+/// An ordinary `rounded<>` node is traced as an ordinary `Round` step, which
+/// says to how many places a value was rounded but not whose rule that was:
+/// the method's author's, or a jurisdiction's. A trace records this node as a
 /// `StepKind::RoundingRuleApplied` step (`trace.hpp`), which says both.
 ///
 /// **Only `evaluate_method` builds one**, around the variant it selected and

@@ -11,6 +11,7 @@ theme:
   name: material
   features:
     - navigation.sections
+    - navigation.indexes
     - content.code.copy
 markdown_extensions:
   - admonition
@@ -23,6 +24,18 @@ markdown_extensions:
   # configuration is set up to read.
   - pymdownx.arithmatex:
       generic: true
+  # The tutorial includes its code and output from the programs CTest builds
+  # and runs (examples/tutorial/), so a published page cannot drift from what
+  # compiles. Paths resolve from the repository root, where `mkdocs build`
+  # runs; check_paths turns a missing file or a missing
+  # `--8<-- [start:name]` section into a build error, which --strict in
+  # .github/workflows/pages.yml then fails on. dedent_subsections strips a
+  # section's common indentation, so a region taken from inside main() starts
+  # at the left margin rather than four spaces in.
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+      dedent_subsections: true
 extra_javascript:
   - javascripts/mathjax.js
   # Pinned, in keeping with this repository's own habit of pinning its other
@@ -30,23 +43,41 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
 nav:
   - Home: index.md
-  - Numbers: numbers.md
-  - Numeric headroom: numeric-headroom.md
-  - Dimensions and units: dimensions.md
-  - Quantities and measurements: quantities.md
-  - Expressions and evaluation: expressions.md
-  - Citations and rendering: citations.md
-  - Tracing and audit trails: tracing.md
-  - Displaying numbers: display.md
-  - Calculations and worksheets: calculations.md
-  - Rounding and conditionals: rounding-and-conditionals.md
-  - Constraints and verdicts: constraints.md
-  - Lookup tables: lookup-tables.md
-  - Methods and overlays: methods-and-overlays.md
-  - Series and grading curves: series.md
-  - Statistics, outliers and precision: statistics.md
-  - Other samples and other tests: records.md
-  - Opaque operations and bounded retry: opaque-and-retry.md
+  - Tutorial:
+      - tutorial/index.md
+      - 1. First formula: tutorial/01-first-formula.md
+      - 2. Units and dimensions: tutorial/02-units-and-dimensions.md
+      - 3. Exact numbers: tutorial/03-exact-numbers.md
+      - 4. Missing and entered values: tutorial/04-missing-and-entered.md
+      - 5. Rounding: tutorial/05-rounding.md
+      - 6. Constraints: tutorial/06-constraints.md
+      - 7. Citations, rendering and documentation: tutorial/07-documentation.md
+      - 8. Tracing: tutorial/08-tracing.md
+      - 9. Calculations and worksheets: tutorial/09-worksheets.md
+      - 10. Lookup tables: tutorial/10-lookup-tables.md
+      - 11. Methods and overlays: tutorial/11-methods-and-overlays.md
+      - 12. Series: tutorial/12-series.md
+      - 13. Statistics: tutorial/13-statistics.md
+      - 14. Records: tutorial/14-records.md
+      - 15. Opaque operations and bounded retry: tutorial/15-opaque-and-retry.md
+  - Guides:
+      - Numbers: numbers.md
+      - Numeric headroom: numeric-headroom.md
+      - Dimensions and units: dimensions.md
+      - Quantities and measurements: quantities.md
+      - Expressions and evaluation: expressions.md
+      - Citations and rendering: citations.md
+      - Tracing and audit trails: tracing.md
+      - Displaying numbers: display.md
+      - Calculations and worksheets: calculations.md
+      - Rounding and conditionals: rounding-and-conditionals.md
+      - Constraints and verdicts: constraints.md
+      - Lookup tables: lookup-tables.md
+      - Methods and overlays: methods-and-overlays.md
+      - Series and grading curves: series.md
+      - Statistics, outliers and precision: statistics.md
+      - Other samples and other tests: records.md
+      - Opaque operations and bounded retry: opaque-and-retry.md
   - Gallery: gallery.md
   # Doxygen output, dropped into the built site's api/ directory by
   # .github/workflows/pages.yml after `mkdocs build` runs -- not a page

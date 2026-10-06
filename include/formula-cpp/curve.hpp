@@ -66,6 +66,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -194,6 +195,15 @@ template <SeriesNode D, SeriesNode V>
 [[nodiscard]] constexpr CurveNode<D, V> curve(D domainSeries, V valueSeries) noexcept
 {
     return CurveNode<D, V> { {}, domainSeries, valueSeries };
+}
+
+/// A bound formula as either half of `curve`: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename D, typename V>
+    requires detail::AnyBound<D, V>
+[[nodiscard]] constexpr auto curve(D domainHalf, V valueHalf) noexcept
+{
+    return curve(detail::as_operand(domainHalf), detail::as_operand(valueHalf));
 }
 
 namespace detail
@@ -369,6 +379,15 @@ template <Monotone M, CurveExpression A, CurveExpression B>
     return SpliceNode<M, A, B> { {}, firstCurve, secondCurve };
 }
 
+/// A bound formula as either curve `splice` joins: the formula it holds, in
+/// its place (`yields.hpp`).
+template <Monotone M, typename A, typename B>
+    requires detail::AnyBound<A, B>
+[[nodiscard]] constexpr auto splice(A firstCurve, B secondCurve) noexcept
+{
+    return splice<M>(detail::as_operand(firstCurve), detail::as_operand(secondCurve));
+}
+
 namespace detail
 {
     /// Fails to compile when `splice` is given a single value where a curve
@@ -468,6 +487,15 @@ template <CurveExpression C, Node At>
 [[nodiscard]] constexpr InterpolateAlongNode<C, At> interpolate_at(C curveExpression, At at) noexcept
 {
     return InterpolateAlongNode<C, At> { {}, curveExpression, at };
+}
+
+/// A bound formula as the curve `interpolate_at` reads, or where it reads it:
+/// the formula it holds, in its place (`yields.hpp`).
+template <typename C, typename At>
+    requires detail::AnyBound<C, At>
+[[nodiscard]] constexpr auto interpolate_at(C curveExpression, At at) noexcept
+{
+    return interpolate_at(detail::as_operand(curveExpression), detail::as_operand(at));
 }
 
 /// An evaluated curve in the coherent units of its dimensions: each point

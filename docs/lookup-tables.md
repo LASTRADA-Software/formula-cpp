@@ -46,8 +46,8 @@ table's data, so they are an ordinary runtime member, handed to the factory:
 
 `formula::yields<SizeCorrection>` binds the lookup to the quantity it produces,
 so each later render, evaluation and trace of it names no result type (see
-[Expressions](expressions.md)); a formula that uses it as an operand takes its
-`.expression`.
+[Expressions](expressions.md)). Another formula uses it directly -- as an
+operand, or as another lookup's key -- where it stands for the lookup it holds.
 
 Everything in the **template argument list** — the unit the keys are stated in,
 the bands themselves, the unit the values are stated in — is the method: fixed,
@@ -226,10 +226,10 @@ to zero, and a row whose correction you forgot to type would then answer `0`,
 confidently, indistinguishable from a deliberate zero.
 
 It is the **node's own member type**, not only the factory's parameter type,
-and that distinction was bought the hard way. A lookup node is a public
-aggregate with public members, so it can be declared without calling a factory
-at all — and while the member was a raw array, that route bypassed the check
-entirely and the untyped rows evaluated to `0` on all three kinds. The factory's
+and the distinction matters. A lookup node is a public aggregate with public
+members, so it can be declared without calling a factory at all — and with a
+raw-array member that route would bypass the check entirely and evaluate the
+untyped rows to `0` on all three kinds. The factory's
 parameter cannot see a call that never happens. A consequence worth knowing:
 a lookup node has no default constructor, because `{}` for a table of three
 rows is a count of zero, which is exactly the mistake being refused. The
@@ -608,8 +608,8 @@ method actually applies.
 ```cpp
 [[nodiscard]] constexpr auto classFactor()
 {
-    return formula::yields<SizeCorrection>(formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(
-        sizeCurveFactor().expression, { 91.9_r, 101.3_r, 108.7_r }));
+    return formula::yields<SizeCorrection>(
+        formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(sizeCurveFactor(), { 91.9_r, 101.3_r, 108.7_r }));
 }
 ```
 
@@ -648,12 +648,12 @@ half-open interval everywhere in this library — in the plain rendering, in
 Markdown, in LaTeX, and in the trace.
 
 **It is spelled that way because the obvious mathematical notation is Markdown
-link syntax.** An earlier draft of this library rendered a rounding step as
-`round[to 1 dp of mm](d)`; in CommonMark that is `[text](url)`, and renderers
-silently dropped the operand and published a broken line. A test now asserts
-that no Markdown rendering contains `](` or a bare `[`, and a bracketed interval
-is exactly the character sequence that would defeat it. The wording chosen
-carries no punctuation at all, so it survives every Markdown flavour untouched:
+link syntax.** A rounding step rendered as `round[to 1 dp of mm](d)` would be
+`[text](url)` in CommonMark, and renderers would silently drop the operand and
+publish a broken line. A test asserts that no Markdown rendering contains `](`
+or a bare `[`, and a bracketed interval is exactly the character sequence that
+would defeat it. The wording chosen carries no punctuation at all, so it
+survives every Markdown flavour untouched:
 
 ```
 banded (md):   lookup(`d`, 0 to under 127 mm gives 913/10 %, 127 to under 173 mm gives 1051/10 %, 173 to under 211 mm gives 1127/10 %)
@@ -688,7 +688,7 @@ it wraps anything else — there is nothing special to do:
 [[nodiscard]] constexpr auto correctedStrength(LookupExampleShape shape)
 {
     return formula::yields<CorrectedStrength>(
-        formula::documented(var<MeasuredStrength> * sizeFactor().expression * shapeFactor(shape).expression,
+        formula::documented(var<MeasuredStrength> * sizeFactor() * shapeFactor(shape),
                             { .title = "Corrected compressive strength",
                               .reference = "Example Standard 8:2020",
                               .section = "7.3",
