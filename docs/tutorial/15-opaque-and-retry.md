@@ -100,8 +100,9 @@ not judged. Attempt 2, 31.2 MPa, differs from it by 1.2 MPa, more than
 
 ## Ending in exactly one of a fixed set of ways
 
-`outcome->end()` says how the retry ended, one of the six values of
-`formula::RetryEnd`:
+A retry ends in exactly one of the six ways `formula::RetryEnd` names.
+`outcome->end()` reports five of them; a failed retry has no outcome, only
+the failure:
 
 - **accepted:** the acceptance held; the value is that attempt's, as here.
 - **exhausted:** the acceptance never held in the attempts allowed; the
