@@ -75,6 +75,21 @@ add_test(NAME example.readme.output-detects-a-difference
 set_tests_properties(example.readme.output-detects-a-difference PROPERTIES
     PASS_REGULAR_EXPRESSION "differs from")
 
+# README.md shows examples/readme.cpp: its one ```cpp block must be a run of
+# that source's lines, and its one ```text block a run of the lines it prints.
+# GitHub renders the README directly, so it cannot include them as the site's
+# pages do.
+add_test(NAME docs.readme-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/readme.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+add_test(NAME docs.readme-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-readme>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+
 # The tutorial's programs: docs/tutorial/ includes their code and output.
 formula_add_pinned_example(tutorial_01_first_formula tutorial/01_first_formula.cpp)
 formula_add_pinned_example(tutorial_02_units_and_dimensions tutorial/02_units_and_dimensions.cpp)
@@ -363,22 +378,14 @@ add_test(NAME docs.display-output
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
             -D "CALL_TABLES=ON"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
-# README.md's ```text blocks are judged against this example too: its
-# std::format block is this program's output, and any ```text block added to
-# README later must be as well.
-add_test(NAME docs.readme-display-output
-    COMMAND "${CMAKE_COMMAND}"
-            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-display>"
-            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
-            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
 add_test(NAME docs.display-snippets
     COMMAND "${CMAKE_COMMAND}"
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/display.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
 
-# README.md and docs/index.md quote this program's three speeds at 250 W
-# verbatim, and say that the descent at no power has no real answer. Pinned
+# docs/index.md quotes this program's three speeds at 250 W verbatim, and
+# says that the descent at no power has no real answer. Pinned
 # here, in the order the program prints them, in a bracket argument for the
 # reason the constraints example above gives: the literal `.` and `(...)`
 # around each speed need escaping in the regex.
