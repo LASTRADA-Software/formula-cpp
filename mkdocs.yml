@@ -29,10 +29,13 @@ markdown_extensions:
   # compiles. Paths resolve from the repository root, where `mkdocs build`
   # runs; check_paths turns a missing file or a missing
   # `--8<-- [start:name]` section into a build error, which --strict in
-  # .github/workflows/pages.yml then fails on.
+  # .github/workflows/pages.yml then fails on. dedent_subsections strips a
+  # section's common indentation, so a region taken from inside main() starts
+  # at the left margin rather than four spaces in.
   - pymdownx.snippets:
       base_path: ["."]
       check_paths: true
+      dedent_subsections: true
 extra_javascript:
   - javascripts/mathjax.js
   # Pinned, in keeping with this repository's own habit of pinning its other
