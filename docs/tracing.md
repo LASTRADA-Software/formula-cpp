@@ -209,12 +209,12 @@ argument, as `explain` does.
 
 A verb without a twin -- or one of your own that takes a sink -- goes through
 `traced`, which gives the evaluation a `RecordingSink` and returns what the
-evaluation returned beside what the sink recorded. Over the `ratio` and the
+evaluation returned beside what the sink recorded. Over the `gradient` and the
 `inputs` of `examples/tracing.cpp` ([Reading a derivation](#reading-a-derivation)):
 
 ```cpp
 auto const run = formula::traced([&](auto recordingSink)
-                                 { return formula::checked_evaluate<WaterCementRatio>(ratio, inputs, recordingSink); });
+                                 { return formula::checked_evaluate<Gradient>(gradient, inputs, recordingSink); });
 ```
 
 `run.outcome` is the `std::expected` that `checked_evaluate` returned, and
@@ -269,27 +269,35 @@ where the failure can be handled.
 
 ## Reading a derivation
 
-`examples/tracing.cpp` builds the same water/cement ratio
-`examples/citations.cpp` evaluates -- 180 l of water, 300 l of cement, with the
-same invented citation attached by `documented()` -- and prints its trace:
+`examples/tracing.cpp` builds the same road gradient `examples/citations.cpp`
+evaluates, `s = h / L`, with the same invented citation attached by
+`documented()`. The rise is 90 m, and the run is declared in kilometres and
+entered as 3 km:
 
 ```cpp
-auto const explained = formula::explain<WaterCementRatio>(ratio, inputs);
+auto const inputs = formula::environment(formula::Measured<Rise> { 90 }, formula::Measured<Run> { 3 });
+```
+
+It prints the trace:
+
+```cpp
+auto const explained = formula::explain<Gradient>(gradient, inputs);
 
 // render_trace has no default for maxSteps: TraceRenderOptions::maxSteps
 // is a StepLimit, which has no default constructor, so a caller who
 // writes render_trace(explained.trace, {}) does not compile, rather than
 // risking an unbounded dump of a derivation many times this size.
-std::print("{}", formula::render_trace(explained.trace, { .maxSteps = 10 }));
+std::string const rendered = formula::render_trace(explained.trace, { .maxSteps = 10 });
+std::print("{}", rendered);
 ```
 
 which prints, verbatim:
 
 ```
-1. V_w = 180 l
-2. V_c = 300 l
-3. #1 / #2 = 3/5
-4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
+1. h = 90 m
+2. L = 3 km
+3. #1 / #2 = 3/100
+4. #3 = 3/100 [Road gradient, Example Standard 1:2020, 5.4.2, (3)]
 ```
 
 Every line is one node the evaluator visited, numbered from one in the order
@@ -299,8 +307,8 @@ number, `#1` and `#2`; the citation on the last line is the one `documented()`
 attached, and it appears only on the step for the `DocumentedNode` itself, not
 on the division it wraps.
 
-The two leaves read `180 l` and `300 l`, not the `9/50` and `3/10` cubic
-metres the arithmetic actually runs on. Every `Step` stores its value in the
+The run reads `3 km`, as it was entered, not the `3000` metres the arithmetic
+actually runs on. Every `Step` stores its value in the
 **coherent unit** of its dimension (the SI unit, times one of each
 [named base dimension](dimensions.md#base-dimensions-the-si-does-not-have) it
 carries) -- the one scale every step's value can be compared on -- but also
@@ -354,8 +362,8 @@ holding it:
 walking that quantity's own node; by the time `RecordingSink::produced` builds
 a `Step` for it, the type is gone and only the runtime `Unit` value survives.
 Capturing anything less at that point -- the coherent unit alone, say --
-would make `render_trace` unable to ever show `180 l` again; it would show
-`9/50 m^3`, arithmetically identical and a strictly worse record of what
+would make `render_trace` unable to ever show `3 km` again; it would show
+`3000 m`, arithmetically identical and a strictly worse record of what
 someone actually typed.
 
 A step that is a plain computation, `#1 / #2` above, has no declared unit of
@@ -382,7 +390,7 @@ kilowatt-hour times an energy. A unit with nothing above the slash is written
 with negative exponents. So `20000/413 kg^-1` cannot read as a fraction
 divided again, as `20000/413 1/kg` would. A computed mass reads `kg`, a
 computed length `m`. Only a dimensionless value is a bare number: `#1 / #2`
-above, a ratio of two volumes, reads `3/5`. A value declared in a unit of the
+above, a length over a length, reads `3/100`. A value declared in a unit of the
 author's own that has no symbol reads in the coherent unit too, converted,
 since its number alone could not say what scale it is on. A dimensionless
 unit with a scale must have a symbol, so a bare number is always a value at

@@ -43,26 +43,31 @@ carries a `formula::Citation` alongside it. A citation is five
 defaults to empty rather than being required:
 
 ```cpp
-constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
-                                           { .title = "Water/cement ratio",
+constexpr auto ratio = formula::documented(var<Rise> / var<Run>,
+                                           { .title = "Road gradient",
                                              .reference = "Example Standard 1:2020",
                                              .section = "5.4.2",
                                              .equation = "(3)",
-                                             .text = "Ratio of water content to cement content." });
+                                             .text = "Height gained over horizontal distance covered." });
 ```
 
-(`test/citation_tests.cpp`, and the same declaration in
-`examples/citations.cpp`.) A citation naming only the fields that apply is
-just as valid:
+(`test/citation_tests.cpp`; `examples/citations.cpp` declares the same
+formula and citation as `gradient`, with a longer text.) A citation naming
+only the fields that apply is just as valid:
 
 ```cpp
-constexpr auto sparse = formula::documented(var<WaterVolume>, { .title = "A volume" });
+constexpr auto sparse = formula::documented(var<Rise>, { .title = "A height" });
 ```
 
 and every field left unnamed reads back empty, not absent --
 `sparse.citation.reference.empty()` holds, there is no separate "was this
 field given" flag (`test/citation_tests.cpp`,
-`"citation: a field not named is empty, not absent"`).
+`"citation: a field not named is empty, not absent"`). `examples/citations.cpp`
+declares the same `sparse` and checks it:
+
+```
+sparse citation: title "A height", reference empty: yes
+```
 
 The braced designated initialiser on the second argument works because that
 argument is a plain `formula::Citation`, not a deduced template parameter --
@@ -91,9 +96,9 @@ template <typename Rep = Rational, Node Inner, typename Env, typename Sink = Nul
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::dispatch<Rep>(node.inner, environment, sink);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::dispatch<Rep>(node.inner, environment, sink);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 ```
 
@@ -102,12 +107,12 @@ dimension nor the number it produces:
 
 ```cpp
 STATIC_REQUIRE(decltype(ratio)::dimension == formula::dim::Scalar);
-STATIC_REQUIRE(decltype(formula::documented(var<WaterVolume>, {}))::dimension == formula::dim::Volume);
+STATIC_REQUIRE(decltype(formula::documented(var<Rise>, {}))::dimension == formula::dim::Length);
 ```
 
 ```cpp
 constexpr auto wrapped = formula::checked_evaluate<Ratio>(ratio, inputs);
-constexpr auto bare = formula::checked_evaluate<Ratio>(var<WaterVolume> / var<CementVolume>, inputs);
+constexpr auto bare = formula::checked_evaluate<Ratio>(var<Rise> / var<Run>, inputs);
 
 STATIC_REQUIRE(wrapped.has_value());
 STATIC_REQUIRE(wrapped->measurement().value() == rat(3, 5));
@@ -117,11 +122,11 @@ STATIC_REQUIRE(wrapped->measurement() == bare->measurement());
 (`test/citation_tests.cpp`, `"citation: wrapping does not change the
 dimension"` and `"citation: a wrapped formula evaluates to what it
 wrapped"`.) `examples/citations.cpp` prints the same fact as a number rather
-than a boolean -- the wrapped formula evaluates to exactly the ratio the bare
-division would have produced:
+than a boolean -- the wrapped formula evaluates to exactly the gradient the
+bare division would have produced, 90 m over 3000 m:
 
 ```
-w/c = 0.6 (derived)
+s = 0.03 (derived)
 ```
 
 This is not merely an absence of a check; there is a check, and it still
@@ -180,10 +185,10 @@ expression is still an expression"`) -- and a citation survives being
 wrapped a second time, each copy keeping its own fields:
 
 ```cpp
-constexpr auto outer = formula::documented(ratio, { .title = "Water/cement ratio, per cent" });
+constexpr auto outer = formula::documented(ratio, { .title = "Road gradient, per cent" });
 
-STATIC_REQUIRE(outer.citation.title == std::string_view { "Water/cement ratio, per cent" });
-STATIC_REQUIRE(outer.inner.citation.title == std::string_view { "Water/cement ratio" });
+STATIC_REQUIRE(outer.citation.title == std::string_view { "Road gradient, per cent" });
+STATIC_REQUIRE(outer.inner.citation.title == std::string_view { "Road gradient" });
 STATIC_REQUIRE(decltype(outer)::dimension == formula::dim::Scalar);
 ```
 
@@ -193,13 +198,12 @@ again"`.)
 ## Nesting: what order citations come back in
 
 A formula built from an already-documented formula carries two citations,
-one nested inside the other. `test/document_tests.cpp` builds a water/cement
-ratio, then multiplies it by 100 and documents *that*:
+one nested inside the other. `test/document_tests.cpp` builds a road
+gradient, then multiplies it by 100 and documents *that*:
 
 ```cpp
 constexpr auto perCent = formula::documented(
-    ratio * rat(100),
-    { .title = "Water/cement ratio, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
+    ratio * rat(100), { .title = "Road gradient, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
 ```
 
 `formula::document()` walks the tree and returns both citations, **outermost
@@ -209,9 +213,9 @@ first**:
 formula::Documentation const documentation = formula::document(perCent);
 
 REQUIRE(documentation.citations.size() == 2);
-CHECK(documentation.citations[0].title == std::string_view { "Water/cement ratio, per cent" });
+CHECK(documentation.citations[0].title == std::string_view { "Road gradient, per cent" });
 CHECK(documentation.citations[0].section == std::string_view { "5.4.3" });
-CHECK(documentation.citations[1].title == std::string_view { "Water/cement ratio" });
+CHECK(documentation.citations[1].title == std::string_view { "Road gradient" });
 CHECK(documentation.citations[1].section == std::string_view { "5.4.2" });
 ```
 
@@ -224,25 +228,40 @@ A formula with no citation at all simply returns an empty list rather than a
 placeholder entry (`test/document_tests.cpp`, `"document: an undocumented
 formula yields an empty citation list"`).
 
+`examples/citations.cpp` nests a citation the same way, but states the
+gradient per cent through the unit it is evaluated into, `unit::Percent`,
+rather than a factor of 100:
+
+```cpp
+constexpr auto perCent = formula::documented(
+    gradient, { .title = "Road gradient, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
+```
+
+```
+nested citation: Road gradient, per cent, Example Standard 1:2020, 5.4.3
+nested citation: Road gradient, Example Standard 1:2020, 5.4.2
+s_pc = 3 % (derived)
+```
+
 ## The three dialects
 
 `formula::Dialect` (`render.hpp`) has three values -- `Plain`, `Markdown` and
 `LaTeX` -- and `formula::render<D>(node)` spells the same formula three
 different ways depending on which is asked for. The plain and LaTeX
-renderings below are `examples/citations.cpp`'s own output for `ratio`, the
-water/cement formula from the section above:
+renderings below are `examples/citations.cpp`'s own output for `gradient`,
+the road gradient from the section above:
 
 ```
-plain: V_w / V_c
-latex: \frac{V_w}{V_c}
+plain: h / L
+markdown: `h` / `L`
+latex: \frac{h}{L}
 ```
 
 Markdown wraps every symbol in backticks, so a symbol containing an
-underscore -- `V_w`, in this formula -- is not read as emphasis by a Markdown
-renderer:
+underscore -- `C_rr`, say -- is not read as emphasis by a Markdown renderer:
 
 ```cpp
-CHECK(formula::render<Dialect::Markdown>(var<WaterVolume> / var<CementVolume>) == "`V_w` / `V_c`");
+CHECK(formula::render<Dialect::Markdown>(var<Rise> / var<Run>) == "`h` / `L`");
 ```
 
 (`test/render_tests.cpp`, `"render: the Markdown dialect emphasises the
@@ -261,9 +280,9 @@ or unit symbol), at the runtime level too -- so a documented sum inside a
 quotient is still bracketed exactly as the bare sum would be:
 
 ```cpp
-constexpr auto documented = formula::documented(var<WaterVolume> + var<CementVolume>, { .title = "Total volume" });
+constexpr auto documented = formula::documented(var<Rise> + var<Run>, { .title = "Total length" });
 
-CHECK(formula::render(documented / var<Diameter>) == "(V_w + V_c) / d");
+CHECK(formula::render(documented / var<Diameter>) == "(h + L) / d");
 ```
 
 (`test/render_tests.cpp`, `"render: a documented sum inside a quotient keeps
@@ -294,11 +313,11 @@ stays unbracketed"`.)
 `formula::document()` also walks a formula for every variable it reads,
 returned as `documentation.symbols`: each entry's symbol, description and
 unit, exactly as `formula::Describe<Q>` gives them for that quantity.
-`examples/citations.cpp` prints one row per variable in `ratio`:
+`examples/citations.cpp` prints one row per variable in `gradient`:
 
 ```
-symbol: V_w = effective water content [l]
-symbol: V_c = cement content [l]
+symbol: h = height gained [m]
+symbol: L = horizontal distance covered [m]
 ```
 
 Two rules govern that list. First, it is ordered by **first appearance**,
@@ -307,12 +326,11 @@ before `d` in a formula that reads `pi * d^2 / 4` and would not match how
 anyone reads it:
 
 ```cpp
-formula::Documentation const documentation =
-    formula::document(formula::pi * formula::pow<2>(var<Diameter>) / var<WaterVolume>);
+formula::Documentation const documentation = formula::document(formula::pi * formula::pow<2>(var<Diameter>) / var<Rise>);
 
 REQUIRE(documentation.symbols.size() == 2);
 CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
-CHECK(documentation.symbols[1].symbol == std::string_view { "V_w" });
+CHECK(documentation.symbols[1].symbol == std::string_view { "h" });
 ```
 
 (`test/document_tests.cpp`, `"document: symbols come back in first-appearance
