@@ -1,0 +1,27 @@
+k = linear least squares(s(i), F(i)).slope
+1. s = 1/10 mm; 1/5 mm; 3/10 mm; 2/5 mm
+2. F = 15 kN; 25 kN; 35 kN; 45 kN
+3. linear least squares(#1, #2) = intercept = 5 kN; slope = 100 kN/mm; r squared = 1; points = 4 [inside not shown] [Stiffness, Example Standard 12:2020, 5.2]
+4. slope of #3 = 100 kN/mm
+k = 100 kN/mm
+F_0 = 5 kN
+R2 = 1
+up to 3 attempts: f_a(k) = f_t(k); accept from attempt 2 when abs(f_a(k) - f_a(k-1)) <= 1/2 MPa; otherwise: test further specimens
+1. f_t(k) = 30 MPa
+2. attempt 1: f_a(k) = #1 = 30 MPa; not judged
+3. f_t(k) = 156/5 MPa
+4. f_a(k) = 156/5 MPa
+5. f_a(k-1) = 30 MPa
+6. #4 - #5 = 6/5 MPa
+7. abs(#6) = 6/5 MPa
+8. 1/2 MPa
+9. attempt 2: f_a(k) = #3 = 156/5 MPa; judged #7 <= #8: rejected
+10. f_t(k) = 31 MPa
+11. f_a(k) = 31 MPa
+12. f_a(k-1) = 156/5 MPa
+13. #11 - #12 = -1/5 MPa
+14. abs(#13) = 1/5 MPa
+15. 1/2 MPa
+16. attempt 3: f_a(k) = #10 = 31 MPa; judged #14 <= #15: accepted
+17. f_a = retry: accepted at attempt 3 of 3 = 31 MPa [Agreed strength, Example Standard 12:2020, 6]
+the retest: accepted after 3 attempt(s), f_a = 31 MPa

@@ -43,3 +43,5 @@ an invented `Example Standard`.
 - Chapter 11: [Methods and overlays](11-methods-and-overlays.md) -- one method, several variants, and a jurisdiction's changes.
 - Chapter 12: [Series](12-series.md) -- one quantity at several ages, calculated element by element.
 - Chapter 13: [Statistics](13-statistics.md) -- means and spreads of several specimens, and outliers rejected.
+- Chapter 14: [Records](14-records.md) -- values from a reference sample or an earlier test.
+- Chapter 15: [Opaque operations and bounded retry](15-opaque-and-retry.md) -- a least-squares fit, and a retest repeated at most a fixed number of times.
