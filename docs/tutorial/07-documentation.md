@@ -42,10 +42,11 @@ The rounding is written with its rule: `to 1 dp of MPa` in text, one
 decimal place of a megapascal, and the subscript `1\,\mathrm{MPa}` in LaTeX,
 the places followed by the unit they count in.
 
-Rendering a bound formula writes the expression it holds; the quantity it
-yields, `f_c`, is named by `formula::yields<Strength>`, not by the
-expression. The citation does not appear in either rendering: it describes
-the formula rather than being part of it.
+`render` writes the formula a bound formula holds, and names no result:
+`f_c` appears in neither line
+([Naming the result once](../expressions.md#naming-the-result-once)). The
+citation does not appear in either rendering: it describes the formula
+rather than being part of it.
 
 ## Generate its documentation
 
@@ -59,10 +60,11 @@ report's methods section needs:
 
 `page.symbols` holds one `formula::SymbolEntry` per quantity the formula
 reads, in the order the formula reads them, each with the symbol,
-description and unit its declaration gives. The result quantity is not a
-row of its own: the page documents what the formula reads. `page.citations`
-holds every citation in the formula, with all five fields; the program
-prints the title and the reference.
+description and unit its declaration gives. Like the rendering, the symbol
+table describes what the formula reads and names no result, so `f_c` has no
+row; the symbol table of a calculation, in chapter 9, lists each value it
+defines. `page.citations` holds every citation in the formula, with all five
+fields; the program prints the title and the reference.
 
 ## Output
 
