@@ -4,7 +4,7 @@ A formula built from other formulas is one larger expression tree
 ([Composing a formula from other formulas](expressions.md#composing-a-formula-from-other-formulas)):
 a named sub-formula is written into every formula that uses it. That is the
 right model for one published equation, and the wrong one for a bill, a
-report or a mix design of many named values, each built on the ones before
+report or a cost estimate of many named values, each built on the ones before
 it. Evaluated as a tree, a sub-result two formulas share is evaluated again
 for each of them, and nothing remembers it: change one input and everything
 is evaluated again, and nothing can say which values the change reached.

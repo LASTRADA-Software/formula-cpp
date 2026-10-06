@@ -4,13 +4,13 @@
 // alias.
 #include <formula-cpp/environment.hpp>
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", formula::unit::Litre>;
-using Ratio = formula::Quantity<struct RatioTag, "w/c", "water/cement ratio", formula::unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", formula::unit::Millimetre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", formula::unit::One>;
 
-// An environment that does not hold Ratio; asking for it is a compile error.
-inline constexpr auto env = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 183 } });
+// An environment that does not hold Gradient; asking for it is a compile error.
+inline constexpr auto env = formula::environment(formula::Measured<Rise> { formula::Rational { 183 } });
 
 int main()
 {
-    return env.get<Ratio>().has_value() ? 0 : 1;
+    return env.get<Gradient>().has_value() ? 0 : 1;
 }

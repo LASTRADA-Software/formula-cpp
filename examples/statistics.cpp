@@ -20,7 +20,7 @@
 //      first flips the verdict; the check joins a method's constraints.
 //
 // Every number, table and citation here is invented -- fictional Example
-// Standard references, exactly as every other example in this repository is.
+// Standard references, as every citation of a standard in this repository is.
 // No critical value here comes from any published table.
 
 #include <formula-cpp/document.hpp>

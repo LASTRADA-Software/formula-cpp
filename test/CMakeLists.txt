@@ -374,13 +374,13 @@ formula_add_negative_test(fixed_string_not_terminated
 formula_add_negative_test(describe_undeclared_type
     "formula: this type does not declare any quantity metadata")
 
-# NOT "CementVolume": that is this test file's own type name, and every
+# NOT "Run": that is this test file's own type name, and every
 # compiler echoes the offending type in ANY compile error, so a substring of
 # just the type name matches even when the intended call is deleted entirely
 # -- measured: deleting the wrong-type call and replacing it with an unrelated
-# error that merely mentions CementVolume left this test green. The type-to-
+# error that merely mentions Run left this test green. The type-to-
 # type wording below appears only for the mismatch this test exists to catch.
-formula_add_negative_test(quantity_wrong_type "'CementVolume' to 'WaterVolume'")
+formula_add_negative_test(quantity_wrong_type "'Run' to 'Rise'")
 
 formula_add_negative_test(describe_partially_specified
     "formula: this type does not declare any quantity metadata")

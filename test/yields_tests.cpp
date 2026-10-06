@@ -18,12 +18,12 @@ namespace
 {
 namespace unit = formula::unit;
 using formula::var;
-using WaterVolume = formula::Quantity<struct YieldsWaterTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct YieldsCementTag, "V_c", "cement content", unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct YieldsRatioTag, "w/c", "ratio of water to cement", unit::One>;
+using Rise = formula::Quantity<struct YieldsRiseTag, "h", "height gained", unit::Millimetre>;
+using Run = formula::Quantity<struct YieldsRunTag, "L", "horizontal distance covered", unit::Millimetre>;
+using Gradient = formula::Quantity<struct YieldsGradientTag, "s", "road gradient", unit::One>;
 
-constexpr auto ratio = formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);
-constexpr auto batch = formula::environment(formula::Measured<WaterVolume> { 163 }, formula::Measured<CementVolume> { 307 });
+constexpr auto ratio = formula::yields<Gradient>(var<Rise> / var<Run>);
+constexpr auto batch = formula::environment(formula::Measured<Rise> { 163 }, formula::Measured<Run> { 307 });
 
 [[nodiscard]] constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -86,36 +86,35 @@ inline constexpr auto fourAttempts = formula::retry<Estimate, 4, formula::FirstJ
 TEST_CASE("yields: the result quantity is named once, where the formula is written", "[yields]")
 {
     STATIC_REQUIRE(std::is_same_v<decltype(formula::checked_evaluate(ratio, batch)),
-                                  std::expected<formula::Outcome<WaterCementRatio>, formula::ArithmeticError>>);
-    STATIC_REQUIRE(formula::checked_evaluate(ratio, batch)
-                   == formula::checked_evaluate<WaterCementRatio>(ratio.expression, batch));
-    STATIC_REQUIRE(formula::checked_evaluate<WaterCementRatio>(ratio, batch) == formula::checked_evaluate(ratio, batch));
+                                  std::expected<formula::Outcome<Gradient>, formula::ArithmeticError>>);
+    STATIC_REQUIRE(formula::checked_evaluate(ratio, batch) == formula::checked_evaluate<Gradient>(ratio.expression, batch));
+    STATIC_REQUIRE(formula::checked_evaluate<Gradient>(ratio, batch) == formula::checked_evaluate(ratio, batch));
     STATIC_REQUIRE(formula::number_of(formula::evaluate(ratio, batch)) == formula::Rational { 163, 307 });
-    STATIC_REQUIRE(formula::evaluate<WaterCementRatio>(ratio, batch) == formula::evaluate(ratio, batch));
-    STATIC_REQUIRE(std::is_same_v<typename decltype(ratio)::quantity, WaterCementRatio>);
+    STATIC_REQUIRE(formula::evaluate<Gradient>(ratio, batch) == formula::evaluate(ratio, batch));
+    STATIC_REQUIRE(std::is_same_v<typename decltype(ratio)::quantity, Gradient>);
 }
 
 TEST_CASE("yields: explain, render and document see the formula itself", "[yields]")
 {
     auto const explained = formula::explain(ratio, batch);
-    CHECK(explained.outcome == formula::explain<WaterCementRatio>(ratio.expression, batch).outcome);
+    CHECK(explained.outcome == formula::explain<Gradient>(ratio.expression, batch).outcome);
     CHECK(formula::render(ratio) == formula::render(ratio.expression));
     CHECK(formula::document(ratio).formula == formula::document(ratio.expression).formula);
 
     // The trace is the formula's own, and so is every other spelling: a
     // result named again, a dialect, a vocabulary and number options.
-    CHECK(explained.trace.steps.size() == formula::explain<WaterCementRatio>(ratio.expression, batch).trace.steps.size());
-    CHECK(formula::explain<WaterCementRatio>(ratio, batch).outcome == explained.outcome);
+    CHECK(explained.trace.steps.size() == formula::explain<Gradient>(ratio.expression, batch).trace.steps.size());
+    CHECK(formula::explain<Gradient>(ratio, batch).outcome == explained.outcome);
     auto const checkedExplained = formula::checked_explain(ratio, batch);
     REQUIRE(checkedExplained.has_value());
     CHECK(checkedExplained->outcome == explained.outcome);
-    CHECK(formula::checked_explain<WaterCementRatio>(ratio, batch)->outcome == explained.outcome);
-    CHECK(formula::render(ratio) == "V_w / V_c");
+    CHECK(formula::checked_explain<Gradient>(ratio, batch)->outcome == explained.outcome);
+    CHECK(formula::render(ratio) == "h / L");
     CHECK(formula::render<formula::Dialect::LaTeX>(ratio) == formula::render<formula::Dialect::LaTeX>(ratio.expression));
-    constexpr auto renamedWater = formula::vocabulary(formula::renames<WaterVolume>("W"));
-    CHECK(formula::render(ratio, renamedWater) == "W / V_c");
-    CHECK(formula::render(ratio, formula::RenderOptions {}) == "V_w / V_c");
-    CHECK(formula::document(ratio, renamedWater).formula == "W / V_c");
+    constexpr auto renamedRise = formula::vocabulary(formula::renames<Rise>("H"));
+    CHECK(formula::render(ratio, renamedRise) == "H / L");
+    CHECK(formula::render(ratio, formula::RenderOptions {}) == "h / L");
+    CHECK(formula::document(ratio, renamedRise).formula == "H / L");
     CHECK(formula::document<formula::Dialect::Markdown>(ratio).formula
           == formula::document<formula::Dialect::Markdown>(ratio.expression).formula);
 
@@ -128,19 +127,18 @@ TEST_CASE("yields: explain, render and document see the formula itself", "[yield
 
 TEST_CASE("yields: around documented(), and as a calculation's definition", "[yields]")
 {
-    constexpr auto cited = formula::yields<WaterCementRatio>(formula::documented(
-        var<WaterVolume> / var<CementVolume>, { .title = "Water/cement ratio", .reference = "Example Standard 1:2020" }));
+    constexpr auto cited = formula::yields<Gradient>(
+        formula::documented(var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020" }));
     STATIC_REQUIRE(formula::number_of(formula::checked_evaluate(cited, batch)) == formula::Rational { 163, 307 });
     constexpr auto definition = formula::define(ratio);
-    STATIC_REQUIRE(std::is_same_v<typename decltype(definition)::quantity, WaterCementRatio>);
+    STATIC_REQUIRE(std::is_same_v<typename decltype(definition)::quantity, Gradient>);
 
     // The citation inside is the formula's; the definition holds the formula
     // itself, as `define<Q>` of it does.
     CHECK(formula::document(cited).citations.size() == 1);
-    STATIC_REQUIRE(std::is_same_v<std::remove_const_t<decltype(definition)>,
-                                  decltype(formula::define<WaterCementRatio>(ratio.expression))>);
     STATIC_REQUIRE(
-        std::is_same_v<decltype(formula::define<WaterCementRatio>(ratio)), std::remove_const_t<decltype(definition)>>);
+        std::is_same_v<std::remove_const_t<decltype(definition)>, decltype(formula::define<Gradient>(ratio.expression))>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::define<Gradient>(ratio)), std::remove_const_t<decltype(definition)>>);
 }
 
 TEST_CASE("yields: a series is evaluated for the quantity it is bound to", "[yields][series]")
@@ -190,9 +188,8 @@ TEST_CASE("yields: every verb hands on the sink and the vocabulary it is given",
 
     // A sink handed to a bound formula's verb hears what the unbound verb
     // tells it: the same steps, written the same way.
-    auto const unbound = formula::traced([&](auto recordingSink) {
-        return formula::checked_evaluate<WaterCementRatio>(ratio.expression, batch, recordingSink);
-    });
+    auto const unbound = formula::traced(
+        [&](auto recordingSink) { return formula::checked_evaluate<Gradient>(ratio.expression, batch, recordingSink); });
     REQUIRE(!unbound.trace.steps.empty());
     auto const checked =
         formula::traced([&](auto recordingSink) { return formula::checked_evaluate(ratio, batch, recordingSink); });
@@ -223,11 +220,11 @@ TEST_CASE("yields: every verb hands on the sink and the vocabulary it is given",
     // A vocabulary handed to an explain twin writes the trace as it does for
     // the unbound formula -- and each renaming shows in the trace, so a
     // vocabulary left behind would too.
-    constexpr auto renamedWater = formula::vocabulary(formula::renames<WaterVolume>("W"));
-    auto const renamed = written(formula::explain<WaterCementRatio>(ratio.expression, batch, renamedWater).trace);
-    REQUIRE(renamed != written(formula::explain<WaterCementRatio>(ratio.expression, batch).trace));
-    CHECK(written(formula::explain(ratio, batch, renamedWater).trace) == renamed);
-    CHECK(written(formula::checked_explain(ratio, batch, renamedWater)->trace) == renamed);
+    constexpr auto renamedRise = formula::vocabulary(formula::renames<Rise>("H"));
+    auto const renamed = written(formula::explain<Gradient>(ratio.expression, batch, renamedRise).trace);
+    REQUIRE(renamed != written(formula::explain<Gradient>(ratio.expression, batch).trace));
+    CHECK(written(formula::explain(ratio, batch, renamedRise).trace) == renamed);
+    CHECK(written(formula::checked_explain(ratio, batch, renamedRise)->trace) == renamed);
 
     constexpr auto renamedRetained = formula::vocabulary(formula::renames<Retained>("R"));
     auto const renamedSeries =
@@ -247,8 +244,8 @@ TEST_CASE("yields: a bound formula is not an operand, and arithmetic over formul
     // Asked of a type, arithmetic over a bound formula is answered without
     // the refusal firing: the refused operators name their return type.
     using Bound = std::remove_const_t<decltype(ratio)>;
-    using Refused = formula::detail::RefusedBoundValue<formula::Describe<WaterCementRatio>::dimension>;
-    STATIC_REQUIRE(std::is_same_v<decltype(var<WaterVolume> * std::declval<Bound>()), Refused>);
+    using Refused = formula::detail::RefusedBoundValue<formula::Describe<Gradient>::dimension>;
+    STATIC_REQUIRE(std::is_same_v<decltype(var<Rise> * std::declval<Bound>()), Refused>);
     STATIC_REQUIRE(std::is_same_v<decltype(std::declval<Bound>() + formula::Rational { 1 }), Refused>);
     STATIC_REQUIRE(std::is_same_v<decltype(-std::declval<Bound>()), Refused>);
     STATIC_REQUIRE(formula::detail::refused_already<Refused>());
@@ -256,13 +253,12 @@ TEST_CASE("yields: a bound formula is not an operand, and arithmetic over formul
     // The formula it holds is an operand as any formula is, and so is every
     // other operand those operators could have taken.
     using Held = std::remove_const_t<decltype(ratio.expression)>;
-    STATIC_REQUIRE(
-        std::is_same_v<decltype(var<WaterVolume> * ratio.expression),
-                       formula::BinaryNode<formula::BinaryOperator::Multiply, formula::VarNode<WaterVolume>, Held>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(var<Rise> * ratio.expression),
+                                  formula::BinaryNode<formula::BinaryOperator::Multiply, formula::VarNode<Rise>, Held>>);
     STATIC_REQUIRE(
         std::is_same_v<decltype(ratio.expression + formula::Rational { 1 }),
                        formula::BinaryNode<formula::BinaryOperator::Add, Held, formula::ConstantNode<unit::One>>>);
-    STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<WaterVolume>(var<CementVolume> * ratio.expression, batch))
+    STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<Rise>(var<Run> * ratio.expression, batch))
                    == formula::Rational { 163 });
 }
 
@@ -271,7 +267,7 @@ TEST_CASE("yields: a bound formula is not a comparand, and comparisons of formul
     // Asked of a type, a comparison over a bound formula is answered without
     // the refusal firing, and it is no equality a concept can use.
     using Bound = std::remove_const_t<decltype(ratio)>;
-    using Refused = formula::detail::RefusedBoundValue<formula::Describe<WaterCementRatio>::dimension>;
+    using Refused = formula::detail::RefusedBoundValue<formula::Describe<Gradient>::dimension>;
     constexpr auto limit = formula::constant<unit::One>(formula::Rational { 9, 20 });
     using Limit = std::remove_const_t<decltype(limit)>;
     STATIC_REQUIRE(std::is_same_v<decltype(std::declval<Bound>() >= limit),
@@ -284,6 +280,6 @@ TEST_CASE("yields: a bound formula is not a comparand, and comparisons of formul
     using Held = std::remove_const_t<decltype(ratio.expression)>;
     STATIC_REQUIRE(std::is_same_v<decltype(ratio.expression >= limit),
                                   formula::PredicateNode<formula::Comparison::GreaterOrEqual, Held, Limit>>);
-    constexpr auto tooWet = formula::constraint(ratio.expression >= limit, formula::Verdict { "too much water" });
-    STATIC_REQUIRE(formula::check(tooWet, batch).is_satisfied());
+    constexpr auto tooShallow = formula::constraint(ratio.expression >= limit, formula::Verdict { "too shallow" });
+    STATIC_REQUIRE(formula::check(tooShallow, batch).is_satisfied());
 }

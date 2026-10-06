@@ -485,7 +485,7 @@ namespace unit
     /// The coherent SI unit of dynamic viscosity. Three decimals, the default
     /// the other coherent units here carry, and it is the small end that needs
     /// them: a dynamic viscosity in pascal seconds runs from thousandths for a
-    /// thin liquid to hundreds for a stiff binder.
+    /// thin liquid to hundreds for a stiff paste.
     ///
     /// The symbol is written `Pa.s`, not `Pa*s`. An asterisk is Markdown
     /// emphasis, and a unit symbol is emitted into a Markdown document

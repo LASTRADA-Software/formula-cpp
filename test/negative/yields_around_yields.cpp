@@ -3,30 +3,30 @@
 // REJECT: no viable conversion
 // REJECT: no matching
 //
-// A formula bound to the water/cement ratio, bound again to an air content.
+// A formula bound to the road gradient, bound again to an efficiency.
 // A bound formula is the top of a formula, not a part of one, so the second
 // binding is refused where it is written, once. Evaluated, traced, defined,
 // rendered and documented, it adds nothing: each verb given the refused
 // binding asks nothing more of it. Without that, each verb would forward to
-// the inner binding, whose answer is for the water/cement ratio, where an
-// air content was promised.
+// the inner binding, whose answer is for the road gradient, where an
+// efficiency was promised.
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", formula::unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", formula::unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct RatioTag, "w/c", "ratio of water to cement", formula::unit::One>;
-using AirContent = formula::Quantity<struct AirTag, "a", "air content", formula::unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", formula::unit::Millimetre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", formula::unit::Millimetre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", formula::unit::One>;
+using Efficiency = formula::Quantity<struct EfficiencyTag, "eta", "drivetrain efficiency", formula::unit::One>;
 
 inline constexpr auto inputs =
-    formula::environment(formula::Measured<WaterVolume> { 163 }, formula::Measured<CementVolume> { 307 });
+    formula::environment(formula::Measured<Rise> { 163 }, formula::Measured<Run> { 307 });
 
 int main()
 {
-    constexpr auto ratio = formula::yields<WaterCementRatio>(formula::var<WaterVolume> / formula::var<CementVolume>);
-    constexpr auto rebound = formula::yields<AirContent>(ratio);
+    constexpr auto ratio = formula::yields<Gradient>(formula::var<Rise> / formula::var<Run>);
+    constexpr auto rebound = formula::yields<Efficiency>(ratio);
     auto const evaluated = formula::evaluate(rebound, inputs);
     auto const checked = formula::checked_evaluate(rebound, inputs);
     auto const explained = formula::explain(rebound, inputs);

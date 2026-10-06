@@ -22,12 +22,12 @@ a variable, and the arithmetic operators build a tree out of it at compile
 time:
 
 ```cpp
-inline constexpr auto waterCementRatio = formula::var<WaterVolume> / formula::var<CementVolume>;
+inline constexpr auto gradient = formula::var<Rise> / formula::var<Run>;
 ```
 
-`waterCementRatio`'s type is
-`formula::BinaryNode<formula::BinaryOperator::Divide, formula::VarNode<WaterVolume>, formula::VarNode<CementVolume>>`.
-Nothing has been computed by this line -- `decltype(waterCementRatio)` is the
+`gradient`'s type is
+`formula::BinaryNode<formula::BinaryOperator::Divide, formula::VarNode<Rise>, formula::VarNode<Run>>`.
+Nothing has been computed by this line -- `decltype(gradient)` is the
 whole formula, and every node publishes
 `static constexpr Dimension dimension`, computed at class scope from its
 operands', so the dimension is known before any value is. A node declares no
@@ -148,15 +148,15 @@ quantity, never a runtime lookup failure and never a zero.
 struct):
 
 ```cpp
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", formula::unit::Litre>;
-using Ratio = formula::Quantity<struct RatioTag, "w/c", "water/cement ratio", formula::unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", formula::unit::Millimetre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", formula::unit::One>;
 
-// An environment that does not hold Ratio; asking for it is a compile error.
-inline constexpr auto env = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 183 } });
+// An environment that does not hold Gradient; asking for it is a compile error.
+inline constexpr auto env = formula::environment(formula::Measured<Rise> { formula::Rational { 183 } });
 
 int main()
 {
-    return env.get<Ratio>().has_value() ? 0 : 1;
+    return env.get<Gradient>().has_value() ? 0 : 1;
 }
 ```
 
@@ -166,9 +166,9 @@ on MSVC's `cl.exe` (19.51, `cl-debug` preset):
 ```
 include\formula-cpp/environment.hpp(486): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
 include\formula-cpp/environment.hpp(486): note: the template instantiation context (the oldest one first) is
-test\negative\quantity_alias_environment_missing.cpp(15): note: see reference to function template instantiation 'formula::Measured<Ratio> formula::Environment<formula::Measured<WaterVolume>>::get<Ratio>(void) noexcept const' being compiled
-test\negative\quantity_alias_environment_missing.cpp(15): note: see the first reference to 'formula::Environment<formula::Measured<WaterVolume>>::get' in 'main'
-include\formula-cpp/environment.hpp(631): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
+test\negative\quantity_alias_environment_missing.cpp(15): note: see reference to function template instantiation 'formula::Measured<Gradient> formula::Environment<formula::Measured<Rise>>::get<Gradient>(void) noexcept const' being compiled
+test\negative\quantity_alias_environment_missing.cpp(15): note: see the first reference to 'formula::Environment<formula::Measured<Rise>>::get' in 'main'
+include\formula-cpp/environment.hpp(631): note: see reference to class template instantiation 'formula::detail::RequireProvided<Gradient,formula::Environment<formula::Measured<Rise>>>' being compiled
 ```
 
 The prototype this layer replaced answered a missing input with a runtime
@@ -191,8 +191,7 @@ actually needs is absent, the whole result is absent, never a number computed
 from whatever happened to be present.
 
 ```cpp
-constexpr auto partial =
-    formula::environment(formula::Measured<WaterVolume>::absent(), formula::Measured<CementVolume> { rat(300) });
+constexpr auto partial = formula::environment(formula::Measured<Rise>::absent(), formula::Measured<Run> { rat(300) });
 constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, partial);
 ```
 
@@ -244,36 +243,40 @@ quantity being evaluated, `checked_evaluate` returns that value with
 `ValueSource::ManuallyEntered` **without evaluating the formula at all** --
 proven in `test/evaluate_tests.cpp` by an override whose formula would
 divide by zero: the override still wins, because the formula is never
-reached. `examples/expressions.cpp` overrides a computed ratio -- the
-environment `batch` holds the two volumes and a ratio a person entered, 0.5
-(`0.5_r`, an exact decimal, from `using namespace formula::literals;`) -- and
-prints both the value and where it came from:
+reached. `examples/expressions.cpp` overrides a computed gradient -- the
+environment `climb` holds a rise of 90 m, a run of 3000 m and a gradient a
+surveyor entered, 0.05 (`0.05_r`, an exact decimal, from
+`using namespace formula::literals;`) -- and prints both the value and where
+it came from:
 
 ```cpp
-auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
-                                        formula::Measured<CementVolume> { 300 },
-                                        formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
-auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
-if (!ratio)
+auto const climb = formula::environment(formula::Measured<Rise> { 90 },
+                                        formula::Measured<Run> { 3000 },
+                                        formula::entered(formula::Measured<Gradient> { 0.05_r }));
+auto const slope = formula::checked_evaluate(gradient, climb);
+if (!slope)
 {
-    std::println("water/cement ratio: {}", ratio.error());
+    std::println("road gradient: {}", slope.error());
     return 1;
 }
-std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
+std::println("{} = {} ({})", formula::symbol_of<Gradient>(), *slope, slope->source());
 ```
 
 ```
-w/c = 0.5 (manually entered)
+s = 0.05 (manually entered)
 ```
 
-`waterCementRatio` names its result quantity where it is declared, so the call
-names none ([Naming the result once](#naming-the-result-once)). The
-`std::expected` is checked before `*ratio` or `ratio->` reads it:
-dereferencing one that holds an error is undefined behaviour, and
-`ratio.error()` says in words what failed. A result computed at compile time is checked the same way by a
+The formula would have computed 0.03. `gradient` is
+`formula::yields<Gradient>(var<Rise> / var<Run>)`: it names its result
+quantity where it is declared, so the call names none ([Naming the result
+once](#naming-the-result-once)). The `std::expected` is checked before
+`*slope` or `slope->` reads it: dereferencing one that holds an error is
+undefined behaviour, and `slope.error()` says in words what failed. A result
+computed at compile time is checked the same way by a
 `static_assert(area.has_value())`, as the example does for its area. `{}` of
-an `Outcome` writes its number in its quantity's unit (a ratio has no symbol),
-and `{}` of a `ValueSource` its words; see [Displaying numbers](display.md).
+an `Outcome` writes its number in its quantity's unit (a gradient has no
+symbol), and `{}` of a `ValueSource` its words; see [Displaying
+numbers](display.md).
 
 ## Reading a result
 
@@ -282,18 +285,18 @@ may be none. `formula::number_of(x)` returns a `std::optional<Rational>`: the
 number `x` holds, or nothing. It reads a `Measured<Q>`, an `Outcome<Q>`, the
 `std::expected` that `checked_evaluate` returns, an `Evaluated<Rational>`, a
 `RetryOutcome` and a `RejectionOutcome`. `examples/expressions.cpp` checks the
-`ratio` above with it:
+`slope` above with it:
 
 ```cpp
-bool const overrideWinsOutright = ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
+bool const overrideWinsOutright = slope->is_overridden() && formula::number_of(slope) == 0.05_r;
 ```
 
 It is an `optional` and not a zero because zero is a measurement: a specimen
 that weighed nothing and a specimen never weighed are different results.
 `optional == Rational` is false when the optional is empty, so
-`number_of(ratio) == 0.5_r` is a complete check on its own -- an absent
+`number_of(slope) == 0.05_r` is a complete check on its own -- an absent
 number, an error and a verdict all compare unequal to every number. The
-`ratio->` in front is safe because `ratio` was checked above. `number_of`
+`slope->` in front is safe because `slope` was checked above. `number_of`
 says nothing about *why* there is no number; ask `Outcome::kind()` or the
 error for that.
 
@@ -570,15 +573,24 @@ A formula is an ordinary value, so it stands wherever a variable or a
 constant stands. Give one a name and it can be an operand of the next:
 
 ```cpp
-constexpr auto waterCementRatio =
-    formula::documented(var<WaterVolume> / var<CementVolume>,
-                        { .title = "Water/cement ratio", .reference = "Example Standard 1:2020", ... });
+constexpr auto gradient = formula::documented(var<Rise> / var<Run>,
+                                              { .title = "Road gradient",
+                                                .reference = "Example Standard 1:2020",
+                                                .section = "5.4.2",
+                                                .equation = "(3)",
+                                                .text = "Height a road gains over the horizontal distance it covers." });
+```
 
-// The second formula uses the first by name. Nothing about the first
-// declaration anticipated being reused.
-constexpr auto mixCost =
-    formula::yields<MixCost>(formula::documented(var<UnitPrice> * waterCementRatio,
-                                                 { .title = "Cost of a mix at a given water/cement ratio", ... }));
+The second formula uses the first by name. Nothing about the first
+declaration anticipated being reused:
+
+```cpp
+constexpr auto earthworksCost = formula::yields<EarthworksCost>(
+    formula::documented(var<UnitPrice> * gradient,
+                        { .title = "Earthworks cost of a road at a given gradient",
+                          .reference = "Example Standard 9:2021",
+                          .section = "2.1",
+                          .text = "Earthworks cost scales linearly with the road gradient." }));
 ```
 
 There is no separate composition step and no wrapper type. The outer formula
@@ -595,30 +607,30 @@ and finds it:
 
 ```
 citations on the outer formula: 2
-  - Cost of a mix at a given water/cement ratio [Example Standard 9:2021]
-  - Water/cement ratio [Example Standard 1:2020]
+  - Earthworks cost of a road at a given gradient [Example Standard 9:2021]
+  - Road gradient [Example Standard 1:2020]
 ```
 
 **The trace names the reused formula as its own step**, which is what an
 auditor needs and what the rendering alone does not show — `render()` gives
-`c_u * V_w / V_c`, flattened, because `*` and `/` share a precedence and no
+`c_u * h / L`, flattened, because `*` and `/` share a precedence and no
 parenthesis is needed to preserve the meaning:
 
 ```
-1. c_u = 250 EUR
-2. V_w = 180 l
-3. V_c = 300 l
-4. #2 / #3 = 3/5
-5. #4 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
-6. #1 * #5 = 150 EUR
-7. #6 = 150 EUR [Cost of a mix at a given water/cement ratio, Example Standard 9:2021, 2.1]
+1. c_u = 250000 EUR
+2. h = 90 m
+3. L = 3000 m
+4. #2 / #3 = 3/100
+5. #4 = 3/100 [Road gradient, Example Standard 1:2020, 5.4.2, (3)]
+6. #1 * #5 = 7500 EUR
+7. #6 = 7500 EUR [Earthworks cost of a road at a given gradient, Example Standard 9:2021, 2.1]
 ```
 
 Step 5 is the reused formula, carrying its own citation; step 6 consumes it.
 `c_u` is a price in euros, a dimension of its own rather than a bare number
 ([Base dimensions the SI does not have](dimensions.md#base-dimensions-the-si-does-not-have)),
 so the cost is in euros too: step 6 scales the price by a pure number, the
-ratio, and so reads in the price's unit, and step 7 restates step 6
+gradient, and so reads in the price's unit, and step 7 restates step 6
 ([Tracing](tracing.md#reading-a-derivation)).
 
 One asymmetry is worth knowing before you rely on it. Using the same
@@ -641,24 +653,24 @@ change reaches: [Calculations and worksheets](calculations.md).
 
 `checked_evaluate<Q>` is told its result quantity at every call, and never
 works it out, because an expression's dimension does not name a quantity. A
-volume over a volume is *a* ratio; whether it is the water/cement ratio or an
-air content is the author's decision, and a library that picked one would
+length over a length is *a* ratio; whether it is a road gradient or a strain
+is the author's decision, and a library that picked one would
 sooner or later label a number with another quantity's symbol and
 description. `formula::yields<Q>` keeps that rule. Nothing is deduced: the
 author still names the quantity, but once, where the formula is written,
 instead of at every call:
 
 ```cpp
-constexpr auto boundRatio = formula::yields<Ratio>(var<WaterVolume> / var<CementVolume>);
+constexpr auto boundGradient = formula::yields<Gradient>(var<Rise> / var<Run>);
 
-auto const evaluated = formula::evaluate(boundRatio, batch);    // an Outcome<Ratio>
-auto const explained = formula::explain(boundRatio, batch);     // its outcome and its trace
-std::string const written = formula::render(boundRatio);        // "V_w / V_c"
-constexpr auto definition = formula::define(boundRatio);        // Ratio, defined by the formula
+auto const evaluated = formula::evaluate(boundGradient, climb);    // an Outcome<Gradient>
+auto const explained = formula::explain(boundGradient, climb);     // its outcome and its trace
+std::string const written = formula::render(boundGradient);        // "h / L"
+constexpr auto definition = formula::define(boundGradient);        // Gradient, defined by the formula
 ```
 
-`examples/expressions.cpp` binds its circular area and its water/cement ratio
-this way, and `examples/composition.cpp` its mix cost.
+`examples/expressions.cpp` binds its circular area and its road gradient this
+way, and `examples/composition.cpp` its earthworks cost.
 
 The name is checked where it is written. `yields<Q>` holds `Q` to the
 dimension the expression computes, as `checked_evaluate<Q>` does, and refuses
@@ -674,7 +686,7 @@ they return for the formula it holds and the quantity it names. `render` and
 Naming the quantity again at a call is allowed when it is the same one --
 
 ```cpp
-auto const again = formula::checked_evaluate<Ratio>(boundRatio, batch);
+auto const again = formula::checked_evaluate<Gradient>(boundGradient, climb);
 ```
 
 -- and refused when it is another, even one of the same dimension: *this
@@ -687,13 +699,13 @@ of a formula, not a part of one. So it wraps a documented formula, whose
 citation stays with the formula, and not the other way round:
 
 ```cpp
-constexpr auto citedRatio = formula::yields<Ratio>(formula::documented(
-    var<WaterVolume> / var<CementVolume>, { .title = "Water/cement ratio", .reference = "Example Standard 1:2020" }));
+constexpr auto citedGradient = formula::yields<Gradient>(formula::documented(
+    var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020" }));
 ```
 
-`documented(yields<Ratio>(...), ...)` does not compile, because `documented`
+`documented(yields<Gradient>(...), ...)` does not compile, because `documented`
 takes a node. Nor does a bound formula go inside another bound formula:
-`yields<Ratio>(boundRatio)` is refused where it is written, even for the same
+`yields<Gradient>(boundGradient)` is refused where it is written, even for the same
 quantity -- *this formula is bound to its result quantity already; bind the
 formula it holds (.expression), or use it as it is*.
 
@@ -701,10 +713,10 @@ formula it holds (.expression), or use it as it is*.
 not an operand of another formula, nor a side of a comparison; either use is
 refused with *a bound formula is not an operand; use its .expression*. The formula it holds is an operand, as any formula is
 ([Composing a formula from other formulas](#composing-a-formula-from-other-formulas)).
-Here `MixWater` and `MixCement` are volumes in litres, as `WaterVolume` and
-`CementVolume` are:
+Here `OtherRise` and `OtherRun` are lengths in metres, as `Rise` and `Run`
+are:
 
 ```cpp
-// The water a mix of another cement content needs at the same ratio.
-constexpr auto mixWater = formula::yields<MixWater>(var<MixCement> * boundRatio.expression);
+// The height a climb of another length gains at the same gradient.
+constexpr auto otherRise = formula::yields<OtherRise>(var<OtherRun> * boundGradient.expression);
 ```

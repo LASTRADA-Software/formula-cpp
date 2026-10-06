@@ -24,8 +24,7 @@
 //   8. Several regressors at once, and a design that cannot be solved: two
 //      regressors that measure the same thing, twice over, are refused.
 //
-// Every number here is invented, as in every other example in this
-// repository; nothing here cites a standard.
+// Every number here is invented, and nothing here cites a standard.
 
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/format.hpp>

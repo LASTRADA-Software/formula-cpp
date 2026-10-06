@@ -5,56 +5,161 @@ Declarative, traceable, self-documenting formulas for C++23. Header-only, no dep
 Write a formula once, with ordinary operators. Get back a number, a rendering, and a
 documentation page — from the same declaration.
 
-```cpp
-namespace unit = formula::unit;
-using formula::var;
-
-// A quantity carries its own symbol, description and unit, and its tag makes it a type of its own.
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
-
-// The formula and its citation, declared together: documented() attaches the
-// citation to the division, and forwards that division's dimension unchanged.
-constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
-                                           { .title = "Water/cement ratio",
-                                             .reference = "Example Standard 1:2020",
-                                             .section = "5.4.2",
-                                             .equation = "(3)",
-                                             .text = "Ratio of water content to cement content." });
-```
-
-One declaration, four answers:
+How fast does a cyclist ride on 250 W? `examples/cycling_speed.cpp` works out
+the steady-state speed from power. Each step is a formula, named for the
+quantity it yields — a type carrying its own symbol, description and unit —
+and the speed's formula carries its citation:
 
 ```cpp
-std::string const plain = formula::render(ratio);
-std::string const latex = formula::render<formula::Dialect::LaTeX>(ratio);
-formula::Documentation const documentation = formula::document(ratio);
-auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
-                                         formula::Measured<CementVolume> { 300 });
-auto const result = formula::checked_evaluate<WaterCementRatio>(ratio, inputs);
+// ---- The steps ----
+inline constexpr auto gradient = formula::yields<Gradient>(var<Rise> / var<Run>);
+inline constexpr auto totalMass = formula::yields<TotalMass>(var<RiderMass> + var<BikeMass>);
+inline constexpr auto resistingForce =
+    formula::yields<ResistingForce>(var<TotalMass> * gravity * (var<RollingCoefficient> + var<Gradient>) );
+inline constexpr auto dragFactor = formula::yields<DragFactor>(formula::Rational { 1, 2 } * var<AirDensity> * var<DragArea>);
+inline constexpr auto powerTerm = formula::yields<PowerTerm>(var<Power> / (2 * var<DragFactor>) );
+inline constexpr auto forceTerm = formula::yields<ForceTerm>(var<ResistingForce> / (3 * var<DragFactor>) );
+
+// The speed, read from a and b by name, so its rendering stays one line.
+inline constexpr auto discriminant = formula::pow<2>(var<PowerTerm>) + formula::pow<3>(var<ForceTerm>);
+inline constexpr auto speed = formula::yields<Speed>(formula::documented(
+    formula::cbrt(var<PowerTerm> + formula::sqrt(discriminant))
+        + formula::cbrt(var<PowerTerm> - formula::sqrt(discriminant)),
+    { .title = "Validation of a mathematical model for road cycling power",
+      .reference = "J. C. Martin, D. L. Milliken, J. E. Cobb, K. L. McFadden and A. R. Coggan, "
+                   "Journal of Applied Biomechanics, 1998",
+      .text = "A simplified form of the model, without drivetrain or bearing losses: the power a rider holds "
+              "balances rolling resistance, gravity and air drag; in steady state, with no wind and a small "
+              "gradient, P = v * (m * g * (C_rr + s) + 1/2 * rho * C_dA * v^2), solved here for v." }));
 ```
 
-`examples/citations.cpp` prints them:
+`ride(surface)` puts them into one `formula::calculation`, after a step that
+looks up the rolling coefficient by the road surface. Rendered, the lookup
+spells out its whole table on one line; the steps after it read:
 
 ```
-plain: V_w / V_c
-latex: \frac{V_w}{V_c}
-symbol: V_w = effective water content [l]
-symbol: V_c = cement content [l]
-citation: Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)
-w/c = 0.6 (derived)
+s = h / L
+m = m_r + m_b
+F = m * 9.80665 m/s2 * (C_rr + s)
+k = 0.5 * rho * C_dA
+a = P / (2 * k)
+b = F / (3 * k)
+v = root3(a + sqrt(a^2 + b^3)) + root3(a - sqrt(a^2 + b^3))
 ```
 
-`0.6` is exact, and `derived` says the library computed it rather than a
-person typing it in. The text comes from `render.hpp` and `document.hpp`, and
-the printing from `format.hpp`; the umbrella header `formula.hpp` holds the
-rest.
+The speeds it calculates at 250 W:
+
+```
+flat road, asphalt, 250 W:     10.332 m/s (37.2 km/h)
+3 % climb, asphalt, 250 W:     6.783 m/s (24.4 km/h)
+flat road, cobbles, 250 W:     8.335 m/s (30.0 km/h)
+```
+
+Every step up to `a` and `b` is an exact lookup, sum, product or quotient: the
+gradient (`3/100` on the climb), the force, `a` and `b` are exact rationals,
+never rounded. The cube roots have no exact value, so the speed is evaluated
+in `double` (`formula::checked_evaluate_si<double>`) from the exact `a` and
+`b`, by Cardano's formula, which solves the cubic for the speed in closed
+form. On an 8 % descent at no power, Cardano's square root has no real
+answer, and the program reports a `DomainError` instead of a speed. The same
+calculation also says what its symbols mean and where it comes from: see
+[One calculation, four answers](#one-calculation-four-answers).
 
 A quantity can also be declared as a struct deriving from `formula::Quantity`,
-`struct WaterVolume: formula::Quantity<WaterVolume, ...> {};`. Both spellings
-are supported, and mix in one formula; [Quantities and
-measurements](quantities.md#declaring-a-quantity) says what each costs.
+`struct RiderMass: formula::Quantity<RiderMass, "m_r", "rider's mass", unit::Kilogram> {};`.
+Both spellings are supported, and can be used together in one formula;
+[Quantities and measurements](quantities.md#declaring-a-quantity) says what
+each costs.
+
+## One calculation, four answers
+
+The inputs of the cycling example are quantities, as every value it
+calculates is:
+
+```cpp
+// ---- The inputs ----
+using RiderMass = formula::Quantity<struct RiderMassTag, "m_r", "rider's mass", unit::Kilogram>;
+using BikeMass = formula::Quantity<struct BikeMassTag, "m_b", "bike's mass", unit::Kilogram>;
+using DragArea = formula::Quantity<struct DragAreaTag, "C_dA", "drag area", unit::SquareMetre>;
+using AirDensity = formula::Quantity<struct AirDensityTag, "rho", "density of the air", unit::KilogramPerCubicMetre>;
+using Power = formula::Quantity<struct PowerTag, "P", "power the rider holds", unit::Watt>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
+```
+
+`ride(RoadSurface::Asphalt)` is the calculation for an asphalt road. Rendering
+it, as plain text and as LaTeX, and documenting it, are three calls; the
+documentation, `page`, holds the symbol table the program prints, and the
+citation:
+
+```cpp
+auto const decimals = formula::NumberStyle::exact_decimal();
+auto const onAsphalt = ride(RoadSurface::Asphalt);
+
+// ---- 1. The calculation, one step a line ----
+std::println("the calculation, in the order it calculates:\n{}\n", formula::render(onAsphalt, { .numbers = decimals }));
+std::println("in LaTeX:\n{}\n",
+             formula::render<formula::Dialect::LaTeX>(onAsphalt, latexSymbols, { .numbers = decimals }));
+
+// ---- 2. Its symbol table and its citation ----
+formula::Documentation const page = formula::document(onAsphalt, { .numbers = decimals });
+std::println("its symbol table:");
+for (formula::SymbolEntry const& entry: page.symbols)
+    std::println("  {:<5} {:<6} {}", entry.symbol, entry.unit, entry.description);
+```
+
+The plain rendering is shown above. In LaTeX, the speed's line reads:
+
+```
+v = \sqrt[3]{a + \sqrt{a^{2} + b^{3}}} + \sqrt[3]{a - \sqrt{a^{2} + b^{3}}}
+```
+
+The symbol table lists the eight calculated values first, then the seven
+inputs; its calculated rows read:
+
+```
+its symbol table:
+  C_rr         rolling resistance coefficient
+  s            road gradient
+  m     kg     mass of rider and bike
+  F     N      rolling resistance and gravity together
+  k     kg/m   air drag per square of speed
+  a     m3/s3  power over twice the drag factor
+  b     m2/s2  force over three times the drag factor
+  v     m/s    steady-state speed
+```
+
+and the citation, from `page.citations`:
+
+```
+the speed, after:
+  Validation of a mathematical model for road cycling power
+  J. C. Martin, D. L. Milliken, J. E. Cobb, K. L. McFadden and A. R. Coggan, Journal of Applied Biomechanics, 1998
+```
+
+The value comes from the example's `ride_on(surface, inputs)`. `riding(watts,
+rise)` is the environment of the inputs: a rider of 75 kg on a bike of
+8.5 kg, with a drag area of 0.32 m², in air of 1.225 kg/m³, holding `watts` on
+a road rising `rise` over 1000 m. `ride_on` calculates every step up to `a` and
+`b` exactly on a `formula::worksheet` of `ride(surface)` and those inputs,
+evaluates the speed's formula in `double` from them, rounds it to the
+millimetre a second and converts it to km/h. Each result is checked before it
+is read:
+
+```cpp
+auto const flat = ride_on(RoadSurface::Asphalt, riding(250, 0));
+if (!flat)
+{
+    std::println("flat road at 250 W: {}", formula::describe(flat.error()));
+    return 1;
+}
+std::println("\nflat road, asphalt, 250 W:     {} ({:.1HalfEven})", flat->inMetresPerSecond, flat->inKilometresPerHour);
+```
+
+`riding(250, 30)` is the 3 % climb, 30 m over 1000 m.
+
+The text comes from `render.hpp` and `document.hpp`, and the printing from
+`format.hpp`; the umbrella header `formula.hpp` holds the rest.
 
 ## Three things worth knowing before you read further
 
@@ -100,11 +205,12 @@ actually does.
 
 ## A note on the examples
 
-Every formula and citation on this site is invented — generic physics with fictional
+Every citation of a standard on this site is invented — generic physics with fictional
 `Example Standard` references. Real test-method standards are copyrighted and sold, so none of
 their content appears in this repository: not their text, their tables, their threshold values,
 nor their clause numbering. Real standards are implemented in downstream libraries that hold a
-licence to them.
+licence to them. The one real reference, in `examples/cycling_speed.cpp`, cites a published
+paper by its title, authors, journal and year only, and quotes none of its text.
 
 ## Status
 

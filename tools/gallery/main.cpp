@@ -18,7 +18,7 @@
 //
 // Every formula and citation below is INVENTED for this library's own
 // documentation -- generic physics with fictional `Example Standard`
-// citations, matching every test and example elsewhere in this repository.
+// citations, as every citation of a standard elsewhere in this repository is.
 // No real standard is named or transcribed anywhere in this file.
 
 #include <formula-cpp/document.hpp>
@@ -114,19 +114,18 @@ constexpr auto flowRate =
                           .reference = "Example Standard 3:2020",
                           .text = "Flow rate is the volume discharged divided by the time taken to discharge it." });
 
-// ---- 4: a water/cement ratio, evaluated below too ----------------------------
+// ---- 4: a road gradient, evaluated below too ----------------------------------
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Kilometre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", unit::One>;
 
-constexpr auto waterCementRatio =
-    formula::documented(var<WaterVolume> / var<CementVolume>,
-                        { .title = "Water/cement ratio",
-                          .reference = "Example Standard 4:2020",
-                          .section = "6.3",
-                          .equation = "(2)",
-                          .text = "Ratio of the effective water content to the cement content of a batch." });
+constexpr auto gradient = formula::documented(var<Rise> / var<Run>,
+                                              { .title = "Road gradient",
+                                                .reference = "Example Standard 4:2020",
+                                                .section = "6.3",
+                                                .equation = "(2)",
+                                                .text = "Height a road gains over the horizontal distance it covers." });
 
 // ---- 5: a conditional, evaluated below for its worked derivation ------------
 
@@ -661,15 +660,15 @@ int main(int argc, char** argv)
            "and evaluate it. **Do not edit it by hand** -- change the generator and "
            "regenerate instead; `gallery.is-current` fails CI when the two disagree.\n\n";
     out << "Every formula and citation on this page is invented -- generic physics with "
-           "fictional `Example Standard` citations, exactly as every test and example "
-           "elsewhere in this repository is. See [the home page](index.md).\n\n";
+           "fictional `Example Standard` citations, as every citation of a standard elsewhere "
+           "in this repository is. See [the home page](index.md).\n\n";
 
     write_formula(out, density);
     write_formula(out, circularArea);
     if (!write_constraint(out, maximumDiameter))
         return 1;
     write_formula(out, flowRate);
-    write_formula(out, waterCementRatio);
+    write_formula(out, gradient);
     write_formula(out, compactionAdjustedDensity);
     write_formula(out, sizeAllowance);
     write_formula(out, mouldFactor);
@@ -683,19 +682,19 @@ int main(int argc, char** argv)
 
     // ---- A worked evaluation, so the page proves the numbers as well as the text ----
 
-    out << "## Worked evaluation: water/cement ratio\n\n";
-    out << "`V_w` = 180 l, `V_c` = 300 l:\n\n";
+    out << "## Worked evaluation: road gradient\n\n";
+    out << "`h` = 90 m, `L` = 3 km:\n\n";
 
-    auto const inputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                             formula::Measured<CementVolume> { formula::Rational { 300 } });
-    auto const outcome = formula::checked_evaluate<WaterCementRatio>(waterCementRatio, inputs);
+    auto const inputs = formula::environment(formula::Measured<Rise> { formula::Rational { 90 } },
+                                             formula::Measured<Run> { formula::Rational { 3 } });
+    auto const outcome = formula::checked_evaluate<Gradient>(gradient, inputs);
     if (!outcome.has_value() || !outcome->is_value())
     {
         std::println(stderr, "formula-cpp-gallery: the worked evaluation did not produce a value");
         return 1;
     }
     // Spelled with its unit by `number_text`, which writes a value in a unit
-    // with no symbol in the coherent unit it names; this ratio has none.
+    // with no symbol in the coherent unit it names; this gradient has none.
     auto const asFraction = formula::checked_number_text(outcome->measurement(), formula::NumberStyle::fraction());
     auto const asDecimal = formula::checked_number_text(outcome->measurement(), formula::NumberStyle::exact_decimal());
     if (!asFraction.has_value() || !asDecimal.has_value())
@@ -704,10 +703,10 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    write_worked_formula(out, waterCementRatio);
+    write_worked_formula(out, gradient);
 
     out << "```\n";
-    out << "with V_w = 180 l and V_c = 300 l: " << asFraction->view() << " = " << asDecimal->view() << "\n";
+    out << "with h = 90 m and L = 3 km: " << asFraction->view() << " = " << asDecimal->view() << "\n";
     out << "```\n\n";
 
     // ---- A worked derivation, so the page shows how a number was reached, not only what it is ----

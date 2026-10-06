@@ -2,7 +2,7 @@
 //
 // Quantities declared by alias:
 //
-//     using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", ...>;
+//     using Rise = formula::Quantity<struct RiseTag, "h", ...>;
 //
 // The alias names the `Quantity` specialisation itself, where the struct form
 // derives a type of its own from it. Everything that keys on a quantity type
@@ -44,13 +44,13 @@ using formula::var;
     return Rational { numerator, denominator };
 }
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
-using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Millimetre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Millimetre>;
+using Gradient = formula::Quantity<struct GradientTag, "s", "road gradient", unit::One>;
 
 // Alike in symbol, description and unit; told apart by the tag alone.
-using FirstTwin = formula::Quantity<struct FirstTwinTag, "V", "a volume", unit::Litre>;
-using SecondTwin = formula::Quantity<struct SecondTwinTag, "V", "a volume", unit::Litre>;
+using FirstTwin = formula::Quantity<struct FirstTwinTag, "d", "a length", unit::Millimetre>;
+using SecondTwin = formula::Quantity<struct SecondTwinTag, "d", "a length", unit::Millimetre>;
 
 // One tag, shared: an alias template that declares its tag inside itself
 // declares one tag for every instantiation. Each instantiation is still a
@@ -69,16 +69,15 @@ using InnerDiameter = formula::Quantity<struct DiameterPairTag, "d_i", "inner di
 using OuterDiameter = formula::Quantity<struct DiameterPairTag, "d_o", "outer diameter", unit::Millimetre>;
 
 // A quantity declared the other way, to be mixed with the aliases.
-struct AdmixtureVolume: formula::Quantity<AdmixtureVolume, "V_a", "admixture content", unit::Litre>
+struct ExtraRise: formula::Quantity<ExtraRise, "h_x", "extra height gained", unit::Millimetre>
 {
 };
 
-// 183 l of water to 305 l of cement: a ratio of exactly 3/5.
-inline constexpr auto mix =
-    formula::environment(formula::Measured<WaterVolume> { rat(183) }, formula::Measured<CementVolume> { rat(305) });
-inline constexpr auto ratio =
-    formula::documented(var<WaterVolume> / var<CementVolume>,
-                        { .title = "Water/cement ratio", .reference = "Example Standard 1:2020", .section = "5.4.2" });
+// 183 mm of rise over 305 mm of run: a gradient of exactly 3/5.
+inline constexpr auto measuredRoad =
+    formula::environment(formula::Measured<Rise> { rat(183) }, formula::Measured<Run> { rat(305) });
+inline constexpr auto ratio = formula::documented(
+    var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020", .section = "5.4.2" });
 
 template <typename Q>
 [[nodiscard]] Rational valueOf(formula::Outcome<Q> const& outcome)
@@ -92,18 +91,18 @@ template <typename Q>
 
 static_assert(!std::is_same_v<FirstTwin, SecondTwin>, "two tags, two types");
 static_assert(FirstTwin::symbol == SecondTwin::symbol && FirstTwin::unit == SecondTwin::unit);
-static_assert(std::is_same_v<WaterVolume::QuantityTag, WaterVolumeTag>, "the tag an alias names is its QuantityTag");
+static_assert(std::is_same_v<Rise::QuantityTag, RiseTag>, "the tag an alias names is its QuantityTag");
 
 // The alias IS the specialisation: naming it again with the same arguments is
 // the same type -- the collapse `quantity.hpp` documents.
-static_assert(std::is_same_v<WaterVolume, formula::Quantity<WaterVolumeTag, "V_w", "effective water content", unit::Litre>>);
+static_assert(std::is_same_v<Rise, formula::Quantity<RiseTag, "h", "height gained", unit::Millimetre>>);
 
-static_assert(formula::Described<WaterVolume>);
-static_assert(formula::RequireDescribed<WaterVolume>::value);
-static_assert(formula::Describe<WaterVolume>::symbol == std::string_view { "V_w" });
-static_assert(formula::Describe<WaterVolume>::description == std::string_view { "effective water content" });
-static_assert(formula::Describe<WaterVolume>::unit == unit::Litre);
-static_assert(formula::Describe<WaterVolume>::dimension == formula::dim::Volume);
+static_assert(formula::Described<Rise>);
+static_assert(formula::RequireDescribed<Rise>::value);
+static_assert(formula::Describe<Rise>::symbol == std::string_view { "h" });
+static_assert(formula::Describe<Rise>::description == std::string_view { "height gained" });
+static_assert(formula::Describe<Rise>::unit == unit::Millimetre);
+static_assert(formula::Describe<Rise>::dimension == formula::dim::Length);
 
 static_assert(!std::is_same_v<LengthIn<unit::Metre>, LengthIn<unit::Millimetre>>);
 static_assert(std::is_same_v<LengthIn<unit::Metre>::QuantityTag, LengthIn<unit::Millimetre>::QuantityTag>);
@@ -136,80 +135,78 @@ TEST_CASE("quantity alias: quantities that share a tag are distinct while anothe
 
 TEST_CASE("quantity alias: a quantity declared by alias is the same type in every translation unit", "[quantity][alias]")
 {
-    CHECK(cross_alias::symbol_of(cross_alias::WaterVolume {}) == "V_w");
-    CHECK(cross_alias::water_and_cement_are_distinct());
-    CHECK(cross_alias::address_of_water_volume_dimension() == &cross_alias::WaterVolume::dimension);
+    CHECK(cross_alias::symbol_of(cross_alias::Rise {}) == "h");
+    CHECK(cross_alias::rise_and_run_are_distinct());
+    CHECK(cross_alias::address_of_rise_dimension() == &cross_alias::Rise::dimension);
 }
 
 TEST_CASE("quantity alias: evaluated, checked and explained, with its trace", "[quantity][alias]")
 {
-    CHECK(valueOf(formula::evaluate<WaterCementRatio>(ratio, mix)) == rat(3, 5));
+    CHECK(valueOf(formula::evaluate<Gradient>(ratio, measuredRoad)) == rat(3, 5));
 
-    auto const checked = formula::checked_evaluate<WaterCementRatio>(ratio, mix);
+    auto const checked = formula::checked_evaluate<Gradient>(ratio, measuredRoad);
     REQUIRE(checked.has_value());
     CHECK(valueOf(*checked) == rat(3, 5));
     CHECK(checked->source() == formula::ValueSource::Derived);
 
-    auto const explained = formula::explain<WaterCementRatio>(ratio, mix);
+    auto const explained = formula::explain<Gradient>(ratio, measuredRoad);
     CHECK(valueOf(explained.outcome) == rat(3, 5));
     CHECK(formula::render_trace(explained.trace, { .maxSteps = 10 })
-          == "1. V_w = 183 l\n"
-             "2. V_c = 305 l\n"
+          == "1. h = 183 mm\n"
+             "2. L = 305 mm\n"
              "3. #1 / #2 = 3/5\n"
-             "4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2]\n");
+             "4. #3 = 3/5 [Road gradient, Example Standard 1:2020, 5.4.2]\n");
 }
 
 TEST_CASE("quantity alias: rendered in every dialect, and documented", "[quantity][alias]")
 {
-    CHECK(formula::render(ratio) == "V_w / V_c");
-    CHECK(formula::render<formula::Dialect::Markdown>(ratio) == "`V_w` / `V_c`");
-    CHECK(formula::render<formula::Dialect::LaTeX>(ratio) == "\\frac{V_w}{V_c}");
+    CHECK(formula::render(ratio) == "h / L");
+    CHECK(formula::render<formula::Dialect::Markdown>(ratio) == "`h` / `L`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(ratio) == "\\frac{h}{L}");
 
     formula::Documentation const page = formula::document(ratio);
     REQUIRE(page.symbols.size() == 2);
-    CHECK(page.symbols[0].symbol == "V_w");
-    CHECK(page.symbols[0].description == "effective water content");
-    CHECK(page.symbols[1].symbol == "V_c");
+    CHECK(page.symbols[0].symbol == "h");
+    CHECK(page.symbols[0].description == "height gained");
+    CHECK(page.symbols[1].symbol == "L");
     REQUIRE(page.citations.size() == 1);
     CHECK(page.citations[0].reference == "Example Standard 1:2020");
 }
 
 TEST_CASE("quantity alias: an alias and a struct quantity in one formula", "[quantity][alias]")
 {
-    constexpr auto withAdmixture = (var<WaterVolume> + var<AdmixtureVolume>) / var<CementVolume>;
-    constexpr auto inputs = formula::environment(formula::Measured<WaterVolume> { rat(173) },
-                                                 formula::Measured<AdmixtureVolume> { rat(10) },
-                                                 formula::Measured<CementVolume> { rat(305) });
+    constexpr auto withExtra = (var<Rise> + var<ExtraRise>) / var<Run>;
+    constexpr auto inputs = formula::environment(
+        formula::Measured<Rise> { rat(173) }, formula::Measured<ExtraRise> { rat(10) }, formula::Measured<Run> { rat(305) });
 
-    CHECK(formula::render(withAdmixture) == "(V_w + V_a) / V_c");
-    auto const computed = formula::checked_evaluate<WaterCementRatio>(withAdmixture, inputs);
+    CHECK(formula::render(withExtra) == "(h + h_x) / L");
+    auto const computed = formula::checked_evaluate<Gradient>(withExtra, inputs);
     REQUIRE(computed.has_value());
     CHECK(valueOf(*computed) == rat(3, 5));
-    CHECK(inputs.get<AdmixtureVolume>().value() == rat(10));
-    CHECK(inputs.get<WaterVolume>().value() == rat(173));
+    CHECK(inputs.get<ExtraRise>().value() == rat(10));
+    CHECK(inputs.get<Rise>().value() == rat(173));
 }
 
 TEST_CASE("quantity alias: Measured, Entered and the environment", "[quantity][alias]")
 {
-    constexpr formula::Measured<WaterVolume> absent {};
+    constexpr formula::Measured<Rise> absent {};
     CHECK_FALSE(absent.has_value());
 
-    constexpr auto typedIn = formula::environment(formula::Measured<WaterVolume> { rat(183) },
-                                                  formula::Measured<CementVolume> { rat(305) },
-                                                  formula::entered(formula::Measured<WaterCementRatio> { rat(1, 2) }));
-    STATIC_REQUIRE(decltype(typedIn)::provides<WaterVolume>);
-    STATIC_REQUIRE_FALSE(decltype(mix)::provides<WaterCementRatio>);
-    CHECK(typedIn.source_of<WaterCementRatio>() == formula::ValueSource::ManuallyEntered);
-    CHECK(typedIn.get<CementVolume>().value() == rat(305));
+    constexpr auto typedIn = formula::environment(formula::Measured<Rise> { rat(183) },
+                                                  formula::Measured<Run> { rat(305) },
+                                                  formula::entered(formula::Measured<Gradient> { rat(1, 2) }));
+    STATIC_REQUIRE(decltype(typedIn)::provides<Rise>);
+    STATIC_REQUIRE_FALSE(decltype(measuredRoad)::provides<Gradient>);
+    CHECK(typedIn.source_of<Gradient>() == formula::ValueSource::ManuallyEntered);
+    CHECK(typedIn.get<Run>().value() == rat(305));
 
-    auto const overridden = formula::checked_evaluate<WaterCementRatio>(ratio, typedIn);
+    auto const overridden = formula::checked_evaluate<Gradient>(ratio, typedIn);
     REQUIRE(overridden.has_value());
     CHECK(overridden->is_overridden());
     CHECK(valueOf(*overridden) == rat(1, 2));
 
-    constexpr auto noWater =
-        formula::environment(formula::Measured<WaterVolume>::absent(), formula::Measured<CementVolume> { rat(305) });
-    auto const empty = formula::checked_evaluate<WaterCementRatio>(ratio, noWater);
+    constexpr auto noRise = formula::environment(formula::Measured<Rise>::absent(), formula::Measured<Run> { rat(305) });
+    auto const empty = formula::checked_evaluate<Gradient>(ratio, noRise);
     REQUIRE(empty.has_value());
     CHECK(empty->is_empty());
 }

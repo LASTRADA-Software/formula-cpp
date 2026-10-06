@@ -2,17 +2,17 @@
 // EXPECT: provides no value for this quantity
 #include <formula-cpp/environment.hpp>
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
+struct Gradient: formula::Quantity<Gradient, "s", "road gradient", formula::unit::One>
 {
 };
 
-// An environment that does not hold Ratio; asking for it is a compile error.
-inline constexpr auto env = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } });
+// An environment that does not hold Gradient; asking for it is a compile error.
+inline constexpr auto env = formula::environment(formula::Measured<Rise> { formula::Rational { 180 } });
 
 int main()
 {
-    return env.get<Ratio>().has_value() ? 0 : 1;
+    return env.get<Gradient>().has_value() ? 0 : 1;
 }

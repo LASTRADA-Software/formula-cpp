@@ -14,19 +14,19 @@
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
-struct TotalVolume: formula::Quantity<TotalVolume, "V", "total volume", formula::unit::Litre>
+struct TotalLength: formula::Quantity<TotalLength, "T", "total length", formula::unit::Millimetre>
 {
 };
-struct VolumeDifference: formula::Quantity<VolumeDifference, "dV", "volume difference", formula::unit::Litre>
+struct LengthDifference: formula::Quantity<LengthDifference, "dL", "length difference", formula::unit::Millimetre>
 {
 };
-struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
+struct Ratio: formula::Quantity<Ratio, "s", "road gradient", formula::unit::One>
 {
 };
 struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "specimen mass", formula::unit::Gram>
@@ -77,11 +77,10 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 
 using formula::var;
 
-constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
-constexpr auto total = var<WaterVolume> + var<CementVolume>;
+constexpr auto ratio = var<Rise> / var<Run>;
+constexpr auto total = var<Rise> + var<Run>;
 
-constexpr auto inputs =
-    formula::environment(formula::Measured<WaterVolume> { rat(180) }, formula::Measured<CementVolume> { rat(300) });
+constexpr auto inputs = formula::environment(formula::Measured<Rise> { rat(180) }, formula::Measured<Run> { rat(300) });
 
 } // namespace
 
@@ -97,9 +96,9 @@ TEST_CASE("evaluate: a ratio of like quantities is exact and dimensionless", "[e
 
 TEST_CASE("evaluate: a sum comes back in the result quantity's own unit", "[evaluate]")
 {
-    // 180 l + 300 l is 480 l. Evaluated in cubic metres and converted back, it
+    // 180 mm + 300 mm is 480 mm. Evaluated in metres and converted back, it
     // must be exactly 480 -- not 0.48 and not 479.999999.
-    constexpr auto computed = formula::checked_evaluate<TotalVolume>(total, inputs);
+    constexpr auto computed = formula::checked_evaluate<TotalLength>(total, inputs);
 
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(480));
@@ -107,11 +106,11 @@ TEST_CASE("evaluate: a sum comes back in the result quantity's own unit", "[eval
 
 TEST_CASE("evaluate: a difference comes back in the result quantity's own unit", "[evaluate]")
 {
-    // 180 l - 300 l is -120 l. Nothing else in this suite builds a `-`
+    // 180 mm - 300 mm is -120 mm. Nothing else in this suite builds a `-`
     // expression and evaluates it -- rewiring the Subtract arm to add instead
     // left every other test green.
-    constexpr auto difference = var<WaterVolume> - var<CementVolume>;
-    constexpr auto computed = formula::checked_evaluate<VolumeDifference>(difference, inputs);
+    constexpr auto difference = var<Rise> - var<Run>;
+    constexpr auto computed = formula::checked_evaluate<LengthDifference>(difference, inputs);
 
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(-120));
@@ -122,8 +121,8 @@ TEST_CASE("evaluate: the double representation adds, subtracts, multiplies and n
     // The only `double` evaluation elsewhere in this suite is a division (the
     // ratio below); add, subtract, multiply and negate are otherwise only
     // exercised through the exact `Rational` representation.
-    // checked_evaluate_si answers in the coherent SI unit, cubic metres, not
-    // litres: 180 l and 300 l are 0.18 m3 and 0.3 m3 there. Bounded rather
+    // checked_evaluate_si answers in the coherent SI unit, metres, not
+    // millimetres: 180 mm and 300 mm are 0.18 m and 0.3 m there. Bounded rather
     // than compared for exact equality, like the rest of this suite's double
     // arithmetic: binary floating point owes no promise of landing on the
     // same bit pattern as a decimal literal.
@@ -132,13 +131,13 @@ TEST_CASE("evaluate: the double representation adds, subtracts, multiplies and n
     CHECK(**summed > 0.4799999);
     CHECK(**summed < 0.4800001);
 
-    constexpr auto difference = var<WaterVolume> - var<CementVolume>;
+    constexpr auto difference = var<Rise> - var<Run>;
     constexpr formula::Evaluated<double> subtracted = formula::checked_evaluate_si<double>(difference, inputs);
     STATIC_REQUIRE(subtracted.has_value() && subtracted->has_value());
     CHECK(**subtracted > -0.1200001);
     CHECK(**subtracted < -0.1199999);
 
-    constexpr auto product = var<WaterVolume> * var<CementVolume>;
+    constexpr auto product = var<Rise> * var<Run>;
     constexpr formula::Evaluated<double> multiplied = formula::checked_evaluate_si<double>(product, inputs);
     STATIC_REQUIRE(multiplied.has_value() && multiplied->has_value());
     CHECK(**multiplied > 0.0539999);
@@ -163,8 +162,7 @@ TEST_CASE("evaluate: the representation-agnostic core agrees with the exact one"
 
 TEST_CASE("evaluate: an absent input makes the whole result empty, not zero", "[evaluate]")
 {
-    constexpr auto partial =
-        formula::environment(formula::Measured<WaterVolume>::absent(), formula::Measured<CementVolume> { rat(300) });
+    constexpr auto partial = formula::environment(formula::Measured<Rise>::absent(), formula::Measured<Run> { rat(300) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, partial);
 
     STATIC_REQUIRE(computed.has_value());
@@ -175,8 +173,7 @@ TEST_CASE("evaluate: an absent input makes the whole result empty, not zero", "[
 
 TEST_CASE("evaluate: division by zero is an error, never a number", "[evaluate]")
 {
-    constexpr auto zeroed =
-        formula::environment(formula::Measured<WaterVolume> { rat(180) }, formula::Measured<CementVolume> { rat(0) });
+    constexpr auto zeroed = formula::environment(formula::Measured<Rise> { rat(180) }, formula::Measured<Run> { rat(0) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, zeroed);
 
     STATIC_REQUIRE_FALSE(computed.has_value());
@@ -190,8 +187,7 @@ TEST_CASE("evaluate: the double representation also reports division by zero, no
     // comment above RepTraits<double> is about its ordinary arithmetic, not
     // this one refusal). Falling through to lhs / 0.0 would silently answer
     // with an infinity instead.
-    constexpr auto zeroed =
-        formula::environment(formula::Measured<WaterVolume> { rat(180) }, formula::Measured<CementVolume> { rat(0) });
+    constexpr auto zeroed = formula::environment(formula::Measured<Rise> { rat(180) }, formula::Measured<Run> { rat(0) });
     constexpr formula::Evaluated<double> computed = formula::checked_evaluate_si<double>(ratio, zeroed);
 
     STATIC_REQUIRE_FALSE(computed.has_value());
@@ -200,8 +196,7 @@ TEST_CASE("evaluate: the double representation also reports division by zero, no
 
 TEST_CASE("evaluate: the throwing spelling throws what the checked one reports", "[evaluate]")
 {
-    auto const zeroed =
-        formula::environment(formula::Measured<WaterVolume> { rat(180) }, formula::Measured<CementVolume> { rat(0) });
+    auto const zeroed = formula::environment(formula::Measured<Rise> { rat(180) }, formula::Measured<Run> { rat(0) });
 
     CHECK_THROWS_AS(formula::evaluate<Ratio>(ratio, zeroed), formula::ArithmeticException);
     CHECK(formula::evaluate<Ratio>(ratio, inputs).measurement().value() == rat(3, 5));
@@ -209,8 +204,8 @@ TEST_CASE("evaluate: the throwing spelling throws what the checked one reports",
 
 TEST_CASE("evaluate: an entered result replaces the formula and says so", "[evaluate]")
 {
-    constexpr auto overridden = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                     formula::Measured<CementVolume> { rat(300) },
+    constexpr auto overridden = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                     formula::Measured<Run> { rat(300) },
                                                      formula::entered(formula::Measured<Ratio> { rat(45, 100) }));
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, overridden);
 
@@ -227,8 +222,8 @@ TEST_CASE("evaluate: an entered result short-circuits an otherwise failing formu
     // The formula divides by zero. The override must be returned anyway -- proof
     // that the expression is not evaluated at all, rather than evaluated and
     // discarded.
-    constexpr auto overridden = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                     formula::Measured<CementVolume> { rat(0) },
+    constexpr auto overridden = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                     formula::Measured<Run> { rat(0) },
                                                      formula::entered(formula::Measured<Ratio> { rat(45, 100) }));
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, overridden);
 
@@ -240,8 +235,8 @@ TEST_CASE("evaluate: an entered input is still just an input", "[evaluate]")
 {
     // `entered` on an *input* changes where the number came from, not how the
     // formula is evaluated: the result is still derived.
-    constexpr auto mixed = formula::environment(formula::entered(formula::Measured<WaterVolume> { rat(180) }),
-                                                formula::Measured<CementVolume> { rat(300) });
+    constexpr auto mixed =
+        formula::environment(formula::entered(formula::Measured<Rise> { rat(180) }), formula::Measured<Run> { rat(300) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, mixed);
 
     STATIC_REQUIRE(computed.has_value());
@@ -251,9 +246,9 @@ TEST_CASE("evaluate: an entered input is still just an input", "[evaluate]")
 
 TEST_CASE("evaluate: a constant enters the arithmetic in its own unit", "[evaluate]")
 {
-    // half a cubic metre, added to 180 l + 300 l, is 980 l.
-    constexpr auto withConstant = total + formula::constant<formula::unit::CubicMetre>(rat(1, 2));
-    constexpr auto computed = formula::checked_evaluate<TotalVolume>(withConstant, inputs);
+    // half a metre, added to 180 mm + 300 mm, is 980 mm.
+    constexpr auto withConstant = total + formula::constant<formula::unit::Metre>(rat(1, 2));
+    constexpr auto computed = formula::checked_evaluate<TotalLength>(withConstant, inputs);
 
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(980));
@@ -261,15 +256,15 @@ TEST_CASE("evaluate: a constant enters the arithmetic in its own unit", "[evalua
 
 TEST_CASE("evaluate: a constant declared in a non-coherent unit still enters in its own unit", "[evaluate]")
 {
-    // CubicMetre, used by the test above, happens to be the coherent SI unit
-    // for volume, so that test cannot tell a constant evaluated in its own
+    // Metre, used by the test above, happens to be the coherent SI unit
+    // for length, so that test cannot tell a constant evaluated in its own
     // unit apart from one evaluated as though it were already stated in the
-    // coherent unit. Litre is not coherent (its magnitude is 1/1000), so
-    // this one can: 180 l + 300 l + 20 l is exactly 500 l. Under the
-    // coherent-unit mutation, the 20 would enter as 20 m3 -- 20000 l -- and
-    // the total would be 20480 l, not 500.
-    constexpr auto withConstant = total + formula::constant<formula::unit::Litre>(rat(20));
-    constexpr auto computed = formula::checked_evaluate<TotalVolume>(withConstant, inputs);
+    // coherent unit. Millimetre is not coherent (its magnitude is 1/1000), so
+    // this one can: 180 mm + 300 mm + 20 mm is exactly 500 mm. Under the
+    // coherent-unit mutation, the 20 would enter as 20 m -- 20000 mm -- and
+    // the total would be 20480 mm, not 500.
+    constexpr auto withConstant = total + formula::constant<formula::unit::Millimetre>(rat(20));
+    constexpr auto computed = formula::checked_evaluate<TotalLength>(withConstant, inputs);
 
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(500));
@@ -277,7 +272,7 @@ TEST_CASE("evaluate: a constant declared in a non-coherent unit still enters in 
 
 TEST_CASE("evaluate: negation negates", "[evaluate]")
 {
-    constexpr auto computed = formula::checked_evaluate<TotalVolume>(-total, inputs);
+    constexpr auto computed = formula::checked_evaluate<TotalLength>(-total, inputs);
 
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(-480));
@@ -300,8 +295,8 @@ TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[eva
     // squared: sqrt(2^127) is about 1.3e19, so 2e19 divided by 1/2e19 -- a
     // cross-reduction-proof 4e38 -- overflows outright.
     constexpr formula::Rational::Int huge = formula::Rational::Int { 10'000'000'000'000'000'000ULL } * 2;
-    auto const big = formula::environment(formula::Measured<WaterVolume> { formula::Rational { huge } },
-                                          formula::Measured<CementVolume> { formula::Rational { 1, huge } });
+    auto const big = formula::environment(formula::Measured<Rise> { formula::Rational { huge } },
+                                          formula::Measured<Run> { formula::Rational { 1, huge } });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, big);
 
     REQUIRE_FALSE(computed.has_value());
@@ -309,8 +304,8 @@ TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[eva
 
     // 4e9 over 1/4e9, which overflowed 64 bits, is 1.6e19.
     constexpr std::int64_t huge64 = 4'000'000'000LL;
-    auto const big64 = formula::environment(formula::Measured<WaterVolume> { rat(huge64) },
-                                            formula::Measured<CementVolume> { rat(1, huge64) });
+    auto const big64 =
+        formula::environment(formula::Measured<Rise> { rat(huge64) }, formula::Measured<Run> { rat(1, huge64) });
     auto const computed64 = formula::checked_evaluate<Ratio>(ratio, big64);
     REQUIRE(computed64.has_value());
     REQUIRE(computed64->is_value());
@@ -335,15 +330,15 @@ TEST_CASE("evaluate: the double representation still reports an overflow from th
 
 TEST_CASE("evaluate: a result at the edge of the range is computed, not refused", "[evaluate]")
 {
-    // 1.3e19 litres over 1/1.3e19 litres is exactly 1.69e38, which fits below
+    // 1.3e19 millimetres over 1/1.3e19 millimetres is exactly 1.69e38, which fits below
     // 2^127 (1.70e38). It fits only because `checked_mul` cross-reduces before
     // multiplying; a naive implementation would overflow on the way to a
     // representable answer. This is the companion to the overflow test above,
     // at 2e19: together they say where the edge actually is, at the square
     // root of 2^127, about 1.30e19.
     constexpr formula::Rational::Int large { 13'000'000'000'000'000'000ULL };
-    auto const edgeInputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { large } },
-                                                 formula::Measured<CementVolume> { formula::Rational { 1, large } });
+    auto const edgeInputs = formula::environment(formula::Measured<Rise> { formula::Rational { large } },
+                                                 formula::Measured<Run> { formula::Rational { 1, large } });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, edgeInputs);
 
     REQUIRE(computed.has_value());
@@ -357,8 +352,8 @@ TEST_CASE("evaluate: a measured result is not mistaken for an override", "[evalu
     // formula. A plain `Measured<Ratio>` supplied alongside it is a value the
     // environment merely provides, not one a person typed in place of the
     // formula's answer, and it must not silently win.
-    constexpr auto measuredResult = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                         formula::Measured<CementVolume> { rat(300) },
+    constexpr auto measuredResult = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                         formula::Measured<Run> { rat(300) },
                                                          formula::Measured<Ratio> { rat(45, 100) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, measuredResult);
 
@@ -373,10 +368,9 @@ TEST_CASE("evaluate: an arithmetic error on one side outranks absence on the oth
     // divides by zero. Both sides are asked regardless of order, so the error
     // from the side that IS present must win -- an absent left side must not
     // silently swallow an error the right side already found.
-    constexpr auto nested = var<WaterVolume> / (var<CementVolume> / var<TotalVolume>);
-    constexpr auto mixedEnv = formula::environment(formula::Measured<WaterVolume>::absent(),
-                                                   formula::Measured<CementVolume> { rat(300) },
-                                                   formula::Measured<TotalVolume> { rat(0) });
+    constexpr auto nested = var<Rise> / (var<Run> / var<TotalLength>);
+    constexpr auto mixedEnv = formula::environment(
+        formula::Measured<Rise>::absent(), formula::Measured<Run> { rat(300) }, formula::Measured<TotalLength> { rat(0) });
     constexpr formula::Evaluated<formula::Rational> computed =
         formula::checked_evaluate_si<formula::Rational>(nested, mixedEnv);
 
@@ -535,16 +529,16 @@ TEST_CASE("evaluate: an exchange rate supplied as a quantity turns euros into ye
 
 namespace
 {
-/// What every test-local environment below answers from `get<Q>()`: 1009 l,
+/// What every test-local environment below answers from `get<Q>()`: 1009 mm,
 /// never what its other hooks answer, so that a result tells which one the
-/// evaluator read. 1009 l over 1009 l is 1, not the fixture's 3/5.
+/// evaluator read. 1009 mm over 1009 mm is 1, not the fixture's 3/5.
 inline constexpr std::int64_t fromGet = 1009;
 
-/// The fixture's 180 l of water, and 300 l for any other quantity.
+/// The fixture's 180 mm of rise, and 300 mm for any other quantity.
 template <typename Q>
 [[nodiscard]] constexpr formula::Measured<Q> fixtureValue() noexcept
 {
-    return formula::Measured<Q> { std::is_same_v<Q, WaterVolume> ? rat(180) : rat(300) };
+    return formula::Measured<Q> { std::is_same_v<Q, Rise> ? rat(180) : rat(300) };
 }
 
 /// An environment of a consumer's own that works its values out rather than
@@ -578,7 +572,7 @@ struct FailingEnvironment
 /// An environment that says at run time where its values came from:
 /// `source_of<Q>()` answers @p answered, whatever the static `is_entered`
 /// says -- which is that every value was typed in. It holds the fixture's
-/// water, and no cement.
+/// rise, and no run.
 struct SourceEnvironment
 {
     formula::ValueSource answered;
@@ -589,7 +583,7 @@ struct SourceEnvironment
     template <formula::Described Q>
     [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
     {
-        if constexpr (std::is_same_v<Q, WaterVolume>)
+        if constexpr (std::is_same_v<Q, Rise>)
             return fixtureValue<Q>();
         else
             return formula::Measured<Q>::absent();
@@ -605,12 +599,12 @@ struct SourceEnvironment
 /// An environment whose members are named as the hooks are but return
 /// something else. Its `source_of` answers an `int`; its `checked_get` is
 /// one of the two below. Neither is the hook, so the evaluator reads `get`
-/// -- the fixture's values -- and asks `is_entered`, which says the water was
-/// typed in and the cement was not.
+/// -- the fixture's values -- and asks `is_entered`, which says the rise was
+/// typed in and the run was not.
 struct Lookalike
 {
     template <formula::Described Q>
-    static constexpr bool is_entered = std::is_same_v<Q, WaterVolume>;
+    static constexpr bool is_entered = std::is_same_v<Q, Rise>;
 
     template <formula::Described Q>
     [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
@@ -636,7 +630,7 @@ struct ErrorOfAnotherType: Lookalike
 };
 
 /// A `checked_get` answering a plain measurement -- one the hook's type
-/// converts from, so that only an exact match refuses it -- of 1009 l.
+/// converts from, so that only an exact match refuses it -- of 1009 mm.
 struct PlainMeasurement: Lookalike
 {
     template <formula::Described Q>
@@ -752,15 +746,15 @@ struct VariableLog
 
 TEST_CASE("evaluate: an environment that can fail a read is read through checked_get", "[evaluate]")
 {
-    // 180 l over 300 l is 3/5, read through checked_get; get's 1009 l over
-    // 1009 l would be 1.
+    // 180 mm over 300 mm is 3/5, read through checked_get; get's 1009 mm over
+    // 1009 mm would be 1.
     STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<void> {})->measurement().value()
                    == rat(3, 5));
     // A failed read fails the formula with the environment's own error, on
     // either side; read through get it would have been a value.
-    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<WaterVolume> {}).error()
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<Rise> {}).error()
                    == formula::ArithmeticError::DomainError);
-    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<CementVolume> {}).error()
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<Run> {}).error()
                    == formula::ArithmeticError::DomainError);
 }
 
@@ -768,38 +762,34 @@ TEST_CASE("evaluate: a failed read is the variable's failure, relayed as an inli
 {
     // The variable is told its source and then that it failed; the sum
     // relays the failure. A failure on the left ends the sum there, so the
-    // cement is never read -- as a left-hand division by zero would end it.
+    // run is never read -- as a left-hand division by zero would end it.
     std::vector<std::string> heard;
-    (void) formula::checked_evaluate_si<formula::Rational>(
-        total, FailingEnvironment<WaterVolume> {}, VariableLog { &heard });
+    (void) formula::checked_evaluate_si<formula::Rational>(total, FailingEnvironment<Rise> {}, VariableLog { &heard });
     CHECK(heard
-          == std::vector<std::string> { "V_w was measured",
-                                        "V_w produced argument outside the domain of the operation",
+          == std::vector<std::string> { "h was measured",
+                                        "h produced argument outside the domain of the operation",
                                         "an operation produced argument outside the domain of the operation" });
 
     heard.clear();
-    (void) formula::checked_evaluate_si<formula::Rational>(
-        total, FailingEnvironment<CementVolume> {}, VariableLog { &heard });
+    (void) formula::checked_evaluate_si<formula::Rational>(total, FailingEnvironment<Run> {}, VariableLog { &heard });
     CHECK(heard
-          == std::vector<std::string> { "V_w was measured",
-                                        "V_w produced a value",
-                                        "V_c was measured",
-                                        "V_c produced argument outside the domain of the operation",
+          == std::vector<std::string> { "h was measured",
+                                        "h produced a value",
+                                        "L was measured",
+                                        "L produced argument outside the domain of the operation",
                                         "an operation produced argument outside the domain of the operation" });
 }
 
 TEST_CASE("evaluate: a branch not taken never reads a value whose read fails", "[evaluate]")
 {
-    // 180 l is over 100 l. The cement's read fails: in the branch not taken
+    // 180 mm is over 100 mm. The run's read fails: in the branch not taken
     // it is never read, and in the branch taken it fails the formula.
-    constexpr auto overHundred = var<WaterVolume> > formula::constant<formula::unit::Litre>(rat(100));
-    constexpr auto cementUntaken = formula::when(overHundred, var<WaterVolume>, var<CementVolume>);
-    constexpr auto cementTaken = formula::when(overHundred, var<CementVolume>, var<WaterVolume>);
-    STATIC_REQUIRE(formula::checked_evaluate<TotalVolume>(cementUntaken, FailingEnvironment<CementVolume> {})
-                       ->measurement()
-                       .value()
+    constexpr auto overHundred = var<Rise> > formula::constant<formula::unit::Millimetre>(rat(100));
+    constexpr auto runUntaken = formula::when(overHundred, var<Rise>, var<Run>);
+    constexpr auto runTaken = formula::when(overHundred, var<Run>, var<Rise>);
+    STATIC_REQUIRE(formula::checked_evaluate<TotalLength>(runUntaken, FailingEnvironment<Run> {})->measurement().value()
                    == rat(180));
-    STATIC_REQUIRE(formula::checked_evaluate<TotalVolume>(cementTaken, FailingEnvironment<CementVolume> {}).error()
+    STATIC_REQUIRE(formula::checked_evaluate<TotalLength>(runTaken, FailingEnvironment<Run> {}).error()
                    == formula::ArithmeticError::DomainError);
 }
 
@@ -811,27 +801,22 @@ TEST_CASE("evaluate: an environment's run-time source is preferred over its stat
     (void) formula::checked_evaluate_si<formula::Rational>(
         total, SourceEnvironment { formula::ValueSource::Derived }, VariableLog { &heard });
     CHECK(heard
-          == std::vector<std::string> { "V_w was derived",
-                                        "V_w produced a value",
-                                        "V_c was derived",
-                                        "V_c produced absent",
-                                        "an operation produced absent" });
+          == std::vector<std::string> {
+              "h was derived", "h produced a value", "L was derived", "L produced absent", "an operation produced absent" });
 
     heard.clear();
     (void) formula::checked_evaluate_si<formula::Rational>(
         total, SourceEnvironment { formula::ValueSource::Measured }, VariableLog { &heard });
-    CHECK(heard
-          == std::vector<std::string> { "V_w was measured",
-                                        "V_w produced a value",
-                                        "V_c was measured",
-                                        "V_c produced absent",
-                                        "an operation produced absent" });
+    CHECK(
+        heard
+        == std::vector<std::string> {
+            "h was measured", "h produced a value", "L was measured", "L produced absent", "an operation produced absent" });
 }
 
 TEST_CASE("evaluate: a checked_get or a source_of of another return type is not the hook", "[evaluate]")
 {
     // No checked_get of these is read, so the ratio is the fixture's 3/5: not
-    // an error, and not 1009 l over 1009 l.
+    // an error, and not 1009 mm over 1009 mm.
     STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, ErrorOfAnotherType {})->measurement().value() == rat(3, 5));
     STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, PlainMeasurement {})->measurement().value() == rat(3, 5));
     STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, ReferenceToFailure {})->measurement().value() == rat(3, 5));
@@ -839,10 +824,10 @@ TEST_CASE("evaluate: a checked_get or a source_of of another return type is not 
     std::vector<std::string> heard;
     (void) formula::checked_evaluate_si<formula::Rational>(total, ErrorOfAnotherType {}, VariableLog { &heard });
     CHECK(heard
-          == std::vector<std::string> { "V_w was entered",
-                                        "V_w produced a value",
-                                        "V_c was measured",
-                                        "V_c produced a value",
+          == std::vector<std::string> { "h was entered",
+                                        "h produced a value",
+                                        "L was measured",
+                                        "L produced a value",
                                         "an operation produced a value" });
 }
 
@@ -850,17 +835,15 @@ TEST_CASE("evaluate: a source_of answering a reference or a type converting to V
           "[evaluate]")
 {
     // Both answer Derived, if asked; an int, as above, would not convert.
-    STATIC_REQUIRE(static_cast<formula::ValueSource>(ConvertibleSource {}.source_of<WaterVolume>())
+    STATIC_REQUIRE(static_cast<formula::ValueSource>(ConvertibleSource {}.source_of<Rise>())
                    == formula::ValueSource::Derived);
-    STATIC_REQUIRE(ReferenceToSource {}.source_of<WaterVolume>() == formula::ValueSource::Derived);
+    STATIC_REQUIRE(ReferenceToSource {}.source_of<Rise>() == formula::ValueSource::Derived);
 
-    // Neither is asked, so is_entered decides: the water typed in, the cement
+    // Neither is asked, so is_entered decides: the rise typed in, the run
     // measured -- where the hook would have said both were derived.
-    std::vector<std::string> const decidedByIsEntered { "V_w was entered",
-                                                        "V_w produced a value",
-                                                        "V_c was measured",
-                                                        "V_c produced a value",
-                                                        "an operation produced a value" };
+    std::vector<std::string> const decidedByIsEntered {
+        "h was entered", "h produced a value", "L was measured", "L produced a value", "an operation produced a value"
+    };
     std::vector<std::string> heard;
     (void) formula::checked_evaluate_si<formula::Rational>(total, ConvertibleSource {}, VariableLog { &heard });
     CHECK(heard == decidedByIsEntered);

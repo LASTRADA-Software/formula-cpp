@@ -8,8 +8,8 @@
 /// unit, times one of each named base dimension it has -- on the way in, the
 /// tree is evaluated there, and the result is converted once at the end into
 /// the declared unit of the quantity it was asked to produce. Both
-/// conversions are the exact multiply-then-divide of the unit layer, so 180 l
-/// plus 300 l is exactly 480 l and not 479.999999.
+/// conversions are the exact multiply-then-divide of the unit layer, so 250 ml
+/// plus 1.5 l is exactly 1.75 l and not 1.749999.
 ///
 /// Two entry points, deliberately different:
 ///

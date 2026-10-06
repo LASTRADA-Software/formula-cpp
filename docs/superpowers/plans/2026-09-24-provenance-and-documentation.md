@@ -71,15 +71,15 @@ A throwaway spike of this design was compiled and **run** on **cl 19.51**,
 byte-identical output:
 
 ```
-plain    w/c      : V_w / V_c
-plain    trap A   : (V_w + V_c) / V_c
-plain    trap B   : V_w - (V_c - V_w)
-plain    trap C   : V_w / (V_c * V_c)
+plain    s      : h / L
+plain    trap A   : (h + L) / L
+plain    trap B   : h - (L - h)
+plain    trap C   : h / (L * L)
 plain    circle   : pi * d^2 / 4
 latex    circle   : \frac{\pi \cdot d^{2}}{4}
-plain    adjusted : V_w / V_c * 100
+plain    adjusted : h / L * 100
 citations reachable from the composed root: 2
-w/c evaluates to 3/5
+s evaluates to 3/5
 ```
 
 | Question | Measured answer |
@@ -171,13 +171,13 @@ Create `test/citation_tests.cpp`:
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
-struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
+struct Ratio: formula::Quantity<Ratio, "s", "road gradient", formula::unit::One>
 {
 };
 
@@ -190,27 +190,27 @@ using formula::var;
 
 // Every citation in this repository is invented. Naming a real standard would
 // put copyrighted material in a public repository.
-constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
-                                           { .title = "Water/cement ratio",
+constexpr auto ratio = formula::documented(var<Rise> / var<Run>,
+                                           { .title = "Road gradient",
                                              .reference = "Example Standard 1:2020",
                                              .section = "5.4.2",
                                              .equation = "(3)",
-                                             .text = "Ratio of water content to cement content." });
+                                             .text = "Height gained over horizontal distance covered." });
 
 } // namespace
 
 TEST_CASE("citation: a citation carries every field it was given", "[citation]")
 {
-    STATIC_REQUIRE(ratio.citation.title == std::string_view { "Water/cement ratio" });
+    STATIC_REQUIRE(ratio.citation.title == std::string_view { "Road gradient" });
     STATIC_REQUIRE(ratio.citation.reference == std::string_view { "Example Standard 1:2020" });
     STATIC_REQUIRE(ratio.citation.section == std::string_view { "5.4.2" });
     STATIC_REQUIRE(ratio.citation.equation == std::string_view { "(3)" });
-    STATIC_REQUIRE(ratio.citation.text == std::string_view { "Ratio of water content to cement content." });
+    STATIC_REQUIRE(ratio.citation.text == std::string_view { "Height gained over horizontal distance covered." });
 }
 
 TEST_CASE("citation: a field not named is empty, not absent", "[citation]")
 {
-    constexpr auto sparse = formula::documented(var<WaterVolume>, { .title = "A volume" });
+    constexpr auto sparse = formula::documented(var<Rise>, { .title = "A volume" });
 
     STATIC_REQUIRE(sparse.citation.title == std::string_view { "A volume" });
     STATIC_REQUIRE(sparse.citation.reference.empty());
@@ -232,15 +232,15 @@ TEST_CASE("citation: two citations with the same fields compare equal", "[citati
 TEST_CASE("citation: wrapping does not change the dimension", "[citation]")
 {
     STATIC_REQUIRE(decltype(ratio)::dimension == formula::dim::Scalar);
-    STATIC_REQUIRE(decltype(formula::documented(var<WaterVolume>, {}))::dimension == formula::dim::Volume);
+    STATIC_REQUIRE(decltype(formula::documented(var<Rise>, {}))::dimension == formula::dim::Volume);
 }
 
 TEST_CASE("citation: the wrapper keeps the expression it wrapped", "[citation]")
 {
     STATIC_REQUIRE(std::is_same_v<decltype(ratio.inner),
                                   formula::BinaryNode<formula::BinaryOperator::Divide,
-                                                      formula::VarNode<WaterVolume>,
-                                                      formula::VarNode<CementVolume>>>);
+                                                      formula::VarNode<Rise>,
+                                                      formula::VarNode<Run>>>);
 }
 
 TEST_CASE("citation: a documented expression is still an expression", "[citation]")
@@ -254,11 +254,11 @@ TEST_CASE("citation: a documented expression is still an expression", "[citation
 
 TEST_CASE("citation: a wrapped formula evaluates to what it wrapped", "[citation]")
 {
-    constexpr auto inputs = formula::environment(formula::Measured<WaterVolume> { rat(180) },
-                                                 formula::Measured<CementVolume> { rat(300) });
+    constexpr auto inputs = formula::environment(formula::Measured<Rise> { rat(180) },
+                                                 formula::Measured<Run> { rat(300) });
 
     constexpr auto wrapped = formula::checked_evaluate<Ratio>(ratio, inputs);
-    constexpr auto bare = formula::checked_evaluate<Ratio>(var<WaterVolume> / var<CementVolume>, inputs);
+    constexpr auto bare = formula::checked_evaluate<Ratio>(var<Rise> / var<Run>, inputs);
 
     STATIC_REQUIRE(wrapped.has_value());
     STATIC_REQUIRE(wrapped->measurement().value() == rat(3, 5));
@@ -267,8 +267,8 @@ TEST_CASE("citation: a wrapped formula evaluates to what it wrapped", "[citation
 
 TEST_CASE("citation: an absent input still propagates through a wrapper", "[citation]")
 {
-    constexpr auto partial = formula::environment(formula::Measured<WaterVolume>::absent(),
-                                                  formula::Measured<CementVolume> { rat(300) });
+    constexpr auto partial = formula::environment(formula::Measured<Rise>::absent(),
+                                                  formula::Measured<Run> { rat(300) });
     constexpr auto computed = formula::checked_evaluate<Ratio>(ratio, partial);
 
     STATIC_REQUIRE(computed.has_value());
@@ -277,10 +277,10 @@ TEST_CASE("citation: an absent input still propagates through a wrapper", "[cita
 
 TEST_CASE("citation: a citation survives being wrapped again", "[citation]")
 {
-    constexpr auto outer = formula::documented(ratio, { .title = "Water/cement ratio, per cent" });
+    constexpr auto outer = formula::documented(ratio, { .title = "Road gradient, per cent" });
 
-    STATIC_REQUIRE(outer.citation.title == std::string_view { "Water/cement ratio, per cent" });
-    STATIC_REQUIRE(outer.inner.citation.title == std::string_view { "Water/cement ratio" });
+    STATIC_REQUIRE(outer.citation.title == std::string_view { "Road gradient, per cent" });
+    STATIC_REQUIRE(outer.inner.citation.title == std::string_view { "Road gradient" });
     STATIC_REQUIRE(decltype(outer)::dimension == formula::dim::Scalar);
 }
 ```
@@ -358,7 +358,7 @@ namespace formula
 /// designated initialiser cannot skip a field that has no default.
 struct Citation
 {
-    /// What the formula is called, in prose: "Water/cement ratio".
+    /// What the formula is called, in prose: "Road gradient".
     std::string_view title {};
     /// The document it comes from, however the citing organisation writes it.
     std::string_view reference {};
@@ -521,10 +521,10 @@ Create `test/render_tests.cpp`:
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", formula::unit::Millimetre>
@@ -549,50 +549,50 @@ using formula::Dialect;
 
 TEST_CASE("render: a variable renders as its own symbol", "[render]")
 {
-    CHECK(formula::render<Dialect::Plain>(var<WaterVolume>) == "V_w");
+    CHECK(formula::render<Dialect::Plain>(var<Rise>) == "h");
     CHECK(formula::render<Dialect::Plain>(var<Diameter>) == "d");
 }
 
 TEST_CASE("render: the default dialect is plain", "[render]")
 {
-    CHECK(formula::render(var<WaterVolume> / var<CementVolume>) == "V_w / V_c");
+    CHECK(formula::render(var<Rise> / var<Run>) == "h / L");
 }
 
 TEST_CASE("render: the four operators render as themselves", "[render]")
 {
-    CHECK(formula::render(var<WaterVolume> + var<CementVolume>) == "V_w + V_c");
-    CHECK(formula::render(var<WaterVolume> - var<CementVolume>) == "V_w - V_c");
-    CHECK(formula::render(var<WaterVolume> * var<CementVolume>) == "V_w * V_c");
-    CHECK(formula::render(var<WaterVolume> / var<CementVolume>) == "V_w / V_c");
+    CHECK(formula::render(var<Rise> + var<Run>) == "h + L");
+    CHECK(formula::render(var<Rise> - var<Run>) == "h - L");
+    CHECK(formula::render(var<Rise> * var<Run>) == "h * L");
+    CHECK(formula::render(var<Rise> / var<Run>) == "h / L");
 }
 
 TEST_CASE("render: a sum inside a quotient keeps its brackets", "[render]")
 {
-    CHECK(formula::render((var<WaterVolume> + var<CementVolume>) / var<CementVolume>) == "(V_w + V_c) / V_c");
+    CHECK(formula::render((var<Rise> + var<Run>) / var<Run>) == "(h + L) / L");
 }
 
 TEST_CASE("render: subtraction and division bracket their right operand", "[render]")
 {
     // a - (b - c) is not (a - b) - c, so the brackets are not decoration.
-    CHECK(formula::render(var<WaterVolume> - (var<CementVolume> - var<WaterVolume>)) == "V_w - (V_c - V_w)");
-    CHECK(formula::render(var<WaterVolume> / (var<CementVolume> * var<CementVolume>)) == "V_w / (V_c * V_c)");
+    CHECK(formula::render(var<Rise> - (var<Run> - var<Rise>)) == "h - (L - h)");
+    CHECK(formula::render(var<Rise> / (var<Run> * var<Run>)) == "h / (L * L)");
 }
 
 TEST_CASE("render: equal precedence on the left needs no brackets", "[render]")
 {
-    CHECK(formula::render((var<WaterVolume> - var<CementVolume>) - var<WaterVolume>) == "V_w - V_c - V_w");
-    CHECK(formula::render((var<WaterVolume> / var<CementVolume>) * rat(100)) == "V_w / V_c * 100");
+    CHECK(formula::render((var<Rise> - var<Run>) - var<Rise>) == "h - L - h");
+    CHECK(formula::render((var<Rise> / var<Run>) * rat(100)) == "h / L * 100");
 }
 
 TEST_CASE("render: a product inside a sum needs no brackets", "[render]")
 {
-    CHECK(formula::render(var<WaterVolume> + var<CementVolume> * rat(2)) == "V_w + V_c * 2");
+    CHECK(formula::render(var<Rise> + var<Run> * rat(2)) == "h + L * 2");
 }
 
 TEST_CASE("render: negation brackets a sum but not a variable", "[render]")
 {
-    CHECK(formula::render(-var<WaterVolume>) == "-V_w");
-    CHECK(formula::render(-(var<WaterVolume> + var<CementVolume>)) == "-(V_w + V_c)");
+    CHECK(formula::render(-var<Rise>) == "-h");
+    CHECK(formula::render(-(var<Rise> + var<Run>)) == "-(h + L)");
 }
 
 TEST_CASE("render: a constant renders with its unit", "[render]")
@@ -611,7 +611,7 @@ TEST_CASE("render: a power renders its exponent", "[render]")
     CHECK(formula::render(formula::pow<2>(var<Diameter>)) == "d^2");
     CHECK(formula::render(formula::pow<-1>(var<Diameter>)) == "d^-1");
     // A sum raised to a power must keep its brackets.
-    CHECK(formula::render(formula::pow<2>(var<WaterVolume> + var<CementVolume>)) == "(V_w + V_c)^2");
+    CHECK(formula::render(formula::pow<2>(var<Rise> + var<Run>)) == "(h + L)^2");
 }
 
 TEST_CASE("render: a square root and a general root render differently", "[render]")
@@ -629,15 +629,15 @@ TEST_CASE("render: pi renders per dialect", "[render]")
 
 TEST_CASE("render: LaTeX renders a quotient as a fraction", "[render]")
 {
-    CHECK(formula::render<Dialect::LaTeX>(var<WaterVolume> / var<CementVolume>) == "\\frac{V_w}{V_c}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Rise> / var<Run>) == "\\frac{h}{L}");
     // A fraction brackets nothing: \frac already groups both sides.
-    CHECK(formula::render<Dialect::LaTeX>((var<WaterVolume> + var<CementVolume>) / var<CementVolume>)
-          == "\\frac{V_w + V_c}{V_c}");
+    CHECK(formula::render<Dialect::LaTeX>((var<Rise> + var<Run>) / var<Run>)
+          == "\\frac{h + L}{L}");
 }
 
 TEST_CASE("render: LaTeX spells multiplication, powers and roots its own way", "[render]")
 {
-    CHECK(formula::render<Dialect::LaTeX>(var<WaterVolume> * var<CementVolume>) == "V_w \\cdot V_c");
+    CHECK(formula::render<Dialect::LaTeX>(var<Rise> * var<Run>) == "h \\cdot L");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(var<Diameter>)) == "d^{2}");
     CHECK(formula::render<Dialect::LaTeX>(formula::sqrt(var<Area>)) == "\\sqrt{A}");
     CHECK(formula::render<Dialect::LaTeX>(formula::root<4>(var<Area>)) == "\\sqrt[4]{A}");
@@ -647,17 +647,17 @@ TEST_CASE("render: the Markdown dialect emphasises the symbols", "[render]")
 {
     // A symbol containing an underscore would otherwise be read as emphasis by
     // a Markdown renderer, which is exactly why this dialect exists.
-    CHECK(formula::render<Dialect::Markdown>(var<WaterVolume> / var<CementVolume>) == "`V_w` / `V_c`");
+    CHECK(formula::render<Dialect::Markdown>(var<Rise> / var<Run>) == "`h` / `L`");
 }
 
 TEST_CASE("render: a citation does not appear in the rendered formula", "[render]")
 {
-    constexpr auto documented = formula::documented(var<WaterVolume> / var<CementVolume>,
-                                                    { .title = "Water/cement ratio" });
+    constexpr auto documented = formula::documented(var<Rise> / var<Run>,
+                                                    { .title = "Road gradient" });
 
-    CHECK(formula::render(documented) == "V_w / V_c");
+    CHECK(formula::render(documented) == "h / L");
     // And wrapping does not change how the result is bracketed in a larger tree.
-    CHECK(formula::render(documented * rat(100)) == "V_w / V_c * 100");
+    CHECK(formula::render(documented * rat(100)) == "h / L * 100");
 }
 
 TEST_CASE("render: a deep tree renders without losing a bracket", "[render]")
@@ -917,10 +917,10 @@ Apply each alone, rebuild, record the failing test and its message, restore:
 
 1. In `render_operand`, change `<` to `<=`.
    Expected: "equal precedence on the left needs no brackets" fails, showing
-   `(V_w - V_c) - V_w`.
+   `(h - L) - h`.
 2. In `render_node(BinaryNode)`, use `here` for `rightContext` unconditionally.
    Expected: "subtraction and division bracket their right operand" fails,
-   showing `V_w - V_c - V_w` for `a - (b - c)` — the wrong-answer case.
+   showing `h - L - h` for `a - (b - c)` — the wrong-answer case.
 3. In `PrecedenceOf<BinaryNode>`, return `Precedence::Atom` always.
    Expected: "a sum inside a quotient keeps its brackets" fails.
 4. In `PrecedenceOf<DocumentedNode>`, return `Precedence::Atom`.
@@ -1005,10 +1005,10 @@ namespace
 struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", formula::unit::Millimetre>
 {
 };
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 
@@ -1020,13 +1020,13 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 using formula::var;
 
 // Invented, as every citation in this repository must be.
-constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
-                                           { .title = "Water/cement ratio",
+constexpr auto ratio = formula::documented(var<Rise> / var<Run>,
+                                           { .title = "Road gradient",
                                              .reference = "Example Standard 1:2020",
                                              .section = "5.4.2" });
 
 constexpr auto perCent = formula::documented(ratio * rat(100),
-                                             { .title = "Water/cement ratio, per cent",
+                                             { .title = "Road gradient, per cent",
                                                .reference = "Example Standard 1:2020",
                                                .section = "5.4.3" });
 
@@ -1036,14 +1036,14 @@ TEST_CASE("document: the documentation carries the rendered formula", "[document
 {
     formula::Documentation const documentation = formula::document(ratio);
 
-    CHECK(documentation.formula == "V_w / V_c");
+    CHECK(documentation.formula == "h / L");
 }
 
 TEST_CASE("document: the rendered formula follows the requested dialect", "[document]")
 {
     formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(ratio);
 
-    CHECK(latex.formula == "\\frac{V_w}{V_c}");
+    CHECK(latex.formula == "\\frac{h}{L}");
 }
 
 TEST_CASE("document: citations come back outermost first", "[document]")
@@ -1051,18 +1051,18 @@ TEST_CASE("document: citations come back outermost first", "[document]")
     formula::Documentation const documentation = formula::document(perCent);
 
     REQUIRE(documentation.citations.size() == 2);
-    CHECK(documentation.citations[0].title == std::string_view { "Water/cement ratio, per cent" });
+    CHECK(documentation.citations[0].title == std::string_view { "Road gradient, per cent" });
     CHECK(documentation.citations[0].section == std::string_view { "5.4.3" });
-    CHECK(documentation.citations[1].title == std::string_view { "Water/cement ratio" });
+    CHECK(documentation.citations[1].title == std::string_view { "Road gradient" });
     CHECK(documentation.citations[1].section == std::string_view { "5.4.2" });
 }
 
 TEST_CASE("document: an undocumented formula yields an empty citation list", "[document]")
 {
-    formula::Documentation const documentation = formula::document(var<WaterVolume> + var<CementVolume>);
+    formula::Documentation const documentation = formula::document(var<Rise> + var<Run>);
 
     CHECK(documentation.citations.empty());
-    CHECK(documentation.formula == "V_w + V_c");
+    CHECK(documentation.formula == "h + L");
 }
 
 TEST_CASE("document: the symbol table carries each variable's symbol, description and unit",
@@ -1071,9 +1071,9 @@ TEST_CASE("document: the symbol table carries each variable's symbol, descriptio
     formula::Documentation const documentation = formula::document(ratio);
 
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
-    CHECK(documentation.symbols[0].description == std::string_view { "effective water content" });
-    CHECK(documentation.symbols[0].unit == formula::unit::Litre);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
+    CHECK(documentation.symbols[0].description == std::string_view { "height gained" });
+    CHECK(documentation.symbols[0].unit == formula::unit::Millimetre);
 }
 
 TEST_CASE("document: symbols come back in first-appearance order", "[document]")
@@ -1081,20 +1081,20 @@ TEST_CASE("document: symbols come back in first-appearance order", "[document]")
     // Alphabetical order would put A before d in a formula that reads
     // pi * d^2 / 4, which is not how anyone reads it.
     formula::Documentation const documentation =
-        formula::document(formula::pi * formula::pow<2>(var<Diameter>) / var<WaterVolume>);
+        formula::document(formula::pi * formula::pow<2>(var<Diameter>) / var<Rise>);
 
     REQUIRE(documentation.symbols.size() == 2);
     CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "h" });
 }
 
 TEST_CASE("document: a quantity used twice appears once", "[document]")
 {
     formula::Documentation const documentation =
-        formula::document(var<WaterVolume> + var<WaterVolume> * rat(2));
+        formula::document(var<Rise> + var<Rise> * rat(2));
 
     REQUIRE(documentation.symbols.size() == 1);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
 }
 
 TEST_CASE("document: two entries for the same quantity compare equal", "[document]")
@@ -1197,7 +1197,7 @@ contributor's workflow, which the failure message states.
 - [ ] **Step 1: Write the generator**
 
 `tools/gallery/main.cpp` declares a handful of **invented** formulas over
-generic physics — a density, a circular area, a flow rate, a water/cement ratio
+generic physics — a density, a circular area, a flow rate, a road gradient
 — each `documented(...)` with a fictional `Example Standard` citation, then
 writes Markdown to the path given as `argv[1]`:
 

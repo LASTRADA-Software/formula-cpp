@@ -26,25 +26,29 @@ namespace unit = formula::unit;
 //
 // A quantity is declared as an alias of formula::Quantity, whose first
 // argument declares a tag of its own...
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "volume of water added", unit::Litre>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
 
 // ...or as a struct deriving from it, which is its own tag. The two spellings
-// are read the same way everywhere, and mix in one formula.
-struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen", unit::Kilogram>
+// are read the same way everywhere, and can be used together in one formula.
+struct TubeMass: formula::Quantity<TubeMass, "m", "mass of the frame tube", unit::Kilogram>
 {
 };
 
-using VolumeInCubicMetres = formula::Quantity<struct VolumeInCubicMetresTag, "V", "volume of water added", unit::CubicMetre>;
+using RiseInKilometres = formula::Quantity<struct RiseInKilometresTag, "h", "height gained", unit::Kilometre>;
 
-// Same symbol, same description, same unit as WaterVolume above -- only the
-// tag differs: CementVolumeTag, where WaterVolume has WaterVolumeTag.
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_w", "volume of water added", unit::Litre>;
+// The height gained on the way back, over another climb: the same symbol, the
+// same description and the same unit as Rise above, all of them honestly --
+// only the tag differs: ReturnRiseTag, where Rise has RiseTag.
+using ReturnRise = formula::Quantity<struct ReturnRiseTag, "h", "height gained", unit::Metre>;
 
-// combine's result quantity, for step 6 below -- a THIRD quantity, sharing
-// neither the mass's nor the volume's tag, symbol or unit. Naming a result
-// that reuses an operand's quantity is exactly the mislabelling combine's
-// signature no longer allows.
-using Density = formula::Quantity<struct DensityTag, "rho", "density of the specimen", unit::Gram>;
+// combine's operands and result quantity, for step 6 below: the tube's
+// mass and the volume of its material combine into a THIRD quantity, the
+// material's density, sharing neither the mass's nor the volume's tag,
+// symbol or unit. Naming a result that reuses an operand's quantity is
+// exactly the mislabelling combine's signature no longer allows.
+using TubeVolume = formula::Quantity<struct TubeVolumeTag, "V", "volume of the frame tube's material", unit::CubicMetre>;
+using Density =
+    formula::Quantity<struct DensityTag, "rho", "density of the frame tube's material", unit::KilogramPerCubicMetre>;
 
 } // namespace
 
@@ -77,27 +81,27 @@ int main()
     using namespace formula::literals;
 
     // ---- 1. Declaring two quantities and reading their metadata through Describe ----
-    std::println("WaterVolume: symbol={} description=\"{}\" unit={}",
-                 Describe<WaterVolume>::symbol,
-                 Describe<WaterVolume>::description,
-                 Describe<WaterVolume>::unit);
-    std::println("SpecimenMass: symbol={} description=\"{}\" unit={}",
-                 Describe<SpecimenMass>::symbol,
-                 Describe<SpecimenMass>::description,
-                 Describe<SpecimenMass>::unit);
+    std::println("Rise: symbol={} description=\"{}\" unit={}",
+                 Describe<Rise>::symbol,
+                 Describe<Rise>::description,
+                 Describe<Rise>::unit);
+    std::println("TubeMass: symbol={} description=\"{}\" unit={}",
+                 Describe<TubeMass>::symbol,
+                 Describe<TubeMass>::description,
+                 Describe<TubeMass>::unit);
 
-    bool const metadataReadsBackAsDeclared =
-        Describe<WaterVolume>::symbol == "V_w" && Describe<WaterVolume>::description == "volume of water added"
-        && Describe<WaterVolume>::unit == unit::Litre && Describe<SpecimenMass>::symbol == "m"
-        && Describe<SpecimenMass>::description == "mass of the specimen" && Describe<SpecimenMass>::unit == unit::Kilogram;
+    bool const metadataReadsBackAsDeclared = Describe<Rise>::symbol == "h" && Describe<Rise>::description == "height gained"
+                                             && Describe<Rise>::unit == unit::Metre && Describe<TubeMass>::symbol == "m"
+                                             && Describe<TubeMass>::description == "mass of the frame tube"
+                                             && Describe<TubeMass>::unit == unit::Kilogram;
     std::println("metadata reads back exactly as declared: {}", metadataReadsBackAsDeclared ? "yes" : "no");
 
     // ---- 2. Two quantities alike in symbol, description and unit, distinct in type ----
-    bool const metadataCoincides = Describe<WaterVolume>::symbol == Describe<CementVolume>::symbol
-                                   && Describe<WaterVolume>::description == Describe<CementVolume>::description
-                                   && Describe<WaterVolume>::unit == Describe<CementVolume>::unit;
-    bool const tagKeepsThemDistinct = !std::is_same_v<WaterVolume, CementVolume>;
-    std::println("WaterVolume and CementVolume share symbol, description and unit: {}", metadataCoincides ? "yes" : "no");
+    bool const metadataCoincides = Describe<Rise>::symbol == Describe<ReturnRise>::symbol
+                                   && Describe<Rise>::description == Describe<ReturnRise>::description
+                                   && Describe<Rise>::unit == Describe<ReturnRise>::unit;
+    bool const tagKeepsThemDistinct = !std::is_same_v<Rise, ReturnRise>;
+    std::println("Rise and ReturnRise share symbol, description and unit: {}", metadataCoincides ? "yes" : "no");
     std::println("...but the tag keeps them different types: {}", tagKeepsThemDistinct ? "yes" : "no");
 
     // ---- 3. A foreign type, joined by specialising Describe ----
@@ -108,44 +112,45 @@ int main()
                                             && Describe<ForeignTemperature>::symbol == "theta"
                                             && Describe<ForeignTemperature>::dimension == formula::dim::Temperature;
 
-    // ---- 4. A present measurement, converted exactly between quantities (450 l to m3) ----
+    // ---- 4. A present measurement, converted exactly between quantities (450 m to km) ----
     //
     // A conversion, a rounding and a bounds check each return a std::expected
     // -- the value, or the arithmetic error that stopped it. These run over
     // constants, so a static_assert checks each and an error would stop the
     // build.
-    constexpr Measured<WaterVolume> presentVolume { 450 };
-    constexpr auto convertedPresent = formula::checked_convert_to<VolumeInCubicMetres>(presentVolume);
+    constexpr Measured<Rise> presentRise { 450 };
+    constexpr auto convertedPresent = formula::checked_convert_to<RiseInKilometres>(presentRise);
     static_assert(convertedPresent.has_value());
-    std::println("{} converted to {} = {}", presentVolume, Describe<VolumeInCubicMetres>::unit, *convertedPresent);
+    std::println("{} converted to {} = {}", presentRise, Describe<RiseInKilometres>::unit, *convertedPresent);
     bool const presentValueConvertsExactly = formula::number_of(convertedPresent) == 0.45_r;
 
     // ---- 5. An absent measurement surviving conversion, rounding and a bounds check ----
-    constexpr Measured<WaterVolume> absentVolume {};
-    constexpr auto convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
-    constexpr auto roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
-    constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+    constexpr Measured<Rise> absentRise {};
+    constexpr auto convertedAbsent = formula::checked_convert_to<RiseInKilometres>(absentRise);
+    constexpr auto roundedAbsent = formula::checked_round_to_declared(absentRise, RoundingMode::HalfAwayFromZero);
+    constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentRise);
     static_assert(convertedAbsent.has_value() && roundedAbsent.has_value() && boundsOfAbsent.has_value());
 
     std::println("an absent measurement, converted: {}", *convertedAbsent);
     std::println("an absent measurement, rounded: {}", *roundedAbsent);
     std::println("an absent measurement, bounds-checked: {}", *boundsOfAbsent);
 
-    bool const absenceSurvivesEveryOperation = convertedAbsent->is_absent() && roundedAbsent->is_absent()
-                                               && *boundsOfAbsent == BoundsCheck::NotMeasured;
+    bool const absenceSurvivesEveryOperation =
+        convertedAbsent->is_absent() && roundedAbsent->is_absent() && *boundsOfAbsent == BoundsCheck::NotMeasured;
 
     // ---- 6. combine: absent if EITHER input is, not only if both are, and the
     //         RESULT is named by the caller, not inherited from either operand ----
-    Measured<SpecimenMass> const absentMass {};
-    auto const combinedWithAnAbsentInput = formula::combine<Density>(
-        presentVolume, absentMass, [](Rational volume, Rational mass) { return volume * mass; });
+    constexpr Measured<TubeVolume> presentVolume { 0.0002_r };
+    Measured<TubeMass> const absentMass {};
+    auto const combinedWithAnAbsentInput =
+        formula::combine<Density>(presentVolume, absentMass, [](Rational volume, Rational mass) { return mass / volume; });
     std::println("a present volume combined with an absent mass: {}", combinedWithAnAbsentInput);
     bool const combineIsAbsentWhenEitherInputIs = combinedWithAnAbsentInput.is_absent();
     // The static TYPE is Measured<Density> -- neither the volume's nor the
     // mass's own quantity. An earlier signature deduced the result as the
     // right-hand operand's quantity, so this line's type used to be
-    // Measured<SpecimenMass>: six "kg", labelled as a mass, for a value that
-    // was actually a density.
+    // Measured<TubeMass>: a mass's label, in kg, on a value that was a
+    // density.
     static_assert(std::is_same_v<decltype(combinedWithAnAbsentInput), Measured<Density> const>);
 
     // ---- summary ----

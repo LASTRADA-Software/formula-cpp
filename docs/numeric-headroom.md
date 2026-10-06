@@ -155,15 +155,15 @@ Each program's largest integers over everything it evaluates at run time.
 
 | program | numerator bits | denominator bits | intermediate bits | headroom |
 |---|---|---|---|---|
-| example `simple` | 4 | 10 | 6 | 117 |
+| example `simple` | 12 | 12 | 12 | 115 |
 | example `exact_numbers` | 9 | 10 | 9 | 117 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 105 |
 | example `quantities` | 0 | 0 | 0 | 127 |
 | example `expressions` | 0 | 0 | 0 | 127 |
-| example `citations` | 4 | 10 | 6 | 117 |
-| example `composition` | 10 | 10 | 9 | 117 |
+| example `citations` | 12 | 12 | 12 | 115 |
+| example `composition` | 18 | 12 | 18 | 109 |
 | example `electricity_bill` | 31 | 26 | 31 | 96 |
-| example `tracing` | 10 | 10 | 9 | 117 |
+| example `tracing` | 12 | 12 | 12 | 115 |
 | example `rounding_and_conditionals` | 27 | 20 | 27 | 100 |
 | example `constraints` | 26 | 20 | 26 | 101 |
 | example `lookup_tables` | 26 | 20 | 26 | 101 |
@@ -173,6 +173,7 @@ Each program's largest integers over everything it evaluates at run time.
 | example `records` | 25 | 25 | 25 | 102 |
 | example `opaque_and_retry` | 93 | 96 | 121 | 6 |
 | example `display` | 20 | 21 | 21 | 106 |
+| example `cycling_speed` | 59 | 49 | 59 | 68 |
 | the gallery generator | 29 | 27 | 29 | 98 |
 
 <!-- /census:examples -->
@@ -180,7 +181,12 @@ Each program's largest integers over everything it evaluates at run time.
 The lowest is `opaque_and_retry`, at 6 bits, on purpose: it fits twenty-seven points on
 distinct denominators to show a least-squares fit refusing with `Overflow`, and the census
 counts the integers the fit formed before it was refused (see [Least squares](#least-squares-realistic-and-one-stress-control)). Of the examples that
-compute only results, the lowest is `methods_and_overlays`, at 69 bits: its cylinder
+compute only results, the lowest is `cycling_speed`, at 68 bits: it puts the speed it
+evaluates in double onto an exact scale of millimetres a second, starting from that
+double's exact binary value: a numerator of up to 53 bits over a power of two, which
+rounding to three places multiplies by 5^3, to the 59 bits of its row; converting the
+rounded speed to kilometres an hour adds nothing wider. Its exact steps alone stay
+within 30 bits. Next is `methods_and_overlays`, at 69 bits: its cylinder
 variant divides a force of 89.3 kN by the library's rational π,
 245850922/78256779, times a squared diameter of 135 mm, and a jurisdiction's
 replacement of that variant divides it by 1127/1000 times the squared

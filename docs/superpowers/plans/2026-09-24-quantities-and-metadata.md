@@ -120,7 +120,7 @@ The unit is part of the quantity type, so a value needs no unit of its own. Conv
 - `constexpr std::string_view view() const noexcept`
 - `constexpr bool operator==(FixedString<A> const&, FixedString<B> const&) noexcept` — heterogeneous, so two different capacities holding the same text compare equal
 
-**Why it is in `detail`:** a caller writes `Quantity<Tag, "V_w", "…", unit::Litre>` and never names this type. It exists so a string literal can be a template argument at all. It is still registered in `FILE_SET HEADERS`, because a public header includes it.
+**Why it is in `detail`:** a caller writes `Quantity<Tag, "h", "…", unit::Litre>` and never names this type. It exists so a string literal can be a template argument at all. It is still registered in `FILE_SET HEADERS`, because a public header includes it.
 
 **Why not `Symbol` from `unit.hpp`:** that one is a fixed 16-byte buffer that silently belongs to a `Unit`, sized for unit symbols. A quantity's *description* is a sentence. `FixedString<N>` sizes itself to its literal, so nothing is truncated and nothing is padded.
 
@@ -141,8 +141,8 @@ using formula::detail::FixedString;
 
 // ---- it carries exactly the text it was given ----
 
-static_assert(FixedString { "V_w" }.view() == std::string_view { "V_w" });
-static_assert(FixedString { "V_w" }.view().size() == 3);
+static_assert(FixedString { "h" }.view() == std::string_view { "h" });
+static_assert(FixedString { "h" }.view().size() == 3);
 static_assert(FixedString { "" }.view().empty());
 static_assert(FixedString { "a sentence with spaces" }.view().size() == 22);
 
@@ -157,13 +157,13 @@ struct Tagged
     static constexpr std::string_view text = S.view();
 };
 
-static_assert(Tagged<"V_w">::text == std::string_view { "V_w" });
+static_assert(Tagged<"h">::text == std::string_view { "h" });
 
 // Same text means the same type; different text means a different type. This is
 // what makes a quantity's symbol part of its identity rather than a field
 // somebody can change without the type noticing.
-static_assert(std::is_same_v<Tagged<"V_w">, Tagged<"V_w">>);
-static_assert(!std::is_same_v<Tagged<"V_w">, Tagged<"V_c">>);
+static_assert(std::is_same_v<Tagged<"h">, Tagged<"h">>);
+static_assert(!std::is_same_v<Tagged<"h">, Tagged<"L">>);
 
 // ---- equality across capacities ----
 //
@@ -318,7 +318,7 @@ Create `test/quantity_cross_tu.hpp`:
 /// a statement about NAME MANGLING, and a mangling bug shows at link time, not
 /// at compile time -- so the functions below are DEFINED in
 /// quantity_cross_tu_b.cpp and CALLED from quantity_tests.cpp. If the two
-/// translation units disagreed about what `WaterVolume` is, this would fail to
+/// translation units disagreed about what `Rise` is, this would fail to
 /// link rather than fail a check.
 
 #include <formula-cpp/quantity.hpp>
@@ -327,19 +327,19 @@ Create `test/quantity_cross_tu.hpp`:
 namespace cross
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "volume of water added", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
 
 /// Same symbol, same description, same unit -- different tag. The tag is the
 /// whole reason these do not collapse into one type.
-struct CementVolume: formula::Quantity<CementVolume, "V_w", "volume of water added", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "h", "height gained", formula::unit::Millimetre>
 {
 };
 
 /// Defined in quantity_cross_tu_b.cpp.
-[[nodiscard]] std::string_view symbol_of_water_volume();
-[[nodiscard]] bool water_and_cement_are_distinct();
+[[nodiscard]] std::string_view symbol_of_rise();
+[[nodiscard]] bool rise_and_run_are_distinct();
 
 } // namespace cross
 ```
@@ -355,16 +355,16 @@ Create `test/quantity_cross_tu_b.cpp`:
 namespace cross
 {
 
-std::string_view symbol_of_water_volume()
+std::string_view symbol_of_rise()
 {
-    return WaterVolume::symbol;
+    return Rise::symbol;
 }
 
-bool water_and_cement_are_distinct()
+bool rise_and_run_are_distinct()
 {
-    return !std::is_same_v<WaterVolume, CementVolume>
-           && !std::is_same_v<formula::Quantity<WaterVolume, "V_w", "volume of water added", formula::unit::Litre>,
-                              formula::Quantity<CementVolume, "V_w", "volume of water added", formula::unit::Litre>>;
+    return !std::is_same_v<Rise, Run>
+           && !std::is_same_v<formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>,
+                              formula::Quantity<Run, "h", "height gained", formula::unit::Millimetre>>;
 }
 
 } // namespace cross
@@ -389,7 +389,7 @@ namespace unit = formula::unit;
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "volume of the effective mixing water", unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", unit::Millimetre>
 {
 };
 
@@ -401,41 +401,41 @@ struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen"
 
 // ---- the metadata is in the type ----
 
-static_assert(WaterVolume::symbol == std::string_view { "V_w" });
-static_assert(WaterVolume::description == std::string_view { "volume of the effective mixing water" });
-static_assert(WaterVolume::unit == unit::Litre);
+static_assert(Rise::symbol == std::string_view { "h" });
+static_assert(Rise::description == std::string_view { "height gained" });
+static_assert(Rise::unit == unit::Millimetre);
 
 // Ruling A: the dimension is DERIVED from the unit, never declared beside it, so
 // there is no second place for it to disagree with.
-static_assert(WaterVolume::dimension == dim::Volume);
+static_assert(Rise::dimension == dim::Volume);
 static_assert(SpecimenMass::dimension == dim::Mass);
-static_assert(WaterVolume::dimension == unit::Litre.dimension);
+static_assert(Rise::dimension == unit::Millimetre.dimension);
 
 // ---- identity ----
 
-static_assert(!std::is_same_v<WaterVolume, SpecimenMass>);
+static_assert(!std::is_same_v<Rise, SpecimenMass>);
 
 // Two quantities alike in EVERYTHING but their tag are still different types.
 // Without this the library would happily let a report label one measurement with
 // another's name.
-static_assert(!std::is_same_v<cross::WaterVolume, cross::CementVolume>);
-static_assert(cross::WaterVolume::symbol == cross::CementVolume::symbol);
-static_assert(cross::WaterVolume::unit == cross::CementVolume::unit);
+static_assert(!std::is_same_v<cross::Rise, cross::Run>);
+static_assert(cross::Rise::symbol == cross::Run::symbol);
+static_assert(cross::Rise::unit == cross::Run::unit);
 
 TEST_CASE("a quantity type means the same thing in every translation unit", "[quantity]")
 {
     // Defined in quantity_cross_tu_b.cpp. If the two translation units disagreed
-    // about what cross::WaterVolume is, this would not link.
-    CHECK(cross::symbol_of_water_volume() == std::string_view { "V_w" });
-    CHECK(cross::water_and_cement_are_distinct());
+    // about what cross::Rise is, this would not link.
+    CHECK(cross::symbol_of_rise() == std::string_view { "h" });
+    CHECK(cross::rise_and_run_are_distinct());
 }
 
 TEST_CASE("a quantity reports its own metadata", "[quantity]")
 {
-    CHECK(WaterVolume::symbol == std::string_view { "V_w" });
-    CHECK(WaterVolume::description == std::string_view { "volume of the effective mixing water" });
-    CHECK(formula::view(WaterVolume::unit.symbolText) == std::string_view { "l" });
-    CHECK(WaterVolume::unit.decimals == 1);
+    CHECK(Rise::symbol == std::string_view { "h" });
+    CHECK(Rise::description == std::string_view { "height gained" });
+    CHECK(formula::view(Rise::unit.symbolText) == std::string_view { "l" });
+    CHECK(Rise::unit.decimals == 1);
     CHECK(SpecimenMass::unit.decimals == 3);
 }
 ```
@@ -468,11 +468,11 @@ namespace formula
 ///
 /// Declared like this:
 ///
-///     struct WaterVolume:
-///         formula::Quantity<WaterVolume,                    // the type's own name
-///                           "V_w",
-///                           "volume of the effective mixing water",
-///                           formula::unit::Litre>
+///     struct Rise:
+///         formula::Quantity<Rise,                    // the type's own name
+///                           "h",
+///                           "height gained",
+///                           formula::unit::Millimetre>
 ///     {
 ///     };
 ///
@@ -519,7 +519,7 @@ Expected: PASS with matching counts.
 
 - [ ] **Step 5: Prove the cross-TU test is a LINK test, not a compile test**
 
-Change `quantity_cross_tu_b.cpp`'s definition of `symbol_of_water_volume` so it is declared for a *different* quantity than the header declares — for instance by defining it inside a `WaterVolume` declared with a different unit. Rebuild.
+Change `quantity_cross_tu_b.cpp`'s definition of `symbol_of_rise` so it is declared for a *different* quantity than the header declares — for instance by defining it inside a `Rise` declared with a different unit. Rebuild.
 
 Expected: a real **unresolved external symbol** (`LNK2019` on the MSVC family), not a type error. Restore, rebuild, confirm green. Quote both in your report.
 
@@ -565,18 +565,18 @@ Append to `test/quantity_tests.cpp`:
 
 using formula::Describe;
 
-static_assert(Describe<WaterVolume>::symbol == std::string_view { "V_w" });
-static_assert(Describe<WaterVolume>::description
-              == std::string_view { "volume of the effective mixing water" });
-static_assert(Describe<WaterVolume>::unit == unit::Litre);
-static_assert(Describe<WaterVolume>::dimension == dim::Volume);
+static_assert(Describe<Rise>::symbol == std::string_view { "h" });
+static_assert(Describe<Rise>::description
+              == std::string_view { "height gained" });
+static_assert(Describe<Rise>::unit == unit::Millimetre);
+static_assert(Describe<Rise>::dimension == dim::Volume);
 
 // Reading through Describe must agree with reading the type directly. If these
 // ever diverge, every consumer above this layer is reading something else.
-static_assert(Describe<WaterVolume>::symbol == WaterVolume::symbol);
+static_assert(Describe<Rise>::symbol == Rise::symbol);
 static_assert(Describe<SpecimenMass>::unit == SpecimenMass::unit);
 
-static_assert(formula::Described<WaterVolume>);
+static_assert(formula::Described<Rise>);
 static_assert(!formula::Described<int>);
 ```
 
@@ -606,10 +606,10 @@ static_assert(Describe<ForeignTemperature>::dimension == dim::Temperature);
 
 TEST_CASE("metadata reads the same through Describe as off the type", "[quantity]")
 {
-    CHECK(Describe<WaterVolume>::symbol == WaterVolume::symbol);
-    CHECK(Describe<WaterVolume>::description == WaterVolume::description);
-    CHECK(Describe<WaterVolume>::unit == WaterVolume::unit);
-    CHECK(Describe<WaterVolume>::dimension == WaterVolume::dimension);
+    CHECK(Describe<Rise>::symbol == Rise::symbol);
+    CHECK(Describe<Rise>::description == Rise::description);
+    CHECK(Describe<Rise>::unit == Rise::unit);
+    CHECK(Describe<Rise>::dimension == Rise::dimension);
 }
 
 TEST_CASE("a foreign type joins on the same terms as ours", "[quantity]")
@@ -657,19 +657,19 @@ Create `test/negative/quantity_wrong_type.cpp`:
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/unit.hpp>
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V", "a volume", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "x", "a distance", formula::unit::Millimetre>
 {
 };
 
-struct CementVolume: formula::Quantity<CementVolume, "V", "a volume", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "x", "a distance", formula::unit::Millimetre>
 {
 };
 
-void takes_water(WaterVolume);
+void takes_rise(Rise);
 
 int main()
 {
-    takes_water(CementVolume {});
+    takes_rise(Run {});
     return 0;
 }
 ```
@@ -679,7 +679,7 @@ Register both in `test/CMakeLists.txt`:
 ```cmake
 formula_add_negative_test(describe_undeclared_type
     "formula: this type does not declare any quantity metadata")
-formula_add_negative_test(quantity_wrong_type "CementVolume")
+formula_add_negative_test(quantity_wrong_type "Run")
 ```
 
 Note the second expects a *type name*, not a library message, because the compiler's own conversion error is the diagnostic here and all three name the offending type. Prove it discriminates anyway — see Step 5.
@@ -858,7 +858,7 @@ using formula::Rational;
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "volume of water added", unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", unit::Millimetre>
 {
 };
 
@@ -866,44 +866,44 @@ struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen"
 {
 };
 
-consteval Measured<WaterVolume> measured(std::int64_t numerator, std::int64_t denominator)
+consteval Measured<Rise> measured(std::int64_t numerator, std::int64_t denominator)
 {
-    return Measured<WaterVolume> { *Rational::make(numerator, denominator) };
+    return Measured<Rise> { *Rational::make(numerator, denominator) };
 }
 
 } // namespace
 
 // ---- absent is the default, and it is not zero ----
 
-static_assert(Measured<WaterVolume> {}.is_absent());
-static_assert(!Measured<WaterVolume> {}.has_value());
-static_assert(Measured<WaterVolume>::absent().is_absent());
+static_assert(Measured<Rise> {}.is_absent());
+static_assert(!Measured<Rise> {}.has_value());
+static_assert(Measured<Rise>::absent().is_absent());
 
 // Zero is a measurement; absent is not a number. Collapsing the two is how an
 // unmeasured quantity comes to look like a real reading of nothing.
 static_assert(!measured(0, 1).is_absent());
-static_assert(measured(0, 1) != Measured<WaterVolume> {});
+static_assert(measured(0, 1) != Measured<Rise> {});
 
 // ---- a present value is exactly what was put in ----
 
 static_assert(measured(9, 2).value() == *Rational::make(9, 2));
 static_assert(measured(9, 2).has_value());
-static_assert(Measured<WaterVolume> {}.value_or(*Rational::make(7, 1)) == *Rational::make(7, 1));
+static_assert(Measured<Rise> {}.value_or(*Rational::make(7, 1)) == *Rational::make(7, 1));
 static_assert(measured(9, 2).value_or(*Rational::make(7, 1)) == *Rational::make(9, 2));
 
 // ---- equality ----
 
 static_assert(measured(9, 2) == measured(9, 2));
 static_assert(measured(9, 2) != measured(9, 3));
-static_assert(Measured<WaterVolume> {} == Measured<WaterVolume> {});
+static_assert(Measured<Rise> {} == Measured<Rise> {});
 
 // ---- two quantities are two types, even with the same payload ----
 
-static_assert(!std::is_same_v<Measured<WaterVolume>, Measured<SpecimenMass>>);
+static_assert(!std::is_same_v<Measured<Rise>, Measured<SpecimenMass>>);
 
 TEST_CASE("an absent measurement refuses to invent a number", "[measured]")
 {
-    Measured<WaterVolume> const notMeasured {};
+    Measured<Rise> const notMeasured {};
     REQUIRE(notMeasured.is_absent());
     CHECK_THROWS_AS(notMeasured.value(), ArithmeticException);
 
@@ -915,8 +915,8 @@ TEST_CASE("an absent measurement refuses to invent a number", "[measured]")
 TEST_CASE("a measurement carries its quantity's own metadata", "[measured]")
 {
     // No unit of its own: the unit is part of the quantity type. See Ruling F.
-    CHECK(Measured<WaterVolume>::quantity_unit() == unit::Litre);
-    CHECK(Measured<WaterVolume>::quantity_symbol() == std::string_view { "V_w" });
+    CHECK(Measured<Rise>::quantity_unit() == unit::Millimetre);
+    CHECK(Measured<Rise>::quantity_symbol() == std::string_view { "h" });
     CHECK(Measured<SpecimenMass>::quantity_unit() == unit::Kilogram);
 }
 ```
@@ -1087,7 +1087,7 @@ namespace
 {
 
 struct VolumeInCubicMetres:
-    formula::Quantity<VolumeInCubicMetres, "V", "volume of water added", unit::CubicMetre>
+    formula::Quantity<VolumeInCubicMetres, "V", "height gained", unit::CubicMetre>
 {
 };
 
@@ -1096,7 +1096,7 @@ constexpr auto doubled = [](Rational value) { return value + value; };
 } // namespace
 
 static_assert(formula::transform(measured(3, 1), doubled).value() == *Rational::make(6, 1));
-static_assert(formula::transform(Measured<WaterVolume> {}, doubled).is_absent());
+static_assert(formula::transform(Measured<Rise> {}, doubled).is_absent());
 
 // Both present, one absent, the other absent, both absent -- every combination,
 // because propagation that works in three cases out of four is not propagation.
@@ -1104,13 +1104,13 @@ static_assert(formula::combine(measured(3, 1), Measured<SpecimenMass> { *Rationa
                                [](Rational a, Rational b) { return a * b; })
                   .value()
               == *Rational::make(6, 1));
-static_assert(formula::combine(Measured<WaterVolume> {}, Measured<SpecimenMass> { *Rational::make(2, 1) },
+static_assert(formula::combine(Measured<Rise> {}, Measured<SpecimenMass> { *Rational::make(2, 1) },
                                [](Rational a, Rational b) { return a * b; })
                   .is_absent());
 static_assert(formula::combine(measured(3, 1), Measured<SpecimenMass> {},
                                [](Rational a, Rational b) { return a * b; })
                   .is_absent());
-static_assert(formula::combine(Measured<WaterVolume> {}, Measured<SpecimenMass> {},
+static_assert(formula::combine(Measured<Rise> {}, Measured<SpecimenMass> {},
                                [](Rational a, Rational b) { return a * b; })
                   .is_absent());
 
@@ -1123,7 +1123,7 @@ TEST_CASE("absence survives a conversion instead of becoming a number", "[measur
     REQUIRE(present->has_value());
     CHECK(present->value() == *Rational::make(9, 20));
 
-    auto const absent = formula::checked_convert_to<VolumeInCubicMetres>(Measured<WaterVolume> {});
+    auto const absent = formula::checked_convert_to<VolumeInCubicMetres>(Measured<Rise> {});
     REQUIRE(absent.has_value());
     CHECK(absent->is_absent());
 }
@@ -1137,14 +1137,14 @@ TEST_CASE("converting to a quantity of another dimension is refused", "[measured
     // And it is refused for an ABSENT value too. A conversion nobody could
     // perform must not look like it succeeded merely because there was no number
     // to get wrong.
-    auto const wrongAndAbsent = formula::checked_convert_to<SpecimenMass>(Measured<WaterVolume> {});
+    auto const wrongAndAbsent = formula::checked_convert_to<SpecimenMass>(Measured<Rise> {});
     REQUIRE_FALSE(wrongAndAbsent.has_value());
     CHECK(wrongAndAbsent.error() == ArithmeticError::DomainError);
 }
 
 TEST_CASE("an unmeasured value is not judged against bounds", "[measured]")
 {
-    auto const absent = formula::checked_within_bounds(Measured<WaterVolume> {});
+    auto const absent = formula::checked_within_bounds(Measured<Rise> {});
     REQUIRE(absent.has_value());
     CHECK(*absent == formula::BoundsCheck::NotMeasured);
 
@@ -1164,7 +1164,7 @@ TEST_CASE("rounding to declared precision leaves an absent value absent", "[meas
     CHECK(rounded->value() == *Rational::from_decimal(1235, -1));
 
     auto const stillAbsent =
-        formula::checked_round_to_declared(Measured<WaterVolume> {}, formula::RoundingMode::HalfAwayFromZero);
+        formula::checked_round_to_declared(Measured<Rise> {}, formula::RoundingMode::HalfAwayFromZero);
     REQUIRE(stillAbsent.has_value());
     CHECK(stillAbsent->is_absent());
 }

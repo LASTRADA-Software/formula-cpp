@@ -26,10 +26,10 @@
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", formula::unit::Millimetre>
 {
 };
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "L", "horizontal distance covered", formula::unit::Millimetre>
 {
 };
 struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", formula::unit::Millimetre>
@@ -127,50 +127,50 @@ using formula::var;
 
 TEST_CASE("render: a variable renders as its own symbol", "[render]")
 {
-    CHECK(formula::render<Dialect::Plain>(var<WaterVolume>) == "V_w");
+    CHECK(formula::render<Dialect::Plain>(var<Rise>) == "h");
     CHECK(formula::render<Dialect::Plain>(var<Diameter>) == "d");
 }
 
 TEST_CASE("render: the default dialect is plain", "[render]")
 {
-    CHECK(formula::render(var<WaterVolume> / var<CementVolume>) == "V_w / V_c");
+    CHECK(formula::render(var<Rise> / var<Run>) == "h / L");
 }
 
 TEST_CASE("render: the four operators render as themselves", "[render]")
 {
-    CHECK(formula::render(var<WaterVolume> + var<CementVolume>) == "V_w + V_c");
-    CHECK(formula::render(var<WaterVolume> - var<CementVolume>) == "V_w - V_c");
-    CHECK(formula::render(var<WaterVolume> * var<CementVolume>) == "V_w * V_c");
-    CHECK(formula::render(var<WaterVolume> / var<CementVolume>) == "V_w / V_c");
+    CHECK(formula::render(var<Rise> + var<Run>) == "h + L");
+    CHECK(formula::render(var<Rise> - var<Run>) == "h - L");
+    CHECK(formula::render(var<Rise> * var<Run>) == "h * L");
+    CHECK(formula::render(var<Rise> / var<Run>) == "h / L");
 }
 
 TEST_CASE("render: a sum inside a quotient keeps its brackets", "[render]")
 {
-    CHECK(formula::render((var<WaterVolume> + var<CementVolume>) / var<CementVolume>) == "(V_w + V_c) / V_c");
+    CHECK(formula::render((var<Rise> + var<Run>) / var<Run>) == "(h + L) / L");
 }
 
 TEST_CASE("render: subtraction and division bracket their right operand", "[render]")
 {
     // a - (b - c) is not (a - b) - c, so the brackets are not decoration.
-    CHECK(formula::render(var<WaterVolume> - (var<CementVolume> - var<WaterVolume>) ) == "V_w - (V_c - V_w)");
-    CHECK(formula::render(var<WaterVolume> / (var<CementVolume> * var<CementVolume>) ) == "V_w / (V_c * V_c)");
+    CHECK(formula::render(var<Rise> - (var<Run> - var<Rise>) ) == "h - (L - h)");
+    CHECK(formula::render(var<Rise> / (var<Run> * var<Run>) ) == "h / (L * L)");
 }
 
 TEST_CASE("render: equal precedence on the left needs no brackets", "[render]")
 {
-    CHECK(formula::render((var<WaterVolume> - var<CementVolume>) -var<WaterVolume>) == "V_w - V_c - V_w");
-    CHECK(formula::render((var<WaterVolume> / var<CementVolume>) *rat(100)) == "V_w / V_c * 100");
+    CHECK(formula::render((var<Rise> - var<Run>) -var<Rise>) == "h - L - h");
+    CHECK(formula::render((var<Rise> / var<Run>) *rat(100)) == "h / L * 100");
 }
 
 TEST_CASE("render: a product inside a sum needs no brackets", "[render]")
 {
-    CHECK(formula::render(var<WaterVolume> + var<CementVolume> * rat(2)) == "V_w + V_c * 2");
+    CHECK(formula::render(var<Rise> + var<Run> * rat(2)) == "h + L * 2");
 }
 
 TEST_CASE("render: negation brackets a sum but not a variable", "[render]")
 {
-    CHECK(formula::render(-var<WaterVolume>) == "-V_w");
-    CHECK(formula::render(-(var<WaterVolume> + var<CementVolume>) ) == "-(V_w + V_c)");
+    CHECK(formula::render(-var<Rise>) == "-h");
+    CHECK(formula::render(-(var<Rise> + var<Run>) ) == "-(h + L)");
 }
 
 TEST_CASE("render: a constant renders with its unit", "[render]")
@@ -189,7 +189,7 @@ TEST_CASE("render: a power renders its exponent", "[render]")
     CHECK(formula::render(formula::pow<2>(var<Diameter>)) == "d^2");
     CHECK(formula::render(formula::pow<-1>(var<Diameter>)) == "d^-1");
     // A sum raised to a power must keep its brackets.
-    CHECK(formula::render(formula::pow<2>(var<WaterVolume> + var<CementVolume>)) == "(V_w + V_c)^2");
+    CHECK(formula::render(formula::pow<2>(var<Rise> + var<Run>)) == "(h + L)^2");
 }
 
 TEST_CASE("render: a square root and a general root render differently", "[render]")
@@ -221,9 +221,8 @@ TEST_CASE("render: a logarithm and an exponential read as calls in every dialect
 TEST_CASE("render: a logarithm groups its own argument and is an atom to what holds it", "[render]")
 {
     // The call's parentheses group a compound argument...
-    CHECK(formula::render(formula::ln(var<WaterVolume> / var<CementVolume>)) == "ln(V_w / V_c)");
-    CHECK(formula::render<Dialect::LaTeX>(formula::ln(var<WaterVolume> / var<CementVolume>))
-          == "\\ln\\left(\\frac{V_w}{V_c}\\right)");
+    CHECK(formula::render(formula::ln(var<Rise> / var<Run>)) == "ln(h / L)");
+    CHECK(formula::render<Dialect::LaTeX>(formula::ln(var<Rise> / var<Run>)) == "\\ln\\left(\\frac{h}{L}\\right)");
     // ...and the call is an atom: a power's base, a negation's operand, a difference's right side and a
     // quotient's numerator, with no bracket of its own.
     CHECK(formula::render(formula::pow<2>(formula::ln(var<Determinations>))) == "ln(n_d)^2");
@@ -239,25 +238,40 @@ TEST_CASE("render: a logarithm groups its own argument and is an atom to what ho
 
 TEST_CASE("render: LaTeX renders a quotient as a fraction", "[render]")
 {
-    CHECK(formula::render<Dialect::LaTeX>(var<WaterVolume> / var<CementVolume>) == "\\frac{V_w}{V_c}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Rise> / var<Run>) == "\\frac{h}{L}");
     // A fraction brackets nothing: \frac already groups both sides.
-    CHECK(formula::render<Dialect::LaTeX>((var<WaterVolume> + var<CementVolume>) / var<CementVolume>)
-          == "\\frac{V_w + V_c}{V_c}");
+    CHECK(formula::render<Dialect::LaTeX>((var<Rise> + var<Run>) / var<Run>) == "\\frac{h + L}{L}");
 }
 
 TEST_CASE("render: LaTeX spells multiplication, powers and roots its own way", "[render]")
 {
-    CHECK(formula::render<Dialect::LaTeX>(var<WaterVolume> * var<CementVolume>) == "V_w \\cdot V_c");
+    CHECK(formula::render<Dialect::LaTeX>(var<Rise> * var<Run>) == "h \\cdot L");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(var<Diameter>)) == "d^{2}");
     CHECK(formula::render<Dialect::LaTeX>(formula::sqrt(var<Area>)) == "\\sqrt{A}");
     CHECK(formula::render<Dialect::LaTeX>(formula::root<4>(var<Area>)) == "\\sqrt[4]{A}");
 }
 
+namespace
+{
+namespace markdown_render
+{
+    struct RiderMass: formula::Quantity<RiderMass, "m_r", "rider's mass", formula::unit::Kilogram>
+    {
+    };
+    struct BikeMass: formula::Quantity<BikeMass, "m_b", "bike's mass", formula::unit::Kilogram>
+    {
+    };
+} // namespace markdown_render
+} // namespace
+
 TEST_CASE("render: the Markdown dialect emphasises the symbols", "[render]")
 {
+    using markdown_render::BikeMass;
+    using markdown_render::RiderMass;
+
     // A symbol containing an underscore would otherwise be read as emphasis by
     // a Markdown renderer, which is exactly why this dialect exists.
-    CHECK(formula::render<Dialect::Markdown>(var<WaterVolume> / var<CementVolume>) == "`V_w` / `V_c`");
+    CHECK(formula::render<Dialect::Markdown>(var<RiderMass> / var<BikeMass>) == "`m_r` / `m_b`");
 }
 
 TEST_CASE("render: the Markdown dialect covers every node kind, not only the variable it was built for", "[render]")
@@ -275,7 +289,7 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     CHECK(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(139)))
           == "139 mm");                                                                                 // ConstantNode
     CHECK(formula::render<Dialect::Markdown>(-var<Diameter>) == "-`d`");                                // UnaryNode
-    CHECK(formula::render<Dialect::Markdown>(var<WaterVolume> + var<CementVolume>) == "`V_w` + `V_c`"); // BinaryNode
+    CHECK(formula::render<Dialect::Markdown>(var<Rise> + var<Run>) == "`h` + `L`");                     // BinaryNode
     CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(var<Diameter>)) == "`d`^2");               // PowerNode
     CHECK(formula::render<Dialect::Markdown>(formula::sqrt(var<Area>)) == "sqrt(`A`)");                 // RootNode
     CHECK(formula::render<Dialect::Markdown>(formula::pi) == "pi");                                     // PiNode
@@ -338,11 +352,10 @@ TEST_CASE("render: a rounded logarithm or exponential reads as a rounding of the
     CHECK(formula::render(logged) == "round(ln(n_d), to 4 dp)");
     CHECK(formula::render<Dialect::Markdown>(logged) == "round(ln(`n_d`), to 4 dp)");
     CHECK(formula::render<Dialect::LaTeX>(logged) == "\\operatorname{round}_{4}(\\ln\\left(n_d\\right))");
-    constexpr auto decimal = formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
-        var<WaterVolume> / var<CementVolume>);
-    CHECK(formula::render(decimal) == "round(log10(V_w / V_c), to 2 dp)");
-    CHECK(formula::render<Dialect::LaTeX>(decimal)
-          == "\\operatorname{round}_{2}(\\log_{10}\\left(\\frac{V_w}{V_c}\\right))");
+    constexpr auto decimal =
+        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(var<Rise> / var<Run>);
+    CHECK(formula::render(decimal) == "round(log10(h / L), to 2 dp)");
+    CHECK(formula::render<Dialect::LaTeX>(decimal) == "\\operatorname{round}_{2}(\\log_{10}\\left(\\frac{h}{L}\\right))");
     constexpr auto grown =
         formula::rounded_exp<formula::DecimalPlaces { -1 }, formula::RoundingMode::Ceiling>(var<Determinations>);
     CHECK(formula::render(grown) == "round(exp(n_d), to -1 dp)");
@@ -356,18 +369,18 @@ TEST_CASE("render: a rounded logarithm or exponential reads as a rounding of the
 
 TEST_CASE("render: a citation does not appear in the rendered formula", "[render]")
 {
-    constexpr auto documented = formula::documented(var<WaterVolume> / var<CementVolume>, { .title = "Water/cement ratio" });
+    constexpr auto documented = formula::documented(var<Rise> / var<Run>, { .title = "Road gradient" });
 
-    CHECK(formula::render(documented) == "V_w / V_c");
+    CHECK(formula::render(documented) == "h / L");
     // And wrapping does not change how the result is bracketed in a larger tree.
-    CHECK(formula::render(documented * rat(100)) == "V_w / V_c * 100");
+    CHECK(formula::render(documented * rat(100)) == "h / L * 100");
 }
 
 TEST_CASE("render: a documented sum inside a quotient keeps its brackets", "[render]")
 {
-    constexpr auto documented = formula::documented(var<WaterVolume> + var<CementVolume>, { .title = "Total volume" });
+    constexpr auto documented = formula::documented(var<Rise> + var<Run>, { .title = "Total length" });
 
-    CHECK(formula::render(documented / var<Diameter>) == "(V_w + V_c) / d");
+    CHECK(formula::render(documented / var<Diameter>) == "(h + L) / d");
 }
 
 TEST_CASE("render: a documented negative constant as the base of a power keeps its bracket", "[render]")
@@ -871,14 +884,14 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
 TEST_CASE("render: a constraint renders as its rule, never its verdict", "[render][constraint]")
 {
     constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
-    constexpr auto rule = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
+    constexpr auto rule = formula::constraint(var<Rise> <= var<Run>, rejectSpecimen);
 
-    CHECK(formula::render<Dialect::Plain>(rule) == "require V_w <= V_c");
-    CHECK(formula::render<Dialect::Markdown>(rule) == "require `V_w` <= `V_c`");
-    CHECK(formula::render<Dialect::LaTeX>(rule) == "\\text{require } V_w \\leq V_c");
+    CHECK(formula::render<Dialect::Plain>(rule) == "require h <= L");
+    CHECK(formula::render<Dialect::Markdown>(rule) == "require `h` <= `L`");
+    CHECK(formula::render<Dialect::LaTeX>(rule) == "\\text{require } h \\leq L");
     // The default dialect for a Constraint is plain, exactly as for a Node
     // and for a Predicate.
-    CHECK(formula::render(rule) == "require V_w <= V_c");
+    CHECK(formula::render(rule) == "require h <= L");
 
     // The verdict's own label appears nowhere above, in any dialect -- see
     // render_node(Constraint...)'s comment for why that is the decision,
@@ -899,11 +912,11 @@ TEST_CASE("render: a constraint keeps the predicate's own side order, tested in 
     // tree, rather than a bug that always printed (say) the alphabetically
     // first symbol regardless of which side it was declared on.
     constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
-    constexpr auto waterFirst = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
-    constexpr auto cementFirst = formula::constraint(var<CementVolume> <= var<WaterVolume>, rejectSpecimen);
+    constexpr auto riseFirst = formula::constraint(var<Rise> <= var<Run>, rejectSpecimen);
+    constexpr auto runFirst = formula::constraint(var<Run> <= var<Rise>, rejectSpecimen);
 
-    CHECK(formula::render(waterFirst) == "require V_w <= V_c");
-    CHECK(formula::render(cementFirst) == "require V_c <= V_w");
+    CHECK(formula::render(riseFirst) == "require h <= L");
+    CHECK(formula::render(runFirst) == "require L <= h");
 }
 
 TEST_CASE("render: a constraint's predicate brackets a nested conditional exactly as it would bare",
@@ -1714,7 +1727,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));
     constexpr auto citedDiameter = formula::documented(var<Diameter>, { .title = "Diameter, cited" });
     constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
-    constexpr auto rule = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
+    constexpr auto rule = formula::constraint(var<Rise> <= var<Run>, rejectSpecimen);
 
     isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength>));                         // VarNode
     // ConstantNode
@@ -1819,7 +1832,7 @@ TEST_CASE("render: a rounding or a numeric value in a dimensionless unit with no
     // `unit::One`'s symbol is empty, and the clause once read `to 2 dp of )`
     // and `numeric(..., in )`. A value with no unit is shown with none, as a
     // dimensionless constant is; a named unit keeps its clause.
-    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    constexpr auto ratio = var<Rise> / var<Run>;
     constexpr auto toPlaces =
         formula::rounded<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(ratio);
     constexpr auto toDigits = formula::rounded_to_digits<formula::unit::One,
@@ -1827,12 +1840,12 @@ TEST_CASE("render: a rounding or a numeric value in a dimensionless unit with no
                                                          formula::RoundingMode::HalfAwayFromZero>(ratio);
     constexpr auto bare = formula::numeric_value_of<formula::unit::One, "the fit is stated over the bare ratio">(ratio);
 
-    CHECK(formula::render(toPlaces) == "round(V_w / V_c, to 2 dp)");
-    CHECK(formula::render(toDigits) == "round(V_w / V_c, to 2 sf)");
-    CHECK(formula::render(bare) == "numeric(V_w / V_c)");
-    CHECK(formula::render<Dialect::LaTeX>(toPlaces) == "\\operatorname{round}_{2}(\\frac{V_w}{V_c})");
-    CHECK(formula::render<Dialect::LaTeX>(toDigits) == "\\operatorname{round}_{2\\mathrm{sf}}(\\frac{V_w}{V_c})");
-    CHECK(formula::render<Dialect::LaTeX>(bare) == "\\{\\frac{V_w}{V_c}\\}");
+    CHECK(formula::render(toPlaces) == "round(h / L, to 2 dp)");
+    CHECK(formula::render(toDigits) == "round(h / L, to 2 sf)");
+    CHECK(formula::render(bare) == "numeric(h / L)");
+    CHECK(formula::render<Dialect::LaTeX>(toPlaces) == "\\operatorname{round}_{2}(\\frac{h}{L})");
+    CHECK(formula::render<Dialect::LaTeX>(toDigits) == "\\operatorname{round}_{2\\mathrm{sf}}(\\frac{h}{L})");
+    CHECK(formula::render<Dialect::LaTeX>(bare) == "\\{\\frac{h}{L}\\}");
 
     constexpr auto inMegapascals =
         formula::numeric_value_of<formula::unit::Megapascal, "the fit is stated in MPa">(var<Strength>);
@@ -1848,7 +1861,7 @@ TEST_CASE("render: a rounding or a numeric value in a dimensionless unit with no
 
 namespace
 {
-struct Share: formula::Quantity<Share, "s", "share of the mix", formula::unit::Percent>
+struct Share: formula::Quantity<Share, "s", "share of the particles", formula::unit::Percent>
 {
 };
 

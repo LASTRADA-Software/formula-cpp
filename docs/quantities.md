@@ -22,7 +22,7 @@ mass fails to compile, with both exponent vectors spelled out in the
 diagnostic (see [`docs/dimensions.md`](dimensions.md)). Quantities take the
 same idea one step further and make a *variable* -- not just its dimension,
 but its symbol, its description and its unit -- a compile-time thing too.
-Declaring `WaterVolume` and `CementVolume` as two quantities, each carrying
+Declaring `Rise` and `Run` as two quantities, each carrying
 its own symbol/description/unit through `formula::Quantity`, makes them two
 different, unrelated C++ types even when every one of their parameters but
 the tag is identical, and neither is usable where the other is expected.
@@ -31,19 +31,19 @@ the tag is identical, and neither is usable where the other is expected.
 suite as a negative-compile test, with the two quantities declared by struct:
 
 ```cpp
-struct WaterVolume: formula::Quantity<WaterVolume, "V", "a volume", formula::unit::Litre>
+struct Rise: formula::Quantity<Rise, "x", "a distance", formula::unit::Millimetre>
 {
 };
 
-struct CementVolume: formula::Quantity<CementVolume, "V", "a volume", formula::unit::Litre>
+struct Run: formula::Quantity<Run, "x", "a distance", formula::unit::Millimetre>
 {
 };
 
-void takes_water(WaterVolume);
+void takes_rise(Rise);
 
 int main()
 {
-    takes_water(CementVolume {}); // does not compile
+    takes_rise(Run {});
     return 0;
 }
 ```
@@ -51,19 +51,19 @@ int main()
 Attempting this gives, verbatim, on cl.exe:
 
 ```
-error C2664: 'void takes_water(WaterVolume)': cannot convert argument 1 from 'CementVolume' to 'WaterVolume'
+error C2664: 'void takes_rise(Rise)': cannot convert argument 1 from 'Run' to 'Rise'
 note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
 ```
 
-Declared by alias instead -- `using WaterVolume =
-formula::Quantity<struct WaterVolumeTag, "V", "a volume", formula::unit::Litre>;`,
-and `CementVolume` likewise with `CementVolumeTag` -- the call is refused the
-same way. cl's words are the ones above; g++ 14.2 and clang 20.1.8 name the
-`Quantity` specialisation each alias stands for, by its tag:
+Declared by alias instead -- `using Rise =
+formula::Quantity<struct RiseTag, "x", "a distance", formula::unit::Millimetre>;`,
+and `Run` likewise with `RunTag` -- the call is refused the same way. cl's
+words are the ones above; g++ 14.2 and clang-cl 22.1 name the `Quantity`
+specialisation each alias stands for, by its tag:
 
 ```
-error: could not convert ‘CementVolume()’ from ‘Quantity<CementVolumeTag,[...],[...],[...]>’ to ‘Quantity<WaterVolumeTag,[...],[...],[...]>’
-note: candidate function not viable: no known conversion from 'Quantity<struct CementVolumeTag, [3 * ...]>' to 'Quantity<struct WaterVolumeTag, [3 * ...]>' for 1st argument
+error: could not convert ‘Run()’ from ‘Quantity<RunTag,[...],[...],[...]>’ to ‘Quantity<RiseTag,[...],[...],[...]>’
+note: candidate function not viable: no known conversion from 'Quantity<struct RunTag, [3 * ...]>' to 'Quantity<struct RiseTag, [3 * ...]>' for 1st argument
 ```
 
 The mistake is caught exactly where the wrong call was written, not
@@ -80,48 +80,50 @@ declared with it in one of two spellings. The alias is the shorter, and the
 one these guides and the examples use:
 
 ```cpp
-using WaterVolume = formula::Quantity<struct WaterVolumeTag,   // the tag
-                                      "V_w",                   // symbol
-                                      "volume of water added", // description
-                                      formula::unit::Litre>;   // unit
+using Rise = formula::Quantity<struct RiseTag,        // the tag
+                               "h",                   // symbol
+                               "height gained",       // description
+                               formula::unit::Metre>; // unit
 ```
 
 The struct derives a type of its own, and gives that type's own name back to
 it as the tag:
 
 ```cpp
-struct WaterVolume:
-    formula::Quantity<WaterVolume,                    // the type's own name -- the tag
-                       "V_w",                          // symbol
-                       "volume of water added",        // description
-                       formula::unit::Litre>            // unit
+struct Rise:
+    formula::Quantity<Rise,                 // the type's own name -- the tag
+                      "h",                  // symbol
+                      "height gained",      // description
+                      formula::unit::Metre> // unit
 {
 };
 ```
 
 Both are supported everywhere a quantity is named -- `var<Q>`,
 `Measured<Q>`, an environment, a vocabulary, an overlay, a series, a record,
-a retry -- and the two mix in one formula. `test/quantity_alias_tests.cpp`
-runs every one of those surfaces with alias quantities; most other tests
-declare theirs by struct, so both spellings stay covered.
+a retry -- and the two can be used together in one formula.
+`test/quantity_alias_tests.cpp` runs every one of those surfaces with alias
+quantities; most other tests declare theirs by struct, so both spellings
+stay covered.
 
 **The tag is what makes a quantity distinct.** Two quantities whose symbol,
 description and unit coincide are two types as long as their tags differ. In
-the alias form, `struct WaterVolumeTag` in the argument list declares the tag:
+the alias form, `struct RiseTag` in the argument list declares the tag:
 an incomplete class, never defined and never needing to be, in the nearest
 enclosing namespace or block. Inside a class that is the namespace around the
 class, not the class -- two classes that each declare `struct QTag` this way
 name one tag, which is harmless, as the next section says. An alias cannot name itself, so
-`using WaterVolume = formula::Quantity<WaterVolume, ...>;` does not compile:
+`using Rise = formula::Quantity<Rise, ...>;` does not compile:
 an alias needs a second name for its tag. In the struct form the type is its
 own tag, which also keeps two quantities' *bases* distinct, so a function
 taking one quantity's base cannot accept another's.
 
-`examples/quantities.cpp` declares `WaterVolume` and `CementVolume` by alias,
-alike in every parameter but the tag, and one quantity by struct beside them:
+`examples/quantities.cpp` declares `Rise` and `ReturnRise` by alias, alike in
+every parameter but the tag, and one quantity, `TubeMass`, by struct beside
+them:
 
 ```
-WaterVolume and CementVolume share symbol, description and unit: yes
+Rise and ReturnRise share symbol, description and unit: yes
 ...but the tag keeps them different types: yes
 ```
 
@@ -129,15 +131,15 @@ WaterVolume and CementVolume share symbol, description and unit: yes
 
 | | alias | struct |
 |---|---|---|
-| forward declaration | not possible | `struct WaterVolume;` |
+| forward declaration | not possible | `struct Rise;` |
 | two declarations with all four arguments equal | one type, under two names | two types |
 | one tag, another argument different | two types | -- (a struct is its own tag) |
-| how g++ and clang name it in a diagnostic | `Quantity<WaterVolumeTag, ...>` | `WaterVolume` |
-| how cl names it in a diagnostic | usually `WaterVolume`, not always | `WaterVolume` |
+| how g++ and clang name it in a diagnostic | `Quantity<RiseTag, ...>` | `Rise` |
+| how cl names it in a diagnostic | usually `Rise`, not always | `Rise` |
 
 **An alias cannot be forward-declared.** A header that only names a quantity
--- a function declaration taking `Measured<WaterVolume>` -- can say
-`struct WaterVolume;` for a struct quantity, and must include an alias's
+-- a function declaration taking `Measured<Rise>` -- can say
+`struct Rise;` for a struct quantity, and must include an alias's
 declaration.
 
 **Two aliases with all four arguments equal are one type.** Repeating a
@@ -177,7 +179,7 @@ specialisation an alias stands for, tag first. cl usually keeps the alias's
 name where the alias was written, in the library's own messages among them,
 but not always -- see
 [where a dimensional error appears](expressions.md#where-a-dimensional-error-appears).
-Naming a tag after its quantity, `WaterVolumeTag`, is what keeps such a
+Naming a tag after its quantity, `RiseTag`, is what keeps such a
 diagnostic readable.
 
 **There is no fifth parameter for the dimension.** A `Unit` already carries
@@ -285,9 +287,9 @@ result is absent. The worked example converts a constant, so it checks the
 `std::expected` with a `static_assert`, and an error would stop the build:
 
 ```cpp
-constexpr auto convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
-constexpr auto roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
-constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+constexpr auto convertedAbsent = formula::checked_convert_to<RiseInKilometres>(absentRise);
+constexpr auto roundedAbsent = formula::checked_round_to_declared(absentRise, RoundingMode::HalfAwayFromZero);
+constexpr auto boundsOfAbsent = formula::checked_within_bounds(absentRise);
 static_assert(convertedAbsent.has_value() && roundedAbsent.has_value() && boundsOfAbsent.has_value());
 ```
 
@@ -304,8 +306,8 @@ spelled out around it. An integer is a value as it stands, and `_r`
 ```cpp
 using namespace formula::literals;
 
-formula::Measured<WaterVolume> const whole { 139 };
-formula::Measured<WaterVolume> const fractional { 10.3_r };
+formula::Measured<Rise> const whole { 139 };
+formula::Measured<Rise> const fractional { 10.3_r };
 ```
 
 `10.3_r` is exactly 103/10. A plain `10.3` is refused with a message that
@@ -318,11 +320,11 @@ is refused.
 as `Measured<Q>::absent()`, and either may stand in one series:
 
 ```cpp
-constexpr auto screens = formula::measured_series<WaterVolume>(127, 10.3_r, formula::not_measured, 139);
+constexpr auto rises = formula::measured_series<Rise>(127, 10.3_r, formula::not_measured, 139);
 ```
 
 The series has four elements and the third is absent, not zero. Each element
-may still be a `Measured<WaterVolume>`; a `Measured` of another quantity is
+may still be a `Measured<Rise>`; a `Measured` of another quantity is
 refused, and only one message says so.
 
 A band's bounds and a breakpoint's key are numbers in the same way:
@@ -362,10 +364,10 @@ declares no bounds at all.
 
 A present measurement still converts exactly, carrying its quantity's own
 unit rather than needing one passed alongside it. From the worked example,
-450 l converted to m³:
+a rise of 450 m converted to kilometres:
 
 ```
-450 l converted to m3 = 0.45 m3
+450 m converted to km = 0.45 km
 ```
 
 The conversion, the rounding and the bounds check each have a throwing twin,
@@ -388,11 +390,11 @@ UTF-8 symbol reports its encoded length, not its glyph count.
 `formula::Measured<Q>` is deliberately **not** a structural type and cannot
 be used as a non-type template parameter -- `std::optional`, which it holds,
 is not structural in any of the standard libraries this project supports.
-Confirmed on cl.exe: naming `Measured<WaterVolume>` as a non-type template
+Confirmed on cl.exe: naming `Measured<Rise>` as a non-type template
 parameter fails with
 
 ```
-error C2993: 'formula::Measured<WaterVolume>': is not a valid type for non-type template parameter 'V'
+error C2993: 'formula::Measured<Rise>': is not a valid type for non-type template parameter 'V'
 note: '_value' is not a public, non-mutable, non-static data member
 ```
 

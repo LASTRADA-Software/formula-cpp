@@ -17,7 +17,7 @@ using formula::Rational;
 namespace
 {
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "volume of water added", unit::Litre>
+struct Rise: formula::Quantity<Rise, "h", "height gained", unit::Millimetre>
 {
 };
 
@@ -25,7 +25,7 @@ struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen"
 {
 };
 
-// combine's result quantity, for the mass/volume example below. Deliberately a
+// combine's result quantity, for the mass/length example below. Deliberately a
 // THIRD quantity, sharing neither operand's tag, symbol or unit -- reusing one
 // of them is exactly how an earlier combine's mislabelling went unnoticed.
 struct Density: formula::Quantity<Density, "rho", "density of the specimen", unit::Gram>
@@ -41,52 +41,52 @@ struct Density: formula::Quantity<Density, "rho", "density of the specimen", uni
 // two-line reproduction outside this project; clang-cl accepts the identical
 // consteval version without complaint. constexpr keeps every existing
 // static_assert exactly as constant-evaluated as before and sidesteps the bug.
-constexpr Measured<WaterVolume> measured(std::int64_t numerator, std::int64_t denominator)
+constexpr Measured<Rise> measured(std::int64_t numerator, std::int64_t denominator)
 {
-    return Measured<WaterVolume> { *Rational::make(numerator, denominator) };
+    return Measured<Rise> { *Rational::make(numerator, denominator) };
 }
 
 } // namespace
 
 // ---- absent is the default, and it is not zero ----
 
-static_assert(Measured<WaterVolume> {}.is_absent());
-static_assert(!Measured<WaterVolume> {}.has_value());
-static_assert(Measured<WaterVolume>::absent().is_absent());
+static_assert(Measured<Rise> {}.is_absent());
+static_assert(!Measured<Rise> {}.has_value());
+static_assert(Measured<Rise>::absent().is_absent());
 
 // Zero is a measurement; absent is not a number. Collapsing the two is how an
 // unmeasured quantity comes to look like a real reading of nothing.
 static_assert(!measured(0, 1).is_absent());
-static_assert(measured(0, 1) != Measured<WaterVolume> {});
+static_assert(measured(0, 1) != Measured<Rise> {});
 
 // ---- a present value is exactly what was put in ----
 
 static_assert(measured(9, 2).value() == *Rational::make(9, 2));
 static_assert(measured(9, 2).has_value());
-static_assert(Measured<WaterVolume> {}.value_or(*Rational::make(7, 1)) == *Rational::make(7, 1));
+static_assert(Measured<Rise> {}.value_or(*Rational::make(7, 1)) == *Rational::make(7, 1));
 static_assert(measured(9, 2).value_or(*Rational::make(7, 1)) == *Rational::make(9, 2));
 
 // ---- equality ----
 
 static_assert(measured(9, 2) == measured(9, 2));
 static_assert(measured(9, 2) != measured(9, 3));
-static_assert(Measured<WaterVolume> {} == Measured<WaterVolume> {});
+static_assert(Measured<Rise> {} == Measured<Rise> {});
 
 // ---- two quantities are two types, even with the same payload ----
 
-static_assert(!std::is_same_v<Measured<WaterVolume>, Measured<SpecimenMass>>);
+static_assert(!std::is_same_v<Measured<Rise>, Measured<SpecimenMass>>);
 
 // ---- the value constructor does not accept an implicit Rational ----
 //
 // Removing `explicit` from Measured's constructor leaves the rest of the suite
 // green -- nothing else exercises this. A bare Rational is not "a measurement
-// of WaterVolume" merely because the types happen to line up; the caller must
+// of Rise" merely because the types happen to line up; the caller must
 // say so.
-static_assert(!std::is_convertible_v<Rational, Measured<WaterVolume>>);
+static_assert(!std::is_convertible_v<Rational, Measured<Rise>>);
 
 TEST_CASE("an absent measurement refuses to invent a number", "[measured]")
 {
-    Measured<WaterVolume> const notMeasured {};
+    Measured<Rise> const notMeasured {};
     REQUIRE(notMeasured.is_absent());
     CHECK_THROWS_AS(notMeasured.value(), ArithmeticException);
 
@@ -112,24 +112,24 @@ TEST_CASE("stored() reports the payload directly, present or absent", "[measured
     // Nothing else in this suite calls stored() at all -- a version that
     // always answers "absent", regardless of what was constructed, passed
     // every other test in this file.
-    Measured<WaterVolume> const present = measured(9, 2);
+    Measured<Rise> const present = measured(9, 2);
     REQUIRE(present.stored().has_value());
     CHECK(*present.stored() == *Rational::make(9, 2));
 
-    Measured<WaterVolume> const absent {};
+    Measured<Rise> const absent {};
     CHECK_FALSE(absent.stored().has_value());
 }
 
 TEST_CASE("a measurement carries its quantity's own metadata", "[measured]")
 {
     // All four readers, on two different quantities. Checking one reader against
-    // one quantity is not enough: a reader hardwired to return WaterVolume's
+    // one quantity is not enough: a reader hardwired to return Rise's
     // answer would satisfy that, and two of these were once reachable by no
     // test at all: mutating them left the suite green.
-    CHECK(Measured<WaterVolume>::quantity_unit() == unit::Litre);
-    CHECK(Measured<WaterVolume>::quantity_symbol() == std::string_view { "V_w" });
-    CHECK(Measured<WaterVolume>::quantity_description() == std::string_view { "volume of water added" });
-    CHECK(Measured<WaterVolume>::quantity_dimension() == formula::dim::Volume);
+    CHECK(Measured<Rise>::quantity_unit() == unit::Millimetre);
+    CHECK(Measured<Rise>::quantity_symbol() == std::string_view { "h" });
+    CHECK(Measured<Rise>::quantity_description() == std::string_view { "height gained" });
+    CHECK(Measured<Rise>::quantity_dimension() == formula::dim::Length);
 
     CHECK(Measured<SpecimenMass>::quantity_unit() == unit::Kilogram);
     CHECK(Measured<SpecimenMass>::quantity_symbol() == std::string_view { "m" });
@@ -138,10 +138,10 @@ TEST_CASE("a measurement carries its quantity's own metadata", "[measured]")
 
     // And each reader must disagree between the two, or it is not reading the
     // quantity at all.
-    CHECK(Measured<WaterVolume>::quantity_unit() != Measured<SpecimenMass>::quantity_unit());
-    CHECK(Measured<WaterVolume>::quantity_symbol() != Measured<SpecimenMass>::quantity_symbol());
-    CHECK(Measured<WaterVolume>::quantity_description() != Measured<SpecimenMass>::quantity_description());
-    CHECK(Measured<WaterVolume>::quantity_dimension() != Measured<SpecimenMass>::quantity_dimension());
+    CHECK(Measured<Rise>::quantity_unit() != Measured<SpecimenMass>::quantity_unit());
+    CHECK(Measured<Rise>::quantity_symbol() != Measured<SpecimenMass>::quantity_symbol());
+    CHECK(Measured<Rise>::quantity_description() != Measured<SpecimenMass>::quantity_description());
+    CHECK(Measured<Rise>::quantity_dimension() != Measured<SpecimenMass>::quantity_dimension());
 }
 
 // ---- absence propagates through everything ----
@@ -149,8 +149,7 @@ TEST_CASE("a measurement carries its quantity's own metadata", "[measured]")
 namespace
 {
 
-struct VolumeInCubicMetres:
-    formula::Quantity<VolumeInCubicMetres, "V", "volume of water added", unit::CubicMetre>
+struct HeightInMetres: formula::Quantity<HeightInMetres, "H", "height gained", unit::Metre>
 {
 };
 
@@ -159,10 +158,10 @@ constexpr auto doubled = [](Rational value) { return value + value; };
 } // namespace
 
 static_assert(formula::transform(measured(3, 1), doubled).value() == *Rational::make(6, 1));
-static_assert(formula::transform(Measured<WaterVolume> {}, doubled).is_absent());
+static_assert(formula::transform(Measured<Rise> {}, doubled).is_absent());
 
 // combine names its OWN result quantity -- Density here, which is neither
-// WaterVolume nor SpecimenMass. The static TYPE is asserted with is_same_v,
+// Rise nor SpecimenMass. The static TYPE is asserted with is_same_v,
 // not merely the value: mutating combine back to labelling the result with
 // either operand's quantity (the earlier signature's defect) changes no VALUE here, only the
 // type, so a value-only check would stay green through that mutation.
@@ -177,26 +176,27 @@ static_assert(formula::combine<Density>(measured(3, 1), Measured<SpecimenMass> {
                                         [](Rational a, Rational b) { return a * b; })
                   .value()
               == *Rational::make(6, 1));
-static_assert(formula::combine<Density>(Measured<WaterVolume> {}, Measured<SpecimenMass> { *Rational::make(2, 1) },
+static_assert(formula::combine<Density>(Measured<Rise> {},
+                                        Measured<SpecimenMass> { *Rational::make(2, 1) },
                                         [](Rational a, Rational b) { return a * b; })
                   .is_absent());
 static_assert(formula::combine<Density>(measured(3, 1), Measured<SpecimenMass> {},
                                         [](Rational a, Rational b) { return a * b; })
                   .is_absent());
-static_assert(formula::combine<Density>(Measured<WaterVolume> {}, Measured<SpecimenMass> {},
-                                        [](Rational a, Rational b) { return a * b; })
-                  .is_absent());
+static_assert(formula::combine<Density>(Measured<Rise> {}, Measured<SpecimenMass> {}, [](Rational a, Rational b) {
+                  return a * b;
+              }).is_absent());
 
 TEST_CASE("absence survives a conversion instead of becoming a number", "[measured]")
 {
-    // 450 litres is exactly 9/20 of a cubic metre -- the same exact conversion
-    // `unit_tests.cpp` pins, now carrying a quantity's identity with it.
-    auto const present = formula::checked_convert_to<VolumeInCubicMetres>(measured(450, 1));
+    // 450 millimetres is exactly 9/20 of a metre -- a plain exact
+    // conversion, here carrying a quantity's identity with it.
+    auto const present = formula::checked_convert_to<HeightInMetres>(measured(450, 1));
     REQUIRE(present.has_value());
     REQUIRE(present->has_value());
     CHECK(present->value() == *Rational::make(9, 20));
 
-    auto const absent = formula::checked_convert_to<VolumeInCubicMetres>(Measured<WaterVolume> {});
+    auto const absent = formula::checked_convert_to<HeightInMetres>(Measured<Rise> {});
     REQUIRE(absent.has_value());
     CHECK(absent->is_absent());
 }
@@ -246,7 +246,7 @@ TEST_CASE("absence outranks a declared range", "[measured]")
 
     // And the distinction the enum exists for, side by side: a reading nobody
     // took is not the same fact as a range nobody declared.
-    auto const absentUnbounded = formula::checked_within_bounds(Measured<WaterVolume> {});
+    auto const absentUnbounded = formula::checked_within_bounds(Measured<Rise> {});
     REQUIRE(absentUnbounded.has_value());
     CHECK(*absentUnbounded == formula::BoundsCheck::NotMeasured);
 
@@ -257,11 +257,11 @@ TEST_CASE("absence outranks a declared range", "[measured]")
 
 TEST_CASE("an unmeasured value is not judged against bounds", "[measured]")
 {
-    auto const absent = formula::checked_within_bounds(Measured<WaterVolume> {});
+    auto const absent = formula::checked_within_bounds(Measured<Rise> {});
     REQUIRE(absent.has_value());
     CHECK(*absent == formula::BoundsCheck::NotMeasured);
 
-    // Litre declares no bounds, which is a DIFFERENT fact from having no value.
+    // Millimetre declares no bounds, which is a DIFFERENT fact from having no value.
     auto const present = formula::checked_within_bounds(measured(1000000, 1));
     REQUIRE(present.has_value());
     CHECK(*present == formula::BoundsCheck::NotChecked);
@@ -269,15 +269,14 @@ TEST_CASE("an unmeasured value is not judged against bounds", "[measured]")
 
 TEST_CASE("rounding to declared precision leaves an absent value absent", "[measured]")
 {
-    // Litre declares one decimal place.
+    // Millimetre declares one decimal place.
     auto const rounded =
         formula::checked_round_to_declared(measured(123456, 1000), formula::RoundingMode::HalfAwayFromZero);
     REQUIRE(rounded.has_value());
     REQUIRE(rounded->has_value());
     CHECK(rounded->value() == *Rational::from_decimal(1235, -1));
 
-    auto const stillAbsent =
-        formula::checked_round_to_declared(Measured<WaterVolume> {}, formula::RoundingMode::HalfAwayFromZero);
+    auto const stillAbsent = formula::checked_round_to_declared(Measured<Rise> {}, formula::RoundingMode::HalfAwayFromZero);
     REQUIRE(stillAbsent.has_value());
     CHECK(stillAbsent->is_absent());
 }
@@ -484,15 +483,15 @@ TEST_CASE("Measured: an integer is a present value without spelling Rational", "
 
 TEST_CASE("convert_to: the throwing twin of checked_convert_to", "[measured]")
 {
-    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(measured(450, 1))
-                   == *formula::checked_convert_to<VolumeInCubicMetres>(measured(450, 1)));
-    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(measured(450, 1)).value() == *Rational::make(9, 20));
-    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(Measured<WaterVolume>::absent()).is_absent());
+    STATIC_REQUIRE(formula::convert_to<HeightInMetres>(measured(450, 1))
+                   == *formula::checked_convert_to<HeightInMetres>(measured(450, 1)));
+    STATIC_REQUIRE(formula::convert_to<HeightInMetres>(measured(450, 1)).value() == *Rational::make(9, 20));
+    STATIC_REQUIRE(formula::convert_to<HeightInMetres>(Measured<Rise>::absent()).is_absent());
 }
 
 TEST_CASE("round_to_declared and within_bounds: throwing twins", "[measured]")
 {
-    // Litre declares one decimal place, and 2.25 is a tie: HalfEven gives 2.2,
+    // Millimetre declares one decimal place, and 2.25 is a tie: HalfEven gives 2.2,
     // HalfAwayFromZero 2.3, so a twin that ignored its mode would be caught.
     CHECK(formula::round_to_declared(measured(225, 100), formula::RoundingMode::HalfEven).value()
           == *Rational::make(22, 10));
@@ -500,7 +499,7 @@ TEST_CASE("round_to_declared and within_bounds: throwing twins", "[measured]")
           == *Rational::make(23, 10));
     CHECK(formula::round_to_declared(measured(225, 100), formula::RoundingMode::HalfEven)
           == *formula::checked_round_to_declared(measured(225, 100), formula::RoundingMode::HalfEven));
-    CHECK(formula::round_to_declared(Measured<WaterVolume>::absent(), formula::RoundingMode::HalfEven).is_absent());
+    CHECK(formula::round_to_declared(Measured<Rise>::absent(), formula::RoundingMode::HalfEven).is_absent());
 
     CHECK(formula::within_bounds(Measured<GaugeReading>::absent()) == formula::BoundsCheck::NotMeasured);
     CHECK(formula::within_bounds(Measured<GaugeReading> { *Rational::make(42, 1) }) == formula::BoundsCheck::WithinBounds);

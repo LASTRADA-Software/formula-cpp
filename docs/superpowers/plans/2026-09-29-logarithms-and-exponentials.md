@@ -1043,9 +1043,9 @@ TEST_CASE("render: a logarithm and an exponential read as calls in every dialect
 TEST_CASE("render: a logarithm groups its own argument and is an atom to what holds it", "[render]")
 {
     // The call's parentheses group a compound argument...
-    CHECK(formula::render(formula::ln(var<WaterVolume> / var<CementVolume>)) == "ln(V_w / V_c)");
-    CHECK(formula::render<Dialect::LaTeX>(formula::ln(var<WaterVolume> / var<CementVolume>))
-          == "\\ln\\left(\\frac{V_w}{V_c}\\right)");
+    CHECK(formula::render(formula::ln(var<Rise> / var<Run>)) == "ln(h / L)");
+    CHECK(formula::render<Dialect::LaTeX>(formula::ln(var<Rise> / var<Run>))
+          == "\\ln\\left(\\frac{h}{L}\\right)");
     // ...and the call is an atom: a power's base, a negation's operand, a difference's right side and a
     // quotient's numerator, with no bracket of its own.
     CHECK(formula::render(formula::pow<2>(formula::ln(var<Determinations>))) == "ln(n_d)^2");
@@ -1080,13 +1080,13 @@ TEST_CASE("render: a logarithm groups its own argument and is an atom to what ho
 ```cpp
 TEST_CASE("document: a logarithm lists what its argument reads and states itself as a call", "[document]")
 {
-    formula::Documentation const documentation = formula::document(formula::ln(var<WaterVolume> / var<CementVolume>));
-    CHECK(documentation.formula == "ln(V_w / V_c)");
+    formula::Documentation const documentation = formula::document(formula::ln(var<Rise> / var<Run>));
+    CHECK(documentation.formula == "ln(h / L)");
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
-    CHECK(formula::document<formula::Dialect::LaTeX>(formula::exp(var<WaterVolume> / var<CementVolume>)).formula
-          == "\\exp\\left(\\frac{V_w}{V_c}\\right)");
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "L" });
+    CHECK(formula::document<formula::Dialect::LaTeX>(formula::exp(var<Rise> / var<Run>)).formula
+          == "\\exp\\left(\\frac{h}{L}\\right)");
 }
 ```
 
@@ -2766,9 +2766,9 @@ TEST_CASE("render: a rounded logarithm or exponential reads as a rounding of the
     CHECK(formula::render<Dialect::Markdown>(logged) == "round(ln(`n_d`), to 4 dp)");
     CHECK(formula::render<Dialect::LaTeX>(logged) == "\\operatorname{round}_{4}(\\ln\\left(n_d\\right))");
     constexpr auto decimal =
-        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(var<WaterVolume> / var<CementVolume>);
-    CHECK(formula::render(decimal) == "round(log10(V_w / V_c), to 2 dp)");
-    CHECK(formula::render<Dialect::LaTeX>(decimal) == "\\operatorname{round}_{2}(\\log_{10}\\left(\\frac{V_w}{V_c}\\right))");
+        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(var<Rise> / var<Run>);
+    CHECK(formula::render(decimal) == "round(log10(h / L), to 2 dp)");
+    CHECK(formula::render<Dialect::LaTeX>(decimal) == "\\operatorname{round}_{2}(\\log_{10}\\left(\\frac{h}{L}\\right))");
     constexpr auto grown =
         formula::rounded_exp<formula::DecimalPlaces { -1 }, formula::RoundingMode::Ceiling>(var<Determinations>);
     CHECK(formula::render(grown) == "round(exp(n_d), to -1 dp)");
@@ -2801,11 +2801,11 @@ TEST_CASE("render: a rounded logarithm or exponential reads as a rounding of the
 TEST_CASE("document: a rounded logarithm lists what its argument reads", "[document]")
 {
     formula::Documentation const documentation = formula::document(
-        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(var<WaterVolume> / var<CementVolume>));
-    CHECK(documentation.formula == "round(log10(V_w / V_c), to 2 dp)");
+        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(var<Rise> / var<Run>));
+    CHECK(documentation.formula == "round(log10(h / L), to 2 dp)");
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "h" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "L" });
 }
 ```
 

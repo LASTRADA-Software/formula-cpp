@@ -4,8 +4,8 @@
 /// @file
 /// The expression layer: formulas written with ordinary operators.
 ///
-/// A formula is a *type*. `var<WaterVolume> / var<CementVolume>` builds a
-/// `BinaryNode<Divide, VarNode<WaterVolume>, VarNode<CementVolume>>`, and every
+/// A formula is a *type*. `var<Rise> / var<Run>` builds a
+/// `BinaryNode<Divide, VarNode<Rise>, VarNode<Run>>`, and every
 /// node publishes `static constexpr Dimension dimension` computed at class
 /// scope. Because the operator the user wrote is what instantiates the node,
 /// a dimensional mistake is a compile error on the line the formula is written
@@ -59,7 +59,7 @@ struct VarNode: NodeBase
     static constexpr Dimension dimension = Describe<Q>::dimension;
 };
 
-/// The spelling of a variable in a formula: `var<WaterVolume>`.
+/// The spelling of a variable in a formula: `var<Rise>`.
 ///
 /// `inline` matters and is not decoration: it is what guarantees the whole
 /// program shares one object per `Q` rather than each translation unit
@@ -180,8 +180,8 @@ namespace detail
     /// operator makes clang print `(formula::BinaryOperator)0` in its "due to
     /// requirement" clause, because an enumerator used as a value in a
     /// dependent expression is rendered as a cast. Written this way, clang
-    /// prints `formula::VarNode<WaterVolume>::dimension ==
-    /// formula::VarNode<BeamLength>::dimension` instead, and all three
+    /// prints `formula::VarNode<Volume>::dimension ==
+    /// formula::VarNode<Length>::dimension` instead, and all three
     /// compilers name the two operand types and the formula's own source line.
     template <typename Left, typename Right>
     struct RequireAddendsAgree

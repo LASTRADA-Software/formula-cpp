@@ -273,8 +273,8 @@ STATIC_REQUIRE(formula::number_text(Rational { 1, 3 }, NumberStyle::approximate_
 - [ ] A spelling failure prints `(not shown: <describe(error)>)` — the existing wording at `:1382-1383`.
 - [ ] Extend the file comment (`:13-29`) with a third refusal: "It never shows an approximation as exact."
 - [ ] Tests (exact strings):
-  - the water/cement ratio case (`:97-119`) under `exact_decimal()`:
-    `"3. #1 / #2 = 0.6\n4. #3 = 0.6 [Water/cement ratio, Example Standard 1:2020, 5.2]\n"` (adapt the citation
+  - the road gradient case (`:97-119`) under `exact_decimal()`:
+    `"3. #1 / #2 = 0.6\n4. #3 = 0.6 [Road gradient, Example Standard 1:2020, 5.2]\n"` (adapt the citation
     text to what that test already declares);
   - m = 1 kg, V = 3 m3: `fraction` and `exact_decimal` give `"3. #1 / #2 = 1/3"`;
     `approximate_decimal(RoundingMode::HalfEven)` gives `"3. #1 / #2 = \xe2\x89\x88" "0.333"`; the padded

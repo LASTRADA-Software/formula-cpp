@@ -52,41 +52,41 @@ inline constexpr formula::Unit Euro { .dimension = formula::base_dimension("EUR"
 // test/negative/money_plus_number.cpp pins the library's message for it.
 static_assert(!formula::SameDimension<Euro.dimension, formula::dim::Scalar>);
 
-using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
-using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
-using UnitPrice = formula::Quantity<struct UnitPriceTag, "c_u", "price at a water/cement ratio of one", Euro>;
-using MixCost = formula::Quantity<struct MixCostTag, "C", "cost of the mix", Euro>;
+using Rise = formula::Quantity<struct RiseTag, "h", "height gained", unit::Metre>;
+using Run = formula::Quantity<struct RunTag, "L", "horizontal distance covered", unit::Metre>;
+using UnitPrice = formula::Quantity<struct UnitPriceTag, "c_u", "earthworks price at a gradient of one", Euro>;
+using EarthworksCost = formula::Quantity<struct EarthworksCostTag, "C", "earthworks cost of the climb", Euro>;
 
 // ---- The inner formula, declared and cited on its own ----
 //
 // Nothing about this declaration anticipates being reused. It is the same
 // formula examples/citations.cpp declares, with the same shape.
-constexpr auto waterCementRatio = formula::documented(var<WaterVolume> / var<CementVolume>,
-                                                      { .title = "Water/cement ratio",
-                                                        .reference = "Example Standard 1:2020",
-                                                        .section = "5.4.2",
-                                                        .equation = "(3)",
-                                                        .text = "Ratio of water content to cement content." });
+constexpr auto gradient = formula::documented(var<Rise> / var<Run>,
+                                              { .title = "Road gradient",
+                                                .reference = "Example Standard 1:2020",
+                                                .section = "5.4.2",
+                                                .equation = "(3)",
+                                                .text = "Height a road gains over the horizontal distance it covers." });
 
 // ---- The outer formula, which uses the inner one by name ----
 //
-// `waterCementRatio` stands exactly where a variable or a constant would. It
+// `gradient` stands exactly where a variable or a constant would. It
 // is an ordinary value of an ordinary node type, so an operator accepts it,
 // its dimension takes part in the dimension check, and its citation stays
 // attached to the sub-tree it describes.
 //
-// This one is evaluated and explained below, so `yields<MixCost>` names what
-// it computes once, here. The citation goes inside, on the formula it cites.
-constexpr auto mixCost =
-    formula::yields<MixCost>(formula::documented(var<UnitPrice> * waterCementRatio,
-                                                 { .title = "Cost of a mix at a given water/cement ratio",
-                                                   .reference = "Example Standard 9:2021",
-                                                   .section = "2.1",
-                                                   .text = "Cost scales linearly with the water/cement ratio." }));
+// This one is evaluated and explained below, so `yields<EarthworksCost>` names
+// what it computes once, here. The citation goes inside, on the formula it cites.
+constexpr auto earthworksCost = formula::yields<EarthworksCost>(
+    formula::documented(var<UnitPrice> * gradient,
+                        { .title = "Earthworks cost of a road at a given gradient",
+                          .reference = "Example Standard 9:2021",
+                          .section = "2.1",
+                          .text = "Earthworks cost scales linearly with the road gradient." }));
 
 // The same sub-formula used twice in one tree, for the asymmetry noted at the
 // top of this file.
-constexpr auto quadraticSurcharge = var<UnitPrice> * waterCementRatio * waterCementRatio;
+constexpr auto quadraticSurcharge = var<UnitPrice> * gradient * gradient;
 
 } // namespace
 
@@ -99,27 +99,26 @@ int main()
     };
 
     // ---- 1. The composed formula renders as one expression ----
-    std::string const inner = formula::render(waterCementRatio);
-    std::string const outer = formula::render(mixCost);
+    std::string const inner = formula::render(gradient);
+    std::string const outer = formula::render(earthworksCost);
     std::println("inner formula : {}", inner);
     std::println("outer formula : {}", outer);
-    std::println("outer in LaTeX: {}", formula::render<formula::Dialect::LaTeX>(mixCost));
+    std::println("outer in LaTeX: {}", formula::render<formula::Dialect::LaTeX>(earthworksCost));
 
-    check("inner renders as its own expression", inner == "V_w / V_c");
+    check("inner renders as its own expression", inner == "h / L");
 
     // Rendering flattens the composition: the parentheses a reader might
     // expect around the reused formula are absent, because * and / share a
     // precedence and associate left to right, so no parenthesis is needed to
     // preserve the meaning. The value is identical either way -- this
     // arithmetic is exact. What the rendering does not show, the trace does.
-    check("outer renders the whole composed tree", outer == "c_u * V_w / V_c");
+    check("outer renders the whole composed tree", outer == "c_u * h / L");
 
     // ---- 2. It evaluates, exactly ----
-    auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
-                                             formula::Measured<CementVolume> { 300 },
-                                             formula::Measured<UnitPrice> { 250 });
+    auto const inputs = formula::environment(
+        formula::Measured<Rise> { 90 }, formula::Measured<Run> { 3000 }, formula::Measured<UnitPrice> { 250'000 });
 
-    auto const outcome = formula::checked_evaluate(mixCost, inputs);
+    auto const outcome = formula::checked_evaluate(earthworksCost, inputs);
     if (!outcome)
     {
         std::println("the composed formula failed: {}", outcome.error());
@@ -128,24 +127,24 @@ int main()
     auto const cost = formula::number_of(outcome);
     check("the composed formula evaluates", cost.has_value());
 
-    // 250 EUR * (180 l / 300 l) = 250 * 3/5 = 150, with no rounding anywhere:
-    // 3/5 is held as 3/5, not as 0.59999999999999998.
+    // 250000 EUR * (90 m / 3000 m) = 250000 * 3/100 = 7500, with no rounding
+    // anywhere: 3/100 is held as 3/100, not as 0.029999999999999999.
     std::println("cost          : {}", *outcome);
-    check("the result is exactly 150", cost == 150);
+    check("the result is exactly 7500", cost == 7500);
 
     // ---- 3. Provenance travels upward through the seam ----
     //
     // The outer formula was never told about the inner one's citation. It
     // comes back because document() walks the whole tree, and the wrapped
     // sub-tree is part of that tree.
-    formula::Documentation const documentation = formula::document(mixCost);
+    formula::Documentation const documentation = formula::document(earthworksCost);
     std::println("citations on the outer formula: {}", documentation.citations.size());
     for (formula::Citation const& citation: documentation.citations)
         std::println("  - {} [{}]", citation.title, citation.reference);
 
     check("both citations reach the outer formula", documentation.citations.size() == 2);
 
-    // Three symbols, each once, although V_w and V_c are reached through the
+    // Three symbols, each once, although h and L are reached through the
     // inner formula rather than written in the outer one.
     std::println("symbols on the outer formula  : {}", documentation.symbols.size());
     for (formula::SymbolEntry const& entry: documentation.symbols)
@@ -155,10 +154,10 @@ int main()
     // ---- 4. The trace shows the inner formula as its own step ----
     //
     // This is what the flattened rendering leaves out: step 5 below is the
-    // water/cement ratio, carrying its own citation, and step 6 consumes it.
+    // road gradient, carrying its own citation, and step 6 consumes it.
     // An auditor reading the trace sees the sub-result the outer formula was
     // built on, not just the final number.
-    std::print("trace:\n{}", formula::render_trace(formula::trace_of(mixCost, inputs), { .maxSteps = 20 }));
+    std::print("trace:\n{}", formula::render_trace(formula::trace_of(earthworksCost, inputs), { .maxSteps = 20 }));
 
     // ---- 5. The asymmetry, stated because it is easy to be surprised by ----
     //
