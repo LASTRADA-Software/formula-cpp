@@ -79,6 +79,8 @@ set_tests_properties(example.readme.output-detects-a-difference PROPERTIES
 formula_add_pinned_example(tutorial_01_first_formula tutorial/01_first_formula.cpp)
 formula_add_pinned_example(tutorial_02_units_and_dimensions tutorial/02_units_and_dimensions.cpp)
 formula_add_pinned_example(tutorial_03_exact_numbers tutorial/03_exact_numbers.cpp)
+formula_add_pinned_example(tutorial_04_missing_and_entered tutorial/04_missing_and_entered.cpp)
+formula_add_pinned_example(tutorial_05_rounding tutorial/05_rounding.cpp)
 
 formula_add_example(simple simple.cpp "s = 0.03 \\(derived\\)")
 formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes.*all checks passed: yes")

@@ -30,5 +30,7 @@ an invented `Example Standard`.
 1. [First formula](01-first-formula.md) -- one formula, evaluated and checked.
 2. [Units and dimensions](02-units-and-dimensions.md) -- sides, areas and unit conversion; a mistake that does not compile.
 3. [Exact numbers](03-exact-numbers.md) -- why the results are exact, and how to round them for reading.
+4. [Missing and entered values](04-missing-and-entered.md) -- a measurement nobody took, and a value typed in.
+5. [Rounding](05-rounding.md) -- rounding where the method says, in the mode it names.
 
 ## Advanced track
