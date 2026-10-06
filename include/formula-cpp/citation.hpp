@@ -79,7 +79,7 @@ struct DocumentedNode: NodeBase
 ///
 /// The `Citation` parameter is deliberately **not** deduced. That is what lets
 /// the call site write a braced designated initialiser, which was verified on
-/// cl 19.51, clang-cl 22 and g++ 13.3 before this was written.
+/// cl 19.51, clang-cl 22 and g++ 13.3.
 template <Node Inner>
 [[nodiscard]] constexpr DocumentedNode<Inner> documented(Inner inner, Citation citation) noexcept
 {

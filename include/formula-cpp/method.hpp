@@ -466,7 +466,7 @@ namespace detail
     /// can be sequenced. The agreement rule is asked **only once every
     /// argument is a variant**: a non-variant has no `dimension` to compare,
     /// and asking anyway buries the one message that matters. Measured on cl
-    /// 19.51 without this gate, `variants(42, 43)` reports six errors
+    /// 19.51 without this gate, `variants(42, 43)` would report six errors
     /// -- `C2825`, `C2510` and `C2065`, once for `First` and once for `Other`
     /// -- every one of them the compiler's own wording for "that has no such
     /// member", and not one of them ours. `method_variants_agreement_gated.cpp`
@@ -1517,14 +1517,13 @@ namespace detail
     /// First its shape: the variants, the rounding rule and the constraints,
     /// each the kind of thing its factory builds. `method(...)` takes three
     /// arguments of unrelated types, so nothing stops an author passing them
-    /// in the wrong order. Before these rules,
-    /// `method(rounding_rule<...>(), variants(...), constraints())` compiled
-    /// on cl 19.51 and clang-cl 22, and failed only at `evaluate_method`, with
-    /// the compiler's own words for it: cl's `C2027: use of undefined type
+    /// in the wrong order. Without these rules,
+    /// `method(rounding_rule<...>(), variants(...), constraints())` would
+    /// compile on cl 19.51 and clang-cl 22 and fail only at `evaluate_method`,
+    /// in the compiler's own words: cl's `C2027: use of undefined type
     /// SelectVariant<...>`, clang-cl's "implicit instantiation of undefined
-    /// template". Each rule names the
-    /// part it refuses, so a swapped pair is reported as the two parts that
-    /// are wrong.
+    /// template". Each rule names the part it refuses, so a swapped pair is
+    /// reported as the two parts that are wrong.
     ///
     /// Then the rounding rule's dimension, only once there is a rule and an
     /// agreed dimension to compare -- see `canAskRoundingRule`.

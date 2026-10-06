@@ -226,10 +226,10 @@ to zero, and a row whose correction you forgot to type would then answer `0`,
 confidently, indistinguishable from a deliberate zero.
 
 It is the **node's own member type**, not only the factory's parameter type,
-and that distinction was bought the hard way. A lookup node is a public
-aggregate with public members, so it can be declared without calling a factory
-at all — and while the member was a raw array, that route bypassed the check
-entirely and the untyped rows evaluated to `0` on all three kinds. The factory's
+and the distinction matters. A lookup node is a public aggregate with public
+members, so it can be declared without calling a factory at all — and with a
+raw-array member that route would bypass the check entirely and evaluate the
+untyped rows to `0` on all three kinds. The factory's
 parameter cannot see a call that never happens. A consequence worth knowing:
 a lookup node has no default constructor, because `{}` for a table of three
 rows is a count of zero, which is exactly the mistake being refused. The

@@ -602,19 +602,18 @@ namespace detail
 ///
 /// **It is every node's own member type, not only the factories' parameter
 /// type, and the difference was measured rather than argued.** With a raw
-/// array on the node and this wrapper only on the factory, the guard covered
-/// every route *except the one that needs no factory*: every lookup node is a
-/// public aggregate with public members, so
+/// array on the node and this wrapper only on the factory, the guard would
+/// cover every route *except the one that needs no factory*: every lookup node
+/// is a public aggregate with public members, so
 ///
 ///     inline constexpr ExactLookupNode<ThreeKeys, unit::One> node {
 ///         {}, { 0.781_r }, Shape::Prism };
 ///
-/// compiled (it is now refused), linked, and evaluated the two rows nobody
-/// typed as `0` -- checked against the installed package on all three node
-/// kinds, all three of which did it. The factory's parameter type cannot see
+/// would compile, link, and evaluate the two rows nobody typed as `0` --
+/// measured on all three node kinds. The factory's parameter type cannot see
 /// that call, because there is no call. Making the member itself a
-/// `Corrections<N>` is what closes it: the braced list now initialises this
-/// type, a short one selects the arity-mismatch constructor below, and its
+/// `Corrections<N>` closes it: the braced list initialises this type, a short
+/// one selects the arity-mismatch constructor below, and its
 /// `static_assert` names both counts at the offending line.
 /// `lookup_short_corrections_no_factory.cpp` and its two siblings pin exactly
 /// that, one per node kind, and reverting any one member to a raw array fails
@@ -623,10 +622,9 @@ namespace detail
 /// Nodes therefore declare `Corrections<N> corrections;` with **no default
 /// member initialiser**, and that omission is load bearing: `{}` for a table
 /// of three rows is a count of zero, which is the very mistake being refused,
-/// so a node cannot be default-constructed and must state its contents. No
-/// consumer noticed the change -- `operator[]` below keeps
-/// `node.corrections[index]` meaning what it always meant in the renderer, the
-/// tracer and the evaluator alike.
+/// so a node cannot be default-constructed and must state its contents.
+/// `operator[]` below lets the renderer, the tracer and the evaluator alike
+/// read `node.corrections[index]` as an array index.
 ///
 /// **Asked whether a node is default-constructible, the traits and the
 /// concepts answer `false`, cleanly**, and so does anything holding a lookup
@@ -736,13 +734,10 @@ struct Corrections
     std::array<Rational, N> values {};
 
     /// The correction at @p rowIndex, so that every consumer reads a table's
-    /// contents the way it read them when this was a bare `std::array`.
-    ///
-    /// Present so that becoming a node's member type costs the rest of the
-    /// library nothing: `node.corrections[index]` means what it always meant,
-    /// in the renderer, the tracer and the evaluator alike. `values` stays
-    /// public alongside it -- this is a transparent aggregate of the table's
-    /// contents, not an encapsulation.
+    /// contents as it would an array's: `node.corrections[index]` reads the
+    /// same in the renderer, the tracer and the evaluator. `values` is public
+    /// alongside it -- this is a transparent aggregate of the table's contents,
+    /// not an encapsulation.
     [[nodiscard]] constexpr Rational operator[](std::size_t rowIndex) const noexcept
     {
         return values[rowIndex];

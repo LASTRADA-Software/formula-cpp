@@ -578,8 +578,8 @@ inline constexpr bool formats_by_describe<Branch> = true;
 ///
 /// Zero-initialises to `Recorded`, which is right for both sides of every
 /// step with two operands, and for every step that is not binary; a step
-/// built by hand that leaves both sides unset therefore renders with both
-/// operands recorded.
+/// built by hand that leaves both sides unset therefore renders every
+/// operand from `Step::operands`.
 ///
 /// `RecordingSink` fills `Step::leftOperand` and `Step::rightOperand` in;
 /// like every other field of a `Step`, they are public data, and a side set

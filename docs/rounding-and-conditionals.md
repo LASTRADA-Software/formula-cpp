@@ -207,17 +207,16 @@ with an offset by its size and its zero, `to 1 dp of 1 K from 5463/20 K`, so
 that the places say what they count in; only a dimensionless unit at scale 1
 writes no unit clause, `round(x, to 2 dp)`. The operand comes first and the
 granularity second, comma-separated, deliberately -- not because it looks
-tidier, but because the alternative shapes both have a real failure mode a
-review actually caught. A trailing suffix with nothing separating it from
-the operand (`round(<operand> to 1 dp of mm)`) misattaches to whichever
-branch of a `when()` operand happens to render last, with no closing
-delimiter of its own to stop it; and the fix that was tried before this one,
-a `[...]` prefix (`round[to 1 dp of mm](d)`), collided with CommonMark's
-inline-link syntax and made a Markdown renderer drop the operand from the
-visible page entirely. The comma form is safe against both at once. See
-[Citations and rendering](citations.md) for the other rule every dialect
-follows the same way, for the same kind of reason -- wrapping a symbol
-containing an underscore in backticks so Markdown does not read it as
+tidier, but because the alternative shapes both have a real failure mode.
+A trailing suffix with nothing separating it from the operand
+(`round(<operand> to 1 dp of mm)`) misattaches to whichever branch of a
+`when()` operand happens to render last, with no closing delimiter of its
+own to stop it; and a `[...]` prefix (`round[to 1 dp of mm](d)`) collides
+with CommonMark's inline-link syntax and makes a Markdown renderer drop the
+operand from the visible page entirely. The comma form is safe against both
+at once. See [Citations and rendering](citations.md) for the other rule every
+dialect follows the same way, for the same kind of reason -- wrapping a
+symbol containing an underscore in backticks so Markdown does not read it as
 emphasis.
 
 A conditional renders as `if <predicate> then <then> else <else>` -- seen

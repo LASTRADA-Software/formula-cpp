@@ -464,11 +464,11 @@ namespace detail
     /// Not `when(#1, #2, #3)`, which is positionally identical to the public
     /// `when(predicate, thenBranch, elseBranch)` and means something else
     /// entirely -- `(predicate lhs, predicate rhs, the branch that ran)`. A
-    /// reader who has just met the API maps the three slots onto it and
-    /// concludes the *then* value is the second one, then reads a `[then]`
-    /// suffix next to a number that came from the third. A notation
-    /// that needs prose to decode is not a smaller version of the problem; it
-    /// is the problem. This shape needs none: it is the one `render()`
+    /// reader who has just met the API would map the three slots onto it and
+    /// conclude the *then* value is the second one, then would read a `[then]`
+    /// suffix next to a number that came from the third. A notation that needs
+    /// prose to decode is not a smaller version of the problem; it is the
+    /// problem. This shape needs none: it is the one `render()`
     /// already writes, minus the branch that did not run.
     ///
     /// **Three arities, not two.** `branch != Branch::Neither` exactly when a

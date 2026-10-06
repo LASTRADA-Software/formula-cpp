@@ -187,7 +187,7 @@ diagnostic readable.
 its dimension (`unit.dimension`), so a separate dimension parameter would
 state it a second time and let the two disagree. That is not a hypothetical
 risk: a spelling with a dimension parameter, with `dim::Mass` paired against
-`unit::Litre`, compiled without a diagnostic on every compiler it was tried
+`unit::Litre`, compiles without a diagnostic on every compiler it was tried
 on. `Quantity::dimension` is derived from the unit instead, so there is
 no second place for it to disagree with, and no spelling that lets a caller
 write the contradiction at all.

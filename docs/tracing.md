@@ -895,11 +895,9 @@ are not sequenced. Walk a `Trace` in sequence, never concurrently.
 
 Evaluation has a two-parameter extension point -- a consumer writes their
 own node kind and a `checked_evaluate_si(node, environment)` overload for it,
-found by ADL. Adding a sink parameter to every overload the library ships
-could have broken every such overload by making it invisible to the
-dispatcher; instead, `detail::dispatch` prefers a sink-aware, three-parameter
-overload where one exists for a node and falls back to the older
-two-parameter one where it does not:
+found by ADL. `detail::dispatch` prefers a sink-aware, three-parameter
+overload where one exists for a node and falls back to the two-parameter one
+where it does not, so such an overload stays visible to the dispatcher:
 
 ```cpp
 template <typename Rep, typename N, typename Env, typename Sink>
@@ -912,14 +910,13 @@ template <typename Rep, typename N, typename Env, typename Sink>
 }
 ```
 
-(`sink.hpp`.) A node written against the older, two-parameter extension point
-therefore keeps evaluating correctly, with the right answer, composed with any
-other node exactly as before. What it does **not** do is contribute anything
-to a trace -- there is no overload to call the sink through, so `entered` and
-`produced` are simply never called for that node. `test/sink_tests.cpp` proves
-both halves of this at once, by counting: a `LegacyNode` added to a `Mass`
-gets the right sum, `12`, but the sink only ever hears about the two nodes
-that know it exists:
+(`sink.hpp`.) A node with only the two-parameter overload therefore evaluates
+correctly, with the right answer, composed with any other node. What it does
+**not** do is contribute anything to a trace -- there is no overload to call
+the sink through, so `entered` and `produced` are simply never called for that
+node. `test/sink_tests.cpp` proves both halves of this at once, by counting:
+a `LegacyNode` added to a `Mass` gets the right sum, `12`, but the sink only
+ever hears about the two nodes that know it exists:
 
 ```cpp
 auto const result = formula::checked_evaluate_si<formula::Rational>(expression, environmentOf(5, 1), sink);

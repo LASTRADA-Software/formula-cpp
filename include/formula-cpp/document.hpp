@@ -366,17 +366,15 @@ namespace detail
     // Not load-bearing, just this file's convention: every collect() call's
     // first argument is a `Walk<V>&`, so `formula::detail` -- Walk's namespace --
     // is always in ADL's search set, which is why every overload below is
-    // found regardless of declaration order. Re-measured when the three lookup
-    // overloads below were added: deleting all 17 declarations in this block
-    // and rebuilding the whole test suite succeeds on cl 19.51, clang-cl 22,
-    // clang 20.1.8 and g++ 14.2. Every one of those is a conformant two-phase
-    // lookup -- `CMakeLists.txt` puts `/permissive-` on every cl compile line
-    // as an INTERFACE requirement of the library, read off this file's own
-    // entry in `compile_commands.json` rather than assumed -- so no leg of
-    // that measurement rested on MSVC's permissive mode. (The earlier wording
-    // said "all five", which was the count when this was first measured.)
-    // That is an implementation detail, not a guarantee, so each overload
-    // stays declared here rather than relying on it.
+    // found regardless of declaration order. Deleting all 17 declarations in
+    // this block and rebuilding the whole test suite succeeds on cl 19.51,
+    // clang-cl 22, clang 20.1.8 and g++ 14.2. Every one of those is a
+    // conformant two-phase lookup -- `CMakeLists.txt` puts `/permissive-` on
+    // every cl compile line as an INTERFACE requirement of the library, read
+    // off this file's own entry in `compile_commands.json` rather than
+    // assumed -- so no leg of that measurement rested on MSVC's permissive
+    // mode. That is an implementation detail, not a guarantee, so each
+    // overload stays declared here rather than relying on it.
 
     template <Vocabulary V, Described Q>
     void collect(Walk<V>& walk, VarNode<Q> const& node);

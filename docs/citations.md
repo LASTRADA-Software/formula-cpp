@@ -71,12 +71,12 @@ sparse citation: title "A height", reference empty: yes
 
 The braced designated initialiser on the second argument works because that
 argument is a plain `formula::Citation`, not a deduced template parameter --
-verified on cl 19.51, clang-cl 22 and g++ 13.3 before `documented()` was
-written this way. And because every field is `std::string_view` rather than
-an owning string, a `Citation` built entirely from string literals -- as
-every example in this repository is -- is usable inside a `constexpr` tree
-for free. A citation built from a runtime `std::string` is legal too, but
-that string must outlive every node holding the view onto it.
+verified on cl 19.51, clang-cl 22 and g++ 13.3. And because every field is
+`std::string_view` rather than an owning string, a `Citation` built entirely
+from string literals -- as every example in this repository is -- is usable
+inside a `constexpr` tree for free. A citation built from a runtime
+`std::string` is legal too, but that string must outlive every node holding
+the view onto it.
 
 ## Why the wrapper is invisible to arithmetic
 
@@ -416,9 +416,9 @@ Three things a vocabulary does not do:
   opt in (`"a consumer's two-argument render_node receives the
   vocabulary"`). A node of yours that derives from one of the library's --
   `struct Labelled: formula::VarNode<Q>` -- keeps its own one-argument
-  `render_node`, as before, rather than rendering as the node it derives
-  from; to receive the vocabulary it defines the two-argument form instead
-  of the one-argument one, not beside it.
+  `render_node`, rather than rendering as the node it derives from; to
+  receive the vocabulary it defines the two-argument form instead of the
+  one-argument one, not beside it.
 
 A vocabulary renaming one quantity twice does not compile, and neither does
 `renames<Q>("")`, which would leave a blank where the quantity stands; nor
