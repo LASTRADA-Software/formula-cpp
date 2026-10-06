@@ -34,7 +34,9 @@
 #
 # Lines starting with `#` and blank lines are ignored; an entry without a
 # reason is an error. An absent allow-list is an empty one. An entry allows the
-# line it spells, every phrase in it, and nothing else.
+# line it spells, every phrase in it, and nothing else. An entry that allows no
+# reported line -- the line was reworded, or the path is wrong -- is an error
+# too, so that the list holds only places the check really does not look.
 #
 # A scan that examined no file fails: a check that examines nothing is a check
 # that lies.
@@ -119,17 +121,22 @@ if(EXISTS "${ALLOWLIST}")
     endwhile()
 endif()
 
-# The phrases, as one alternation, each bounded by a character that cannot
-# continue a word: "new in" is not "new instance", "used to" is not "used
-# together". The whole file is searched at once, so nothing may cross a line.
+# The phrases, as one alternation, each bounded by a character that is neither
+# a letter nor a digit: "new in" is not "new instance", "used to" is not "used
+# together". `_` bounds a phrase, so that Markdown emphasis, `_no longer_` or
+# `__deprecated__`, does not hide one. The whole file is searched at once, so
+# nothing may cross a line.
 set(phrases "no longer|previously|formerly|once meant|was renamed|deprecated|new in|used to")
 string(APPEND phrases "|before [^.\n]* existed")
 string(APPEND phrases "|(since|as of) v?[0-9]+\\.[0-9]+(\\.[0-9]+)?")
 string(APPEND phrases "|(in|until|before|after) v?[0-9]+\\.[0-9]+\\.[0-9]+")
-set(phrasePattern "[^a-z0-9_](${phrases})[^a-z0-9_]")
+set(phrasePattern "[^a-z0-9](${phrases})[^a-z0-9]")
 
 set(offences "")
 set(offenceCount 0)
+# The allow-list entries that allowed a reported line, in the form `allowed`
+# holds them.
+set(allowedUsed "\n")
 foreach(relative IN LISTS files)
     file(READ "${SOURCE_DIR}/${relative}" original)
     string(REPLACE "\r\n" "\n" original "${original}")
@@ -177,13 +184,14 @@ foreach(relative IN LISTS files)
             math(EXPR column "${consumed} - ${lineStart}")
             string(SUBSTRING "${line}" 0 ${column} before)
             string(TOLOWER "${before}" before)
-            if(before MATCHES "(^|[^a-z0-9_])(is|are|was|were|be|been|being)[ \t]+$")
+            if(before MATCHES "(^|[^a-z0-9])(is|are|was|were|be|been|being)[ \t]+$")
                 continue()
             endif()
         endif()
         string(STRIP "${line}" trimmed)
         string(FIND "${allowed}" "\n${relative}|${trimmed}\n" allowedAt)
         if(NOT allowedAt EQUAL -1)
+            string(APPEND allowedUsed "${relative}|${trimmed}\n")
             continue()
         endif()
 
@@ -192,12 +200,35 @@ foreach(relative IN LISTS files)
     endwhile()
 endforeach()
 
+# Every allow-list entry must have allowed a reported line.
+set(unused "")
+string(SUBSTRING "${allowed}" 1 -1 rest)
+while(NOT rest STREQUAL "")
+    string(FIND "${rest}" "\n" newline)
+    string(SUBSTRING "${rest}" 0 ${newline} entry)
+    math(EXPR next "${newline} + 1")
+    string(SUBSTRING "${rest}" ${next} -1 rest)
+    string(FIND "${allowedUsed}" "\n${entry}\n" usedAt)
+    if(usedAt EQUAL -1)
+        string(APPEND unused "\n  ${entry}")
+    endif()
+endwhile()
+
+set(problems "")
 if(offenceCount GREATER 0)
-    message(FATAL_ERROR
-        "docs current-state check: ${offenceCount} history phrases in user documentation:${offences}\n"
+    string(APPEND problems
+        "${offenceCount} history phrases in user documentation:${offences}\n"
         "User documentation describes the library as it is now; say what it does today, or record the change in "
         "CHANGELOG.md. A line that describes data rather than history goes in cmake/docs-current-state-allowlist.txt "
-        "with its reason.")
+        "with its reason.\n")
+endif()
+if(NOT unused STREQUAL "")
+    string(APPEND problems
+        "allow-list entries in ${ALLOWLIST} that allow no reported line -- the line was reworded, or the path is "
+        "wrong; remove them:${unused}\n")
+endif()
+if(NOT problems STREQUAL "")
+    message(FATAL_ERROR "docs current-state check: ${problems}")
 endif()
 
 message(STATUS "docs current-state check: ${scanned} files scanned, no history wording")
