@@ -34,9 +34,12 @@ The area becomes a formula, and the strength formula uses it:
 ```
 
 A formula can use another formula. `loadedArea` is bound to its result,
-`Area`, by `yields`, and a bound formula is the top of a formula rather than
-a part of one; the formula it holds, `loadedArea.expression`, is an operand
-like any other. `var<SideA> * var<SideB>` multiplies millimetres by
+`Area`, by `yields`, so it is evaluated and printed as `A_c`. A bound formula
+(`yields<Q>(...)`) is the top of a formula rather than a part of one, so
+another formula reuses it through its `.expression`, the formula it holds,
+which is an operand like any other
+([Naming the result once](../expressions.md#naming-the-result-once)).
+`var<SideA> * var<SideB>` multiplies millimetres by
 millimetres, so its unit is mm², the unit `Area` declares, and its dimension
 is an area. `yields<Area>` checks that dimension when the program compiles.
 
