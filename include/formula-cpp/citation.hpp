@@ -17,6 +17,7 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <string_view>
 
@@ -84,6 +85,15 @@ template <Node Inner>
 [[nodiscard]] constexpr DocumentedNode<Inner> documented(Inner inner, Citation citation) noexcept
 {
     return DocumentedNode<Inner> { {}, inner, citation };
+}
+
+/// A bound formula as `documented`'s formula: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto documented(Bound boundFormula, Citation citation) noexcept
+{
+    return documented(boundFormula.expression, citation);
 }
 
 /// Evaluating a documented expression evaluates what it documents. The wrapper

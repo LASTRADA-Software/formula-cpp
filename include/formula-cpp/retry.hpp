@@ -173,6 +173,15 @@ template <Node E>
     return StartingValue<E> { expression };
 }
 
+/// A bound formula as `starting_from`'s starting value: the formula it holds,
+/// in its place (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto starting_from(Bound boundFormula) noexcept
+{
+    return starting_from(boundFormula.expression);
+}
+
 /// Which part of a retry is being evaluated: its starting value, before any
 /// attempt; an attempt expression; or the acceptance over what it produced.
 enum class AttemptPhase : std::uint8_t
@@ -1122,6 +1131,25 @@ template <Described R, std::size_t Max, FirstJudged J, typename A, typename P>
     return Retry<R, Max, J, NoStartingValue, A, P> { NoStartingValue {}, attemptExpression, accept, onExhausted, citation };
 }
 
+/// A bound formula as a retry's attempt expression: the formula it holds, in
+/// its place (`yields.hpp`). Declared as the overloads above are, and
+/// constrained further, so that it is the one chosen for a bound formula.
+template <Described R, std::size_t Max, FirstJudged J, Node E, typename A, typename P>
+    requires detail::AnyBound<A>
+[[nodiscard]] constexpr auto retry(
+    StartingValue<E> start, A attemptExpression, P accept, Verdict onExhausted, Citation citation) noexcept
+{
+    return retry<R, Max, J>(start, attemptExpression.expression, accept, onExhausted, citation);
+}
+
+/// See the overload above: the same, with no starting value.
+template <Described R, std::size_t Max, FirstJudged J, typename A, typename P>
+    requires detail::AnyBound<A>
+[[nodiscard]] constexpr auto retry(A attemptExpression, P accept, Verdict onExhausted, Citation citation) noexcept
+{
+    return retry<R, Max, J>(attemptExpression.expression, accept, onExhausted, citation);
+}
+
 /// Why a retry failed: the arithmetic error, and the attempt it arose at --
 /// a **zero-based position**, as `SeriesFailure::element` is, so attempt 2 is
 /// `1`. Every text the library writes says attempts one-based.
@@ -1782,9 +1810,12 @@ template <typename Tag, Described R, std::size_t Max, FirstJudged J, typename St
 }
 
 /// A retry in arithmetic, on either side of `+`, `-`, `*` or `/`, or negated:
-/// refused in this library's words, giving a node refused already.
+/// refused in this library's words, giving a node refused already. Beside a
+/// bound formula, the operator over one (`yields.hpp`) is chosen instead: it
+/// hands on the formula the bound one holds, and the retry is refused here,
+/// once, as beside that formula.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator+(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
@@ -1793,7 +1824,7 @@ template <typename L, typename Rt>
 
 /// See `operator+` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator-(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
@@ -1802,7 +1833,7 @@ template <typename L, typename Rt>
 
 /// See `operator+` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator*(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
@@ -1811,7 +1842,7 @@ template <typename L, typename Rt>
 
 /// See `operator+` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator/(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
@@ -1863,8 +1894,9 @@ namespace detail
 /// A retry compared, on either side of `<`, `<=`, `>`, `>=`, `==` or `!=`:
 /// refused in this library's words, as arithmetic over a retry is -- an
 /// acceptance is a comparison, so this is the likeliest place to write one.
+/// Beside a bound formula, as arithmetic beside one is.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator<(L, Rt) noexcept ->
     typename detail::RefusedRetryComparison<Comparison::Less, L, Rt>::type
 {
@@ -1874,7 +1906,7 @@ template <typename L, typename Rt>
 
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator<=(L, Rt) noexcept ->
     typename detail::RefusedRetryComparison<Comparison::LessOrEqual, L, Rt>::type
 {
@@ -1884,7 +1916,7 @@ template <typename L, typename Rt>
 
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator>(L, Rt) noexcept ->
     typename detail::RefusedRetryComparison<Comparison::Greater, L, Rt>::type
 {
@@ -1894,7 +1926,7 @@ template <typename L, typename Rt>
 
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator>=(L, Rt) noexcept ->
     typename detail::RefusedRetryComparison<Comparison::GreaterOrEqual, L, Rt>::type
 {
@@ -1904,7 +1936,7 @@ template <typename L, typename Rt>
 
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator==(L, Rt) noexcept ->
     typename detail::RefusedRetryComparison<Comparison::Equal, L, Rt>::type
 {
@@ -1914,7 +1946,7 @@ template <typename L, typename Rt>
 
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
-    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+    requires(detail::isRetry<L> || detail::isRetry<Rt>) && (!detail::AnyBound<L, Rt>)
 [[nodiscard]] constexpr auto operator!=(L, Rt) noexcept ->
     typename detail::RefusedRetryComparison<Comparison::NotEqual, L, Rt>::type
 {

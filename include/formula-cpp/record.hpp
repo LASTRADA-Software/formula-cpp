@@ -107,6 +107,7 @@
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -1446,6 +1447,15 @@ template <typename Role, Node Operand, typename Comparand, typename... Attrs>
 from_record(Operand operand, LineageRequirement<Comparand, Attrs...>) noexcept
 {
     return RecordScopeNode<Role, LineageRequirement<Comparand, Attrs...>, Operand> { {}, operand };
+}
+
+/// A bound formula as the operand `from_record` reads, with or without a
+/// lineage requirement: the formula it holds, in its place (`yields.hpp`).
+template <typename Role, typename Bound, typename... Requirement>
+    requires detail::AnyBound<Bound> && (sizeof...(Requirement) <= 1)
+[[nodiscard]] constexpr auto from_record(Bound boundFormula, Requirement... requirement) noexcept
+{
+    return from_record<Role>(boundFormula.expression, requirement...);
 }
 
 /// Evaluates a scope: its operand against the environment of the record

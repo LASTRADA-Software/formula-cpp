@@ -37,6 +37,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -388,6 +389,36 @@ template <Unit U, Node N>
     return Conformity<U, detail::RefusedSeries<N::dimension>> {
         detail::RefusedSeries<N::dimension> {}, Envelope<1> { LimitRow { unbounded, unbounded } }, verdict, citation
     };
+}
+
+namespace detail
+{
+    /// The envelope a conformity check of @p Subject takes: one row per
+    /// element of a series, and whatever was written for a single value,
+    /// which is refused (`AnyEnvelope`).
+    template <typename Subject>
+    struct EnvelopeFor
+    {
+        using type = AnyEnvelope;
+    };
+
+    template <SeriesNode S>
+    struct EnvelopeFor<S>
+    {
+        using type = Envelope<S::length>;
+    };
+} // namespace detail
+
+/// A bound formula as `conformity`'s subject: the formula it holds, in its
+/// place (`yields.hpp`).
+template <Unit U, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto conformity(Bound boundSubject,
+                                        typename detail::EnvelopeFor<decltype(Bound::expression)>::type envelope,
+                                        Verdict verdict,
+                                        Citation citation = {}) noexcept
+{
+    return conformity<U>(boundSubject.expression, envelope, verdict, citation);
 }
 
 namespace detail

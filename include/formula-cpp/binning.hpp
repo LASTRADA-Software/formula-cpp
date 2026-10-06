@@ -51,6 +51,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -176,6 +177,16 @@ template <Unit KeyUnit, BandTable Classes, typename Obs>
         return BinnedNode<KeyUnit, Classes, Obs> { {}, source };
     else
         return BinnedNode<KeyUnit, Classes, detail::RefusedObservations> { {}, detail::RefusedObservations {} };
+}
+
+/// A bound formula as the observations `binned` counts: the formula it holds,
+/// in its place (`yields.hpp`). Declared as the overload above is, and
+/// constrained further, so that it is the one chosen for a bound formula.
+template <Unit KeyUnit, BandTable Classes, typename Obs>
+    requires detail::AnyBound<Obs>
+[[nodiscard]] constexpr auto binned(Obs source) noexcept
+{
+    return binned<KeyUnit, Classes>(source.expression);
 }
 
 /// Counts the observations into the classes: the observations first, once;

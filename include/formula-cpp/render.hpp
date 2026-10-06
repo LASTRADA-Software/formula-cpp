@@ -2501,15 +2501,6 @@ template <Dialect D, Dimension Dim, Vocabulary V>
     return "(refused)";
 }
 
-/// A refused bound formula used as an operand (`detail::RefusedBoundValue`,
-/// `yields.hpp`) renders as a refused retry does; this only keeps a `render`
-/// of it from adding a second, compiler-worded error.
-template <Dialect D, Dimension Dim, Vocabulary V>
-[[nodiscard]] std::string render_node(detail::RefusedBoundValue<Dim> const&, V const&)
-{
-    return "(refused)";
-}
-
 namespace detail
 {
     /// Renders @p node through the `render_node` it has, and refuses a node of

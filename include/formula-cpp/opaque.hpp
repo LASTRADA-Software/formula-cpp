@@ -74,6 +74,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -837,6 +838,16 @@ template <OpaqueOperation Op, typename... Inputs>
     return OpaqueCall<Op, Inputs...> { std::tuple<Inputs...> { inputs... }, citation };
 }
 
+/// A bound formula as any input of an opaque call: the formula it holds, in
+/// its place (`yields.hpp`). Declared as the overload above is, and
+/// constrained further, so that it is the one chosen for a bound formula.
+template <OpaqueOperation Op, typename... Inputs>
+    requires detail::AnyBound<Inputs...>
+[[nodiscard]] constexpr auto opaque(Citation citation, Inputs... inputs) noexcept
+{
+    return opaque<Op>(citation, detail::as_operand(inputs)...);
+}
+
 namespace detail
 {
     /// The position of the output named @p Name among @p Op's, or
@@ -991,6 +1002,15 @@ template <detail::FixedString Name, OpaqueOperation Op, typename... Inputs>
         return OpaqueOutputNode<detail::unknownOutput, Call, detail::UnnamedOpaqueOutput> { {}, call };
 }
 
+/// A bound formula as `opaque_output`'s call: the formula it holds, in its
+/// place (`yields.hpp`).
+template <detail::FixedString Name, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto opaque_output(Bound boundCall) noexcept
+{
+    return opaque_output<Name>(boundCall.expression);
+}
+
 /// Output @p I of the opaque call @p Call, rounded to @p Places decimal places
 /// of @p U under @p Mode -- the decimal the operation's true output rounds to,
 /// exact: the fused counterpart of `opaque_output`, as `rounded_sqrt` is of
@@ -1078,6 +1098,23 @@ template <detail::FixedString Name, DecimalRounding R, OpaqueOperation Op, typen
 [[nodiscard]] constexpr auto rounded_output(OpaqueCall<Op, Inputs...> call) noexcept
 {
     return rounded_output<Name, R.unit, R.places, R.mode>(call);
+}
+
+/// A bound formula as `rounded_output`'s call: the formula it holds, in its
+/// place (`yields.hpp`).
+template <detail::FixedString Name, Unit U, DecimalPlaces Places, RoundingMode Mode, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_output(Bound boundCall) noexcept
+{
+    return rounded_output<Name, U, Places, Mode>(boundCall.expression);
+}
+
+/// See the overload above, rounded as @p R names.
+template <detail::FixedString Name, DecimalRounding R, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto rounded_output(Bound boundCall) noexcept
+{
+    return rounded_output<Name, R>(boundCall.expression);
 }
 
 namespace detail

@@ -7,8 +7,18 @@
 /// then `evaluate(ratio, environment)`. The author still names the result --
 /// nothing is deduced from the expression, whose dimension does not name a
 /// quantity (`evaluate.hpp`) -- but only once. A `Yields` is not a node: it is
-/// the top of a formula. Nest `documented()` inside it, not around it, and
-/// reuse the formula inside another through `.expression`.
+/// the top of a formula.
+///
+/// Used as part of another formula, a bound formula stands for the formula it
+/// holds: `var<Load> / loadedArea` is `var<Load> / loadedArea.expression`, of
+/// that type and value, on either side of every arithmetic operator and
+/// comparison, and so is a bound formula handed to any function that builds a
+/// formula -- `sqrt`, `rounded`, `documented`, `sum`, a lookup's key, ... --
+/// each of which has an overload for one that hands on `.expression`. The
+/// outer formula renders, traces and documents as that spelling does: the
+/// bound quantity's name is not part of it, and neither is the binding, so
+/// `documented(boundFormula, citation)` documents the formula and is not
+/// bound itself.
 ///
 /// Every verb that is told a result quantity takes a `Yields` in place of the
 /// expression and the quantity: `evaluate` and `checked_evaluate` here,
@@ -38,10 +48,6 @@
 /// `define` -- in words naming the verbs that take it
 /// (`detail::RequireSingleValueBound`), once. `define` refuses a series in
 /// its own words, as `define<Q>` does.
-///
-/// **Refused as an operand:** a `Yields` on either side of `+`, `-`, `*` or
-/// `/`, negated, or on either side of `<`, `<=`, `>`, `>=`, `==` or `!=`
-/// (`detail::RequireBoundNotOperand`). Use its `.expression`.
 
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -75,9 +81,9 @@ namespace detail
     inline constexpr bool is_yields<Yields<Q, E>> = true;
 
     /// Fails to compile when a `Yields` is given a formula bound already. A
-    /// `Yields` is the top of a formula, not a part of one; around another,
-    /// every verb would forward to the inner one's answer, for the inner
-    /// one's quantity, where the outer one's was promised.
+    /// `Yields` is the top of a formula; around another, every verb would
+    /// forward to the inner one's answer, for the inner one's quantity, where
+    /// the outer one's was promised.
     template <typename E>
     struct RequireFormulaNotBound
     {
@@ -243,208 +249,118 @@ template <typename Result = detail::ResultOfYields, Described Q, typename E, typ
 
 namespace detail
 {
-    /// Fails to compile when a bound formula is an operand of `+`, `-`, `*`
-    /// or `/`, or of a comparison. A bound formula is the top of a formula,
-    /// not a part of one; the formula it holds is an operand as any formula
-    /// is. Named so the bound formula prints.
-    template <typename Bound>
-    struct RequireBoundNotOperand
-    {
-        static_assert(!is_yields<Bound>,
-                      "formula: a bound formula is not an operand; use its .expression -- the bound formula appears "
-                      "in this diagnostic as the template argument of RequireBoundNotOperand");
+    /// Whether any of @p Ts is a bound formula: what the operators below and
+    /// every function that builds a formula ask before they take the formula
+    /// a bound one holds in its place.
+    template <typename... Ts>
+    concept AnyBound = (is_yields<Ts> || ...);
 
-        /// Always true: the refusal is the `static_assert` above.
-        static constexpr bool value = true;
-    };
-
-    /// The dimension of whichever of @p L and @p R is a bound formula: its
-    /// quantity's.
-    template <typename L, typename R>
-    [[nodiscard]] consteval Dimension bound_operand_dimension() noexcept
+    /// @p operand as part of another formula: the formula it holds, for a
+    /// bound formula, and anything else as it is.
+    template <typename T>
+    [[nodiscard]] constexpr auto const& as_operand(T const& operand) noexcept
     {
-        if constexpr (is_yields<L>)
-            return Describe<typename L::quantity>::dimension;
+        if constexpr (is_yields<T>)
+            return operand.expression;
         else
-            return Describe<typename R::quantity>::dimension;
+            return operand;
     }
-
-    /// What arithmetic over a bound formula gives, once refused, and what a
-    /// comparison over one compares: a node of the bound quantity's dimension
-    /// that is refused already (`refused_already`), so nothing over it asks
-    /// again, and that is never evaluated but to a `DomainError`.
-    template <Dimension D>
-    struct RefusedBoundValue: NodeBase
-    {
-        /// The bound quantity's dimension -- a stand-in no check reads.
-        static constexpr Dimension dimension = D;
-        /// Always refused: see above.
-        static constexpr RefusedFlag refused = true;
-    };
-
-    /// The type an arithmetic operator over @p L and @p R returns when one of
-    /// them is a bound formula; none otherwise. The operators name it, so that
-    /// asking whether a bound formula can be added, as a concept does, is
-    /// answered without instantiating their bodies -- the refusal. A class, so
-    /// that over two operands neither of which is bound it has no `type`, a
-    /// substitution failure, as for a retry (`retry.hpp`).
-    template <typename L, typename R, bool = is_yields<L> || is_yields<R>>
-    struct RefusedBoundResult
-    {
-    };
-
-    template <typename L, typename R>
-    struct RefusedBoundResult<L, R, true>
-    {
-        /// The refused value.
-        using type = RefusedBoundValue<bound_operand_dimension<L, R>()>;
-    };
 } // namespace detail
 
-/// A refused bound operand evaluates to nothing but `DomainError`; a program
-/// holding one never compiles, so this is never seen.
-template <typename Rep = Rational, Dimension D, typename Env, typename Sink = NullSink>
-[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(detail::RefusedBoundValue<D> const&,
-                                                           Env const&,
-                                                           Sink = {}) noexcept
-{
-    return Evaluated<Rep> { std::unexpected { ArithmeticError::DomainError } };
-}
-
 /// A bound formula in arithmetic, on either side of `+`, `-`, `*` or `/`, or
-/// negated: refused in this library's words, giving a node refused already.
-/// Only an operand that is a `Yields` reaches these, so arithmetic over
-/// formulas is untouched.
+/// negated: the formula it holds stands in its place, so the result is the
+/// one `.expression` gives, of its type, and refused where that one is, in
+/// its words. Only an operand that is a `Yields` reaches these, so
+/// arithmetic over formulas is untouched.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator+(L, R) noexcept -> typename detail::RefusedBoundResult<L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator+(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return {};
+    return detail::as_operand(lhs) + detail::as_operand(rhs);
 }
 
 /// See `operator+` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator-(L, R) noexcept -> typename detail::RefusedBoundResult<L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator-(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return {};
+    return detail::as_operand(lhs) - detail::as_operand(rhs);
 }
 
 /// See `operator+` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator*(L, R) noexcept -> typename detail::RefusedBoundResult<L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator*(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return {};
+    return detail::as_operand(lhs) * detail::as_operand(rhs);
 }
 
 /// See `operator+` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator/(L, R) noexcept -> typename detail::RefusedBoundResult<L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator/(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return {};
+    return detail::as_operand(lhs) / detail::as_operand(rhs);
 }
 
 /// See `operator+` over a bound formula.
 template <typename Operand>
-    requires(detail::is_yields<Operand>)
-[[nodiscard]] constexpr auto operator-(Operand) noexcept -> typename detail::RefusedBoundResult<Operand, Operand>::type
+    requires detail::AnyBound<Operand>
+[[nodiscard]] constexpr auto operator-(Operand operand) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<Operand>::value);
-    return {};
+    return -detail::as_operand(operand);
 }
-
-namespace detail
-{
-    /// The type a comparison operator over @p L and @p R returns when one of
-    /// them is a bound formula; none otherwise: a comparison of two refused
-    /// values of the bound quantity's dimension, so that nothing it is used
-    /// in -- an acceptance, a constraint -- asks again. The operators name
-    /// it, so that asking whether a bound formula can be compared -- as
-    /// `std::equality_comparable` does -- answers no, and is not the refusal;
-    /// a class for the reason `RefusedBoundResult` is one.
-    template <Comparison Op, typename L, typename R, bool = is_yields<L> || is_yields<R>>
-    struct RefusedBoundComparison
-    {
-    };
-
-    template <Comparison Op, typename L, typename R>
-    struct RefusedBoundComparison<Op, L, R, true>
-    {
-        /// The refused comparison.
-        using type = PredicateNode<Op,
-                                   RefusedBoundValue<bound_operand_dimension<L, R>()>,
-                                   RefusedBoundValue<bound_operand_dimension<L, R>()>>;
-    };
-} // namespace detail
 
 /// A bound formula compared, on either side of `<`, `<=`, `>`, `>=`, `==`
-/// or `!=`: refused in this library's words, as arithmetic over it is -- an
-/// acceptance or a constraint is a comparison, so this is a likely place to
-/// write one. Only an operand that is a `Yields` reaches these, so comparisons
-/// of formulas are untouched.
+/// or `!=`: the formula it holds is compared, as arithmetic over it takes
+/// that formula -- so an acceptance or a constraint over a bound formula
+/// checks what one over `.expression` checks. Only an operand that is a
+/// `Yields` reaches these, so comparisons of formulas are untouched.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator<(L, R) noexcept ->
-    typename detail::RefusedBoundComparison<Comparison::Less, L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator<(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return { {}, {} };
+    return detail::as_operand(lhs) < detail::as_operand(rhs);
 }
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator<=(L, R) noexcept ->
-    typename detail::RefusedBoundComparison<Comparison::LessOrEqual, L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator<=(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return { {}, {} };
+    return detail::as_operand(lhs) <= detail::as_operand(rhs);
 }
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator>(L, R) noexcept ->
-    typename detail::RefusedBoundComparison<Comparison::Greater, L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator>(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return { {}, {} };
+    return detail::as_operand(lhs) > detail::as_operand(rhs);
 }
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator>=(L, R) noexcept ->
-    typename detail::RefusedBoundComparison<Comparison::GreaterOrEqual, L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator>=(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return { {}, {} };
+    return detail::as_operand(lhs) >= detail::as_operand(rhs);
 }
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator==(L, R) noexcept ->
-    typename detail::RefusedBoundComparison<Comparison::Equal, L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator==(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return { {}, {} };
+    return detail::as_operand(lhs) == detail::as_operand(rhs);
 }
 
 /// See `operator<` over a bound formula.
 template <typename L, typename R>
-    requires(detail::is_yields<L> || detail::is_yields<R>)
-[[nodiscard]] constexpr auto operator!=(L, R) noexcept ->
-    typename detail::RefusedBoundComparison<Comparison::NotEqual, L, R>::type
+    requires detail::AnyBound<L, R>
+[[nodiscard]] constexpr auto operator!=(L lhs, R rhs) noexcept
 {
-    static_assert(detail::RequireBoundNotOperand<std::conditional_t<detail::is_yields<L>, L, R>>::value);
-    return { {}, {} };
+    return detail::as_operand(lhs) != detail::as_operand(rhs);
 }
 
 } // namespace formula

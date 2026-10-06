@@ -31,6 +31,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 namespace formula
 {
@@ -123,6 +124,15 @@ template <Unit U, detail::FixedString Justification, Node Operand>
 [[nodiscard]] constexpr auto numeric_value_of(Operand operand) noexcept
 {
     return NumericValueNode<U, Justification, Operand> { {}, operand };
+}
+
+/// A bound formula as `numeric_value_of`'s operand: the formula it holds, in
+/// its place (`yields.hpp`).
+template <Unit U, detail::FixedString Justification, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto numeric_value_of(Bound boundFormula) noexcept
+{
+    return numeric_value_of<U, Justification>(boundFormula.expression);
 }
 
 /// Evaluates the operand and converts its value from the coherent unit into

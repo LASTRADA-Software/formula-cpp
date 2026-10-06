@@ -83,6 +83,7 @@
 #include <formula-cpp/snap.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -121,6 +122,15 @@ template <Node Operand>
 [[nodiscard]] constexpr auto abs(Operand operand) noexcept
 {
     return AbsoluteValueNode<Operand> { {}, operand };
+}
+
+/// A bound formula as `abs`'s operand: the formula it holds, in its place
+/// (`yields.hpp`).
+template <typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto abs(Bound boundFormula) noexcept
+{
+    return abs(boundFormula.expression);
 }
 
 /// Evaluates the operand and takes its magnitude. Absence and errors pass
@@ -839,6 +849,15 @@ template <PrecisionKind K, Node Level, Node Limit>
 [[nodiscard]] constexpr auto precision_limit(Level levelExpression, Limit limitExpression) noexcept
 {
     return PrecisionLimitNode<K, Level, Limit> { {}, levelExpression, limitExpression };
+}
+
+/// A bound formula as the level or the limit of `precision_limit`: the
+/// formula it holds, in its place (`yields.hpp`).
+template <PrecisionKind K, typename Level, typename Limit>
+    requires detail::AnyBound<Level, Limit>
+[[nodiscard]] constexpr auto precision_limit(Level levelExpression, Limit limitExpression) noexcept
+{
+    return precision_limit<K>(detail::as_operand(levelExpression), detail::as_operand(limitExpression));
 }
 
 namespace detail

@@ -158,6 +158,7 @@
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
 #include <formula-cpp/statistics.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -809,6 +810,24 @@ template <typename Tag, bool Stated = false, Node Expr>
                   "jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that "
                   "states it");
     return VariantReplacement<Tag, Expr> { expression, {} };
+}
+
+/// A bound formula as `replace_variant`'s replacement: the formula it holds, in
+/// its place (`yields.hpp`).
+template <typename Tag, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto replace_variant(Bound boundFormula, Citation source) noexcept
+{
+    return replace_variant<Tag>(boundFormula.expression, source);
+}
+
+/// Refuses a bound replacement with no citation, as `replace_variant` refuses
+/// the formula it holds.
+template <typename Tag, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto replace_variant(Bound boundFormula) noexcept
+{
+    return replace_variant<Tag>(boundFormula.expression);
 }
 
 /// The operation `with_constraints(constraints(...), source)` builds: replace the
@@ -2997,6 +3016,24 @@ template <Described Q, bool Stated = false, Node Expr>
                   "formula: add_derived<Q>(expression) was given no citation; a definition is a jurisdiction's "
                   "decision, and a trace must say whose -- pass the Citation of the clause that states it");
     return QuantityDerivation<Q, Expr> { expression, {} };
+}
+
+/// A bound formula as `add_derived`'s definition: the formula it holds, in its
+/// place (`yields.hpp`).
+template <Described Q, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto add_derived(Bound boundFormula, Citation source) noexcept
+{
+    return add_derived<Q>(boundFormula.expression, source);
+}
+
+/// Refuses a bound definition with no citation, as `add_derived` refuses the
+/// formula it holds.
+template <Described Q, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto add_derived(Bound boundFormula) noexcept
+{
+    return add_derived<Q>(boundFormula.expression);
 }
 
 namespace detail

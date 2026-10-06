@@ -39,6 +39,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -415,6 +416,15 @@ template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
 [[nodiscard]] constexpr auto critical_value(Count sampleCount, detail::SampleSizeCorrections<Sizes> corrections) noexcept
 {
     return SampleSizeLookupNode<Sizes, ResultUnit, Count> { {}, corrections, sampleCount };
+}
+
+/// A bound formula as `critical_value`'s count: the formula it holds, in its
+/// place (`yields.hpp`).
+template <SampleSizeTable Sizes, Unit ResultUnit, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto critical_value(Bound boundCount, detail::SampleSizeCorrections<Sizes> corrections) noexcept
+{
+    return critical_value<Sizes, ResultUnit>(boundCount.expression, corrections);
 }
 
 /// Evaluates the count and reads the row whose size it is. Absence

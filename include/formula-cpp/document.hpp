@@ -546,9 +546,6 @@ namespace detail
     template <Vocabulary V, Dimension Dim>
     void collect(Walk<V>& walk, RefusedRetryValue<Dim> const& node);
 
-    template <Vocabulary V, Dimension Dim>
-    void collect(Walk<V>& walk, RefusedBoundValue<Dim> const& node);
-
     template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
     void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node);
 
@@ -1225,13 +1222,6 @@ namespace detail
     /// second error to the refusal that produced it.
     template <Vocabulary V, Dimension Dim>
     void collect(Walk<V>&, RefusedRetryValue<Dim> const&)
-    {
-    }
-
-    /// A refused bound formula used as an operand names nothing, as a refused
-    /// retry names nothing.
-    template <Vocabulary V, Dimension Dim>
-    void collect(Walk<V>&, RefusedBoundValue<Dim> const&)
     {
     }
 

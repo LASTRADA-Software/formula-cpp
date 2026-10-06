@@ -99,6 +99,7 @@
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -211,6 +212,15 @@ template <typename Tag, SeriesNode Expr>
 {
     static_assert(detail::RequireSingleValueExpression<Expr>::value);
     return VariantCase<Tag, ConstantNode<coherent(Expr::dimension)>> { ConstantNode<coherent(Expr::dimension)> {} };
+}
+
+/// A bound formula as `variant`'s expression: the formula it holds, in its
+/// place (`yields.hpp`).
+template <typename Tag, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto variant(Bound boundFormula) noexcept
+{
+    return variant<Tag>(boundFormula.expression);
 }
 
 namespace detail

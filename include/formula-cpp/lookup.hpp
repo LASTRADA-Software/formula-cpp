@@ -476,6 +476,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -821,6 +822,15 @@ template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
     Operand operand, Corrections<Bands.size()> corrections) noexcept
 {
     return BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> { {}, corrections, operand };
+}
+
+/// A bound formula as `banded_lookup`'s key: the formula it holds, in its place
+/// (`yields.hpp`).
+template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto banded_lookup(Bound boundKey, Corrections<Bands.size()> corrections) noexcept
+{
+    return banded_lookup<KeyUnit, Bands, ResultUnit>(boundKey.expression, corrections);
 }
 
 /// Evaluates the operand, converts its value into `KeyUnit`, and looks up the
@@ -1856,6 +1866,15 @@ template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
     Operand operand, Corrections<Points.size()> corrections) noexcept
 {
     return InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> { {}, corrections, operand };
+}
+
+/// A bound formula as `interpolating_lookup`'s key: the formula it holds, in
+/// its place (`yields.hpp`).
+template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, typename Bound>
+    requires detail::AnyBound<Bound>
+[[nodiscard]] constexpr auto interpolating_lookup(Bound boundKey, Corrections<Points.size()> corrections) noexcept
+{
+    return interpolating_lookup<KeyUnit, Points, ResultUnit>(boundKey.expression, corrections);
 }
 
 /// Evaluates the operand, converts its value into `KeyUnit`, and answers from
