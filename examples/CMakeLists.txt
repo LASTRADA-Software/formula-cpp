@@ -41,14 +41,19 @@ function(formula_add_example name source expectedOutput)
 endfunction()
 
 # An example whose whole output a page includes: built and run as every
-# example is, and its output compared, byte for byte, with the
-# `<name>.expected.txt` beside its source. The pass regex given to
-# formula_add_example is "." -- any output -- because the comparison is the
-# real check, and restating the output as a regex would be a second copy to
-# keep in step.
+# example is, and its output compared with the file beside its source that
+# has the source's own stem and `.expected.txt` (`tutorial/01_first_formula.cpp`
+# is compared with `tutorial/01_first_formula.expected.txt`, whatever `name`
+# is). The comparison normalises line endings and nothing else. The pass
+# regex given to formula_add_example is "." -- any output -- because the
+# comparison is the real check, and restating the output as a regex would be
+# a second copy to keep in step.
 function(formula_add_pinned_example name source)
     formula_add_example(${name} "${source}" ".")
     string(REGEX REPLACE "\\.cpp$" ".expected.txt" expected "${source}")
+    if(expected STREQUAL source)
+        message(FATAL_ERROR "formula_add_pinned_example(${name}): ${source} is not a .cpp file, so it has no <stem>.expected.txt")
+    endif()
     add_test(NAME "example.${name}.output"
         COMMAND "${CMAKE_COMMAND}"
                 -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-${name}>"

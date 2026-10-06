@@ -28,7 +28,11 @@ if(NOT EXISTS "${EXPECTED}")
     message(FATAL_ERROR "CheckExpectedOutput.cmake: ${EXPECTED} does not exist")
 endif()
 
+# ENCODING UTF-8: on Windows, without it, the output is decoded by the console
+# code page while the expected file is read as raw bytes, so a program printing
+# `≈`, `²` or `µ` would falsely mismatch.
 execute_process(COMMAND "${EXAMPLE_EXE}"
+                ENCODING UTF-8
                 OUTPUT_VARIABLE actual
                 ERROR_VARIABLE errors
                 RESULT_VARIABLE exitCode)
