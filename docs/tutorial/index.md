@@ -38,3 +38,6 @@ an invented `Example Standard`.
 9. [Calculations and worksheets](09-worksheets.md) -- the whole test as one calculation, recalculated as inputs change.
 
 ## Advanced track
+
+10. [Lookup tables](10-lookup-tables.md) -- values from a published table, and what happens outside it.
+11. [Methods and overlays](11-methods-and-overlays.md) -- one method, several variants, and a jurisdiction's changes.

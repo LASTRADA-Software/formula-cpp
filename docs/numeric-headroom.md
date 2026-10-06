@@ -165,6 +165,8 @@ Each program's largest integers over everything it evaluates at run time.
 | example `tutorial_07_documentation` | 25 | 20 | 25 | 102 |
 | example `tutorial_08_tracing` | 44 | 25 | 44 | 83 |
 | example `tutorial_09_worksheets` | 30 | 30 | 25 | 97 |
+| example `tutorial_10_lookup_tables` | 25 | 20 | 25 | 102 |
+| example `tutorial_11_methods_and_overlays` | 54 | 35 | 54 | 73 |
 | example `simple` | 12 | 12 | 12 | 115 |
 | example `exact_numbers` | 9 | 10 | 9 | 117 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 105 |
