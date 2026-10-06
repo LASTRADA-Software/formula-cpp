@@ -1,0 +1,15 @@
+s = f_c(i) / f_c28
+all three recorded:
+1. f_c = 21 MPa; 26 MPa; 30 MPa
+2. f_c28 = 30 MPa
+3. #1 / #2 = 7/10; 13/15; 1
+7 days: s = 0.7
+14 days: s = ≈0.867
+28 days: s = 1
+the 14-day strength not recorded:
+1. f_c = 21 MPa; (not measured); 30 MPa
+2. f_c28 = 30 MPa
+3. #1 / #2 = 7/10; (not measured); 1
+7 days: s = 0.7
+14 days: s = (not measured)
+28 days: s = 1

@@ -39,5 +39,7 @@ an invented `Example Standard`.
 
 ## Advanced track
 
-10. [Lookup tables](10-lookup-tables.md) -- values from a published table, and what happens outside it.
-11. [Methods and overlays](11-methods-and-overlays.md) -- one method, several variants, and a jurisdiction's changes.
+- Chapter 10: [Lookup tables](10-lookup-tables.md) -- values from a published table, and what happens outside it.
+- Chapter 11: [Methods and overlays](11-methods-and-overlays.md) -- one method, several variants, and a jurisdiction's changes.
+- Chapter 12: [Series](12-series.md) -- one quantity at several ages, calculated element by element.
+- Chapter 13: [Statistics](13-statistics.md) -- means and spreads of several specimens, and outliers rejected.

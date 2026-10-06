@@ -56,6 +56,8 @@ nav:
       - 9. Calculations and worksheets: tutorial/09-worksheets.md
       - 10. Lookup tables: tutorial/10-lookup-tables.md
       - 11. Methods and overlays: tutorial/11-methods-and-overlays.md
+      - 12. Series: tutorial/12-series.md
+      - 13. Statistics: tutorial/13-statistics.md
   - Guides:
       - Numbers: numbers.md
       - Numeric headroom: numeric-headroom.md
