@@ -17,15 +17,16 @@
 
 Declarative, traceable, self-documenting formulas for C++23. Header-only, no dependencies.
 
-Software that implements a test method usually keeps the formula in one place, its units in
-another, where it comes from in a comment, and its audit trail in code written afterwards. Those
-drift apart. In formula-cpp they are one declaration: write the formula once, with ordinary
-operators, and get the number, its units, its derivation and its documentation from it.
+Software that implements a test method (a standard's procedure for testing a material) usually
+keeps the formula in one place, its units in another, where it comes from in a comment, and its
+audit trail in code written afterwards. Those drift apart. In formula-cpp they are one
+declaration: write the formula once, with ordinary operators, and get the number, its units, its
+derivation and its documentation from it.
 
 ## Example
 
-The compressive strength of a concrete specimen: the load that crushed it over the area that
-carried it.
+The compressive strength of a concrete specimen: the load that crushed it, 675 kN, over the area
+that carried it, 22500 mm².
 
 ```cpp
 #include <formula-cpp/format.hpp>
@@ -70,7 +71,7 @@ f_c = 30 MPa
 
 - **Dimensional analysis at compile time**, with exact unit conversion. ([Dimensions and units](https://lastrada-software.github.io/formula-cpp/dimensions/))
 - **Exact arithmetic**, rounded only where you say, in the mode you name. ([Exact numbers](https://lastrada-software.github.io/formula-cpp/numbers/))
-- **Missing and entered values** that never pass for computed ones. ([Quantities and measurements](https://lastrada-software.github.io/formula-cpp/quantities/))
+- **Missing and entered values** that never pass for computed ones. ([Quantities and measurements](https://lastrada-software.github.io/formula-cpp/quantities/), [Missing and entered values](https://lastrada-software.github.io/formula-cpp/tutorial/04-missing-and-entered/))
 - **The method's own rounding, constraints and tables**, as part of the formula. ([Rounding and conditionals](https://lastrada-software.github.io/formula-cpp/rounding-and-conditionals/), [Constraints](https://lastrada-software.github.io/formula-cpp/constraints/), [Lookup tables](https://lastrada-software.github.io/formula-cpp/lookup-tables/))
 - **Traces** that show how every number was reached. ([Tracing](https://lastrada-software.github.io/formula-cpp/tracing/))
 - **Rendering and generated documentation**: text, LaTeX, symbol tables and citations from the same declaration. ([Citations and rendering](https://lastrada-software.github.io/formula-cpp/citations/))
@@ -111,8 +112,8 @@ them by name when you print, render, document or trace.
 - CMake 3.23 or newer
 - GCC 14 or newer, if you build with GCC
 
-CI builds and tests every push with MSVC `cl`, `clang-cl`, Clang and GCC 14 on Linux, and
-AppleClang on macOS.
+CI builds and tests every push to master and every pull request with MSVC `cl` and `clang-cl`
+on Windows, Clang and GCC 14 on Linux, and AppleClang on macOS.
 
 ## Build options
 

@@ -81,8 +81,9 @@ because the alternative was measured and failed.
    regenerated: build the target `formula-cpp-census-page` with cl (the page's
    examples table is cl's) and commit the result. The target exists when
    `FORMULA_BUILD_TESTS`, `FORMULA_BUILD_EXAMPLES` and `FORMULA_TOOLS` are all
-   on, as they are by default in a top-level build. `mkdocs build --strict` fails on a missing file or region; the
-   `Pages` workflow runs it on every pull request.
+   on, as they are by default in a top-level build. `mkdocs build --strict`
+   fails on a missing file or region; the `Pages` workflow runs it on every
+   pull request.
 
 3. **The README** shows `examples/readme.cpp` and its output verbatim;
    `docs.readme-snippets` and `docs.readme-output` check them. The CPM tag in
