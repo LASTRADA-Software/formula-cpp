@@ -6,7 +6,8 @@ typed in by hand. It shows what a missing measurement makes of a result, and
 how a result records where its number came from.
 
 The program is chapter 3's, with whole-number measurements, without the
-printed area and the rounding for reading, and with two more environments.
+printed area, the rounding for reading and the `0.1 + 0.2` line, and with
+two more environments.
 
 ## Every measurement taken
 
@@ -50,7 +51,7 @@ measurements:
 --8<-- "examples/tutorial/04_missing_and_entered.cpp:entered"
 ```
 
-The sides and the load still give 30 MPa, but the strength entered by hand,
+The sides and the load would give 30 MPa, but the strength entered by hand,
 31 MPa, overrides the formula, and the result is 31 MPa. Its `source()` is
 `formula::ValueSource::ManuallyEntered`, printed as `manually entered`, and
 `is_overridden()` is true. A report can therefore show which numbers the
