@@ -42,6 +42,7 @@ nav:
   - Home: index.md
   - Tutorial:
       - tutorial/index.md
+      - 1. First formula: tutorial/01-first-formula.md
   - Guides:
       - Numbers: numbers.md
       - Numeric headroom: numeric-headroom.md

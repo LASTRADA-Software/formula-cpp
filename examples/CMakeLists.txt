@@ -75,6 +75,9 @@ add_test(NAME example.readme.output-detects-a-difference
 set_tests_properties(example.readme.output-detects-a-difference PROPERTIES
     PASS_REGULAR_EXPRESSION "differs from")
 
+# The tutorial's programs: docs/tutorial/ includes their code and output.
+formula_add_pinned_example(tutorial_01_first_formula tutorial/01_first_formula.cpp)
+
 formula_add_example(simple simple.cpp "s = 0.03 \\(derived\\)")
 formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes.*all checks passed: yes")
 formula_add_example(dimensions_and_units dimensions_and_units.cpp "all checks passed: yes")

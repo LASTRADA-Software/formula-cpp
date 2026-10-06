@@ -27,4 +27,6 @@ an invented `Example Standard`.
 
 ## Core track
 
+1. [First formula](01-first-formula.md) -- one formula, evaluated and checked.
+
 ## Advanced track
