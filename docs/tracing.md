@@ -308,14 +308,14 @@ attached, and it appears only on the step for the `DocumentedNode` itself, not
 on the division it wraps.
 
 The run reads `3 km`, as it was entered, not the `3000` metres the arithmetic
-actually runs on. Every `Step` stores its value in the
-**coherent unit** of its dimension (the SI unit, times one of each
-[named base dimension](dimensions.md#base-dimensions-the-si-does-not-have) it
-carries) -- the one scale every step's value can be compared on -- but also
-remembers the unit it is shown in, and `render_trace` converts back before
-printing and writes that unit after the number. `Step`'s own comment states
-which unit that is, and why the recorder, not the renderer, has to be the one
-holding it:
+actually runs on. Every `Step` stores its value in the **coherent unit** of
+its dimension (the SI unit, times one of each [named base
+dimension](dimensions.md#base-dimensions-the-si-does-not-have) it carries) --
+the one scale every step's value can be compared on -- but also remembers the
+unit it is shown in, and `render_trace` converts back before printing and
+writes that unit after the number. `Step`'s own comment states which unit
+that is, and why the recorder, not the renderer, has to be the one holding
+it:
 
 ```cpp
 /// The unit this step's value is shown in:
@@ -352,8 +352,8 @@ holding it:
 /// `value` is always in the coherent unit, so that steps are
 /// comparable; this is what a renderer converts back to before showing a
 /// number to a person. Without it a derivation restates every input in a
-/// unit nobody typed: someone who entered 180 l reads `9/50 m^3`, which is
-/// the same volume and a worse record. The renderer cannot recover this
+/// unit nobody typed: someone who entered 3 km reads `3000 m`, which is
+/// the same length and a worse record. The renderer cannot recover this
 /// on its own -- by the time a `Step` exists the quantity type is erased,
 /// so the recorder captures it here.
 ```

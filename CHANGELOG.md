@@ -6,13 +6,18 @@ change is recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `examples/cycling_speed.cpp`, a cyclist's steady-state speed from power. It calculates the
+  speed's steps exactly on a worksheet, cites the model it follows, evaluates the speed's cube
+  roots in `double`, and reports a `DomainError` on a steep descent, where the formula has no real
+  answer.
+
 ### Changed
 
-- The README, the guides and the examples now lead with a cyclist's steady-state speed from power,
-  and use a road gradient, `s = h / L`, wherever they need a simple exact division. A new example,
-  `examples/cycling_speed.cpp`, calculates the speed's steps exactly on a worksheet, cites the
-  model it follows, evaluates the speed's cube roots in `double`, and reports a `DomainError` on a
-  steep descent, where the formula has no real answer.
+- The README and the documentation home page now lead with the cyclist's speed from power. The
+  guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
+  division.
 
 ## [0.4.0] - 2026-10-05
 

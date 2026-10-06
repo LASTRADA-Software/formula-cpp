@@ -1002,8 +1002,8 @@ struct Step
     /// `value` is always in the coherent unit, so that steps are
     /// comparable; this is what a renderer converts back to before showing a
     /// number to a person. Without it a derivation restates every input in a
-    /// unit nobody typed: someone who entered 180 l reads `9/50 m^3`, which is
-    /// the same volume and a worse record. The renderer cannot recover this
+    /// unit nobody typed: someone who entered 3 km reads `3000 m`, which is
+    /// the same length and a worse record. The renderer cannot recover this
     /// on its own -- by the time a `Step` exists the quantity type is erased,
     /// so the recorder captures it here.
     ///

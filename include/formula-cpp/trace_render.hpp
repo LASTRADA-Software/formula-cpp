@@ -27,8 +27,8 @@
 ///    comparable, and remembers the unit it is shown in (`Step::unit`): the
 ///    one it was *declared* in, one borrowed from its operands where that is
 ///    safe, or the coherent unit. This converts back before showing a number
-///    and writes that unit after it, so a volume entered as 180 l reads
-///    `180 l` and not `9/50 m^3`, and a computed density whose unit has no
+///    and writes that unit after it, so a length entered as 3 km reads
+///    `3 km` and not `3000 m`, and a computed density whose unit has no
 ///    symbol reads in the coherent unit, spelt from its base units:
 ///    `2400 kg/m^3`. Only a dimensionless value is a bare number.
 ///  - It never shows an approximation as exact. Numbers are fractions unless
@@ -1598,7 +1598,7 @@ namespace detail
     /// The value is stored in the coherent unit of the step's dimension;
     /// this converts it back into the unit the step is shown in and appends
     /// that unit's text (`value_in_declared_unit`), so an input entered as
-    /// 180 l reads `180 l`. A step that failed shows why, and one with no
+    /// 3 km reads `3 km`. A step that failed shows why, and one with no
     /// value at all says so -- absence is not an error and must not be
     /// rendered as one.
     [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded, NumberStyle numberStyle)

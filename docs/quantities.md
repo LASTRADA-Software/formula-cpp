@@ -58,7 +58,7 @@ note: No user-defined-conversion operator available that can perform this conver
 Declared by alias instead -- `using Rise =
 formula::Quantity<struct RiseTag, "x", "a distance", formula::unit::Millimetre>;`,
 and `Run` likewise with `RunTag` -- the call is refused the same way. cl's
-words are the ones above; g++ 14.2 and clang 22.1 name the `Quantity`
+words are the ones above; g++ 14.2 and clang-cl 22.1 name the `Quantity`
 specialisation each alias stands for, by its tag:
 
 ```
@@ -102,9 +102,9 @@ struct Rise:
 Both are supported everywhere a quantity is named -- `var<Q>`,
 `Measured<Q>`, an environment, a vocabulary, an overlay, a series, a record,
 a retry -- and the two can be used together in one formula.
-`test/quantity_alias_tests.cpp`
-runs every one of those surfaces with alias quantities; most other tests
-declare theirs by struct, so both spellings stay covered.
+`test/quantity_alias_tests.cpp` runs every one of those surfaces with alias
+quantities; most other tests declare theirs by struct, so both spellings
+stay covered.
 
 **The tag is what makes a quantity distinct.** Two quantities whose symbol,
 description and unit coincide are two types as long as their tags differ. In
