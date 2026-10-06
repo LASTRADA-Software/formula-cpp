@@ -19,7 +19,8 @@ using Mass = formula::Quantity<struct MassTag, "m", "mass of a determination", f
 // Ten quantities none of the formulas names: six ratios, two masses of a
 // screen and two masses of a determination.
 using Efficiency = formula::Quantity<struct EfficiencyTag, "eta", "drivetrain efficiency", formula::unit::One>;
-using RollingCoefficient = formula::Quantity<struct RollingCoefficientTag, "C_rr", "rolling resistance coefficient", formula::unit::One>;
+using RollingCoefficient =
+    formula::Quantity<struct RollingCoefficientTag, "C_rr", "rolling resistance coefficient", formula::unit::One>;
 using Drafting = formula::Quantity<struct DraftingTag, "k_d", "drafting factor", formula::unit::One>;
 using MoistureContent = formula::Quantity<struct MoistureTag, "u", "moisture content", formula::unit::One>;
 using Shrinkage = formula::Quantity<struct ShrinkageTag, "e_s", "shrinkage strain", formula::unit::One>;
