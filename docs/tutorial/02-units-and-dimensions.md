@@ -34,10 +34,11 @@ The area becomes a formula, and the strength formula uses it:
 ```
 
 A formula can use another formula. `loadedArea` is bound to its result,
-`Area`, by `yields`, so it is evaluated as an `Area`. The strength formula
-divides the load by `loadedArea`, which stands there for the formula it holds,
-`var<SideA> * var<SideB>`; the strength formula names its own result,
-`Strength`
+`Area`, by `yields`, so evaluated on its own it gives an `Area`. The strength
+formula divides the load by `loadedArea`, and there `loadedArea` stands for
+the formula it holds, `var<SideA> * var<SideB>`: the strength is the load over
+the product of the two sides. The strength formula names its own result,
+`Strength`, with its own `yields`
 ([Naming the result once](../expressions.md#naming-the-result-once)).
 
 An expression has a dimension, not a unit. `var<SideA> * var<SideB>`
@@ -67,8 +68,8 @@ A second quantity states the same strength in newtons per square millimetre:
 --8<-- "examples/tutorial/02_units_and_dimensions.cpp:other-unit"
 ```
 
-The program evaluates the expression the strength formula holds,
-`strength.expression`, for this quantity:
+`strength` is evaluated only for the quantity it names, so the program
+evaluates the formula it holds, `strength.expression`, for this quantity:
 
 ```cpp
 --8<-- "examples/tutorial/02_units_and_dimensions.cpp:evaluate-other-unit"

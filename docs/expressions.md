@@ -694,16 +694,17 @@ formula names its result quantity with yields; evaluate it for that
 quantity, or name none*. Two dimensionless quantities are exactly the case
 this is for, since their dimensions agree and nothing else would notice.
 
-**`documented()` goes inside.** A bound formula wraps a documented formula,
-whose citation stays with the formula:
+**`documented()` goes inside the binding.** A bound formula wraps a
+documented formula, whose citation stays with the formula:
 
 ```cpp
 constexpr auto citedGradient = formula::yields<Gradient>(formula::documented(
     var<Rise> / var<Run>, { .title = "Road gradient", .reference = "Example Standard 1:2020" }));
 ```
 
-`documented(yields<Gradient>(...), ...)` documents the formula the bound one
-holds and is not bound itself, so its result is named by a `yields` around it.
+The other order, `documented(yields<Gradient>(...), ...)`, documents the
+formula the bound one holds and drops the binding: the result is a documented
+formula, which names its result quantity as any formula does.
 A bound formula is not bound again: `yields<Gradient>(boundGradient)` is
 refused where it is written, even for the same quantity -- *this formula is
 bound to its result quantity already; bind the formula it holds (.expression),

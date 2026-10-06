@@ -46,8 +46,8 @@ table's data, so they are an ordinary runtime member, handed to the factory:
 
 `formula::yields<SizeCorrection>` binds the lookup to the quantity it produces,
 so each later render, evaluation and trace of it names no result type (see
-[Expressions](expressions.md)); a formula that uses it as an operand uses it
-as it is, and it stands there for the lookup it holds.
+[Expressions](expressions.md)). Another formula uses it directly -- as an
+operand, or as another lookup's key -- where it stands for the lookup it holds.
 
 Everything in the **template argument list** — the unit the keys are stated in,
 the bands themselves, the unit the values are stated in — is the method: fixed,

@@ -36,7 +36,7 @@ inline constexpr auto passing = formula::yields<Passing>(
 
 `yields<Passing>` names the quantity the formula computes, once, where it is
 written. Everything that evaluates or traces the formula then takes it as it
-is, with no result to repeat, and a formula built on it uses it as it is,
+is, with no result to repeat, and a formula built on it uses it directly,
 where it stands for the formula it holds.
 
 A series is its own family of expressions. It is deliberately **not** a

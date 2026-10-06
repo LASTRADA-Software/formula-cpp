@@ -81,9 +81,9 @@ namespace detail
     inline constexpr bool is_yields<Yields<Q, E>> = true;
 
     /// Fails to compile when a `Yields` is given a formula bound already. A
-    /// `Yields` is the top of a formula; around another, every verb would
-    /// forward to the inner one's answer, for the inner one's quantity, where
-    /// the outer one's was promised.
+    /// verb takes a `Yields` as the top of a formula; around another, every
+    /// verb would forward to the inner one's answer, for the inner one's
+    /// quantity, where the outer one's was promised.
     template <typename E>
     struct RequireFormulaNotBound
     {
