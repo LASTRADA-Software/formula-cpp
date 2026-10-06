@@ -3,7 +3,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <expected>
 #include <limits>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -117,8 +120,8 @@ TEST_CASE("reading a symbol never runs off the end of its storage", "[unit]")
     // directly, and exactly SymbolCapacity bytes of text leaves no room for a
     // terminator. An unbounded scan then reads whatever follows in memory. The
     // neighbouring array is here so that a regression has something to run into:
-    // before `view()` was bounded, this returned 23 characters from a 16-byte
-    // array.
+    // before `view()` was bounded, this returned 23 characters from what was
+    // then a 16-byte array.
     struct Adjacent
     {
         formula::Symbol symbolText;
@@ -142,6 +145,63 @@ TEST_CASE("reading a symbol never runs off the end of its storage", "[unit]")
     Symbol const empty = formula::symbol("");
     CHECK(formula::view(mm).size() == 2);
     CHECK(formula::view(empty).empty());
+}
+
+TEST_CASE("checked_symbol: run-time text that fits is kept byte for byte", "[unit][symbol]")
+{
+    // µmol/(L·min·kg): 18 bytes of UTF-8.
+    constexpr std::string_view compound = "\xc2\xb5mol/(L\xc2\xb7min\xc2\xb7kg)";
+    STATIC_REQUIRE(compound.size() == 18);
+    constexpr std::expected<formula::Symbol, formula::SymbolError> built = formula::checked_symbol(compound);
+    STATIC_REQUIRE(built.has_value());
+    STATIC_REQUIRE(formula::view(*built) == compound);
+
+    // 31 bytes, the most that fits, ending in a two-byte character: kept whole.
+    constexpr std::string_view widest = "abcdefghijklmnopqrstuvwxyz012\xc2\xb5";
+    STATIC_REQUIRE(widest.size() == formula::SymbolCapacity - 1);
+    constexpr std::expected<formula::Symbol, formula::SymbolError> widestBuilt = formula::checked_symbol(widest);
+    STATIC_REQUIRE(widestBuilt.has_value());
+    STATIC_REQUIRE(formula::view(*widestBuilt) == widest);
+
+    constexpr std::expected<formula::Symbol, formula::SymbolError> empty = formula::checked_symbol("");
+    STATIC_REQUIRE(empty.has_value());
+    STATIC_REQUIRE(formula::view(*empty).empty());
+
+    // The same at run time, from text the compiler cannot see.
+    std::string const fromCatalogue { compound };
+    std::expected<formula::Symbol, formula::SymbolError> const atRunTime = formula::checked_symbol(fromCatalogue);
+    REQUIRE(atRunTime.has_value());
+    REQUIRE(formula::view(*atRunTime) == compound);
+}
+
+TEST_CASE("checked_symbol: text that does not fit, or holds a NUL, is refused", "[unit][symbol]")
+{
+    constexpr std::string_view tooLong = "abcdefghijklmnopqrstuvwxyz0123\xc2\xb5"; // 32 bytes
+    STATIC_REQUIRE(tooLong.size() == formula::SymbolCapacity);
+    STATIC_REQUIRE(formula::checked_symbol(tooLong).error() == formula::SymbolError::TooLong);
+
+    constexpr std::string_view withNull { "mg\0L", 4 };
+    STATIC_REQUIRE(formula::checked_symbol(withNull).error() == formula::SymbolError::EmbeddedNull);
+}
+
+TEST_CASE("describe(SymbolError) names each refusal", "[unit][symbol]")
+{
+    STATIC_REQUIRE(formula::describe(formula::SymbolError::TooLong)
+                   == "the symbol does not fit SymbolCapacity bytes, terminator included");
+    STATIC_REQUIRE(formula::describe(formula::SymbolError::EmbeddedNull) == "the symbol contains a NUL byte");
+    STATIC_REQUIRE(formula::describe(formula::SymbolError::NotAscii)
+                   == "the symbol holds a byte outside printable ASCII");
+}
+
+TEST_CASE("symbol(): a compound UTF-8 laboratory unit fits", "[unit][symbol]")
+{
+    constexpr formula::Symbol compound = formula::symbol("\xc2\xb5mol/(L\xc2\xb7min\xc2\xb7kg)");
+    STATIC_REQUIRE(formula::view(compound).size() == 18);
+
+    // 31 bytes, the most that fits, ending in a two-byte character: kept whole.
+    constexpr formula::Symbol widestLiteral = formula::symbol("abcdefghijklmnopqrstuvwxyz012\xc2\xb5");
+    STATIC_REQUIRE(formula::view(widestLiteral).size() == formula::SymbolCapacity - 1);
+    STATIC_REQUIRE(formula::view(widestLiteral).ends_with("\xc2\xb5"));
 }
 
 TEST_CASE("units report a readable symbol", "[unit]")
@@ -798,8 +858,11 @@ inline constexpr Unit BoundedPercent { .dimension = dim::Scalar,
                                        .bounds = formula::bounds(0, 1, 100, 1) };
 } // namespace
 
-static_assert(!unit::Litre.bounds.present);
-static_assert(BoundedPercent.bounds.present);
+static_assert(!unit::Litre.bounds.lowPresent && !unit::Litre.bounds.highPresent);
+static_assert(BoundedPercent.bounds.lowPresent && BoundedPercent.bounds.highPresent);
+// A positional list of the low flag alone still compiles, and declares a minimum of 0 and no maximum. A longer
+// positional list whose second value is a number does not (negative/bounds_positional_initialiser.cpp).
+static_assert(formula::Bounds { true } == formula::at_least(0, 1));
 
 static_assert(*formula::checked_within_bounds(*Rational::make(50, 1), BoundedPercent)
               == BoundsCheck::WithinBounds);
@@ -973,18 +1036,87 @@ TEST_CASE("a malformed unit refuses to answer rather than answer wrong", "[unit]
     Unit const invertedByAggregate { .dimension = dim::Scalar,
                                      .symbolText = formula::symbol("agg"),
                                      .decimals = 0,
-                                     .bounds = { true, 100, 1, 0, 1 } };
+                                     .bounds = { .lowPresent = true,
+                                                 .highPresent = true,
+                                                 .lowNumerator = 100,
+                                                 .lowDenominator = 1,
+                                                 .highNumerator = 0,
+                                                 .highDenominator = 1 } };
     auto const aggregateResult = formula::checked_within_bounds(*Rational::make(50, 1), invertedByAggregate);
     REQUIRE_FALSE(aggregateResult.has_value());
     CHECK(aggregateResult.error() == ArithmeticError::DomainError);
 
-    // And an inverted range that was never declared present is still simply
+    // And an inverted range with neither end declared present is still simply
     // unchecked: a unit nobody gave bounds to must not start reporting errors.
     Unit const invertedButAbsent { .dimension = dim::Scalar,
                                    .symbolText = formula::symbol("abs"),
                                    .decimals = 0,
-                                   .bounds = { false, 100, 1, 0, 1 } };
+                                   .bounds = { .lowPresent = false,
+                                               .highPresent = false,
+                                               .lowNumerator = 100,
+                                               .lowDenominator = 1,
+                                               .highNumerator = 0,
+                                               .highDenominator = 1 } };
     CHECK(unwrapped(formula::checked_within_bounds(*Rational::make(50, 1), invertedButAbsent)) == BoundsCheck::NotChecked);
+}
+
+TEST_CASE("checked_within: either end, both, or neither", "[unit][bounds]")
+{
+    using formula::BoundsCheck;
+    using formula::Rational;
+    constexpr std::optional<Rational> none {};
+    STATIC_REQUIRE(*formula::checked_within(Rational { 5 }, Rational { 0 }, none) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { -1 }, Rational { 0 }, none) == BoundsCheck::BelowMinimum);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 0 }, Rational { 0 }, none) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 21 }, none, Rational { 20 }) == BoundsCheck::AboveMaximum);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 20 }, none, Rational { 20 }) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 7 }, Rational { 0 }, Rational { 20 }) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within(Rational { 7 }, none, none) == BoundsCheck::NotChecked);
+    STATIC_REQUIRE(formula::checked_within(Rational { 7 }, Rational { 20 }, Rational { 0 }).error()
+                   == formula::ArithmeticError::DomainError);
+    REQUIRE(formula::within(Rational { 7 }, none, Rational { 5 }) == BoundsCheck::AboveMaximum);
+    REQUIRE_THROWS_AS(formula::within(Rational { 7 }, Rational { 9 }, Rational { 5 }), formula::ArithmeticException);
+}
+
+TEST_CASE("checked_within_bounds: a unit declared with at_least or at_most", "[unit][bounds]")
+{
+    using formula::BoundsCheck;
+    using formula::Rational;
+    constexpr formula::Unit NonNegative { .dimension = formula::dim::Scalar,
+                                          .symbolText = formula::symbol("x"),
+                                          .bounds = formula::at_least(0, 1) };
+    constexpr formula::Unit AtMostTwenty { .dimension = formula::dim::Scalar,
+                                           .symbolText = formula::symbol("y"),
+                                           .bounds = formula::at_most(20, 1) };
+    STATIC_REQUIRE(NonNegative.bounds.lowPresent && !NonNegative.bounds.highPresent);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { 1'000'000 }, NonNegative) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -1, 2 }, NonNegative) == BoundsCheck::BelowMinimum);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -1'000'000 }, AtMostTwenty) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { 41, 2 }, AtMostTwenty) == BoundsCheck::AboveMaximum);
+
+    // A declared end is built with Rational::make, so a zero denominator on a
+    // one-sided unit is refused as it is on a two-sided one.
+    constexpr formula::Unit ZeroDenominatorMinimum { .dimension = formula::dim::Scalar,
+                                                     .symbolText = formula::symbol("zmin"),
+                                                     .bounds = formula::at_least(1, 0) };
+    constexpr formula::Unit ZeroDenominatorMaximum { .dimension = formula::dim::Scalar,
+                                                     .symbolText = formula::symbol("zmax"),
+                                                     .bounds = formula::at_most(1, 0) };
+    STATIC_REQUIRE(formula::checked_within_bounds(Rational { 5 }, ZeroDenominatorMinimum).error()
+                   == formula::ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(formula::checked_within_bounds(Rational { 5 }, ZeroDenominatorMaximum).error()
+                   == formula::ArithmeticError::DivisionByZero);
+
+    // An undeclared end's fields are ignored: its zero denominator is never
+    // built, so the declared minimum alone answers.
+    constexpr formula::Unit UndeclaredMaximum { .dimension = formula::dim::Scalar,
+                                                .symbolText = formula::symbol("umax"),
+                                                .bounds = { .lowPresent = true,
+                                                            .lowNumerator = 0,
+                                                            .lowDenominator = 1,
+                                                            .highDenominator = 0 } };
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { 5 }, UndeclaredMaximum) == BoundsCheck::WithinBounds);
+    STATIC_REQUIRE(*formula::checked_within_bounds(Rational { -5 }, UndeclaredMaximum) == BoundsCheck::BelowMinimum);
 }
 
 // ---- cross-translation-unit identity ----
@@ -1112,4 +1244,60 @@ TEST_CASE("a dimensionless unit with a scale and no symbol is the one a declarat
     STATIC_REQUIRE(!formula::detail::unnamed_scaled_scalar(unit::MilligramPerKilogram));
     STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::Percent>::value);
     STATIC_REQUIRE(formula::detail::RequireNamedScaledScalar<unit::One>::value);
+}
+
+// ---- the ASCII key ----
+
+TEST_CASE("view_ascii: a unit's key, or its symbol when that is ASCII", "[unit][ascii]")
+{
+    STATIC_REQUIRE(formula::view_ascii(unit::Millimetre) == "mm");
+    STATIC_REQUIRE(formula::view_ascii(unit::PerMille) == "permille");
+    STATIC_REQUIRE(formula::view_ascii(unit::Micrometre) == "um");
+    STATIC_REQUIRE(formula::view_ascii(unit::Celsius) == "degC");
+    STATIC_REQUIRE(formula::view_ascii(unit::Fahrenheit) == "degF");
+    // Bound to a name first: `view_ascii` of a temporary is deleted, as `view` of one is.
+    constexpr Unit coherentMass = formula::coherent(dim::Mass);
+    STATIC_REQUIRE(formula::view_ascii(coherentMass).empty());
+    // The display symbol is unchanged.
+    STATIC_REQUIRE(formula::view(unit::Micrometre.symbolText) == "\xc2\xb5m");
+}
+
+TEST_CASE("has_ascii_key: false for a non-ASCII symbol without a key, and for a non-ASCII key", "[unit][ascii]")
+{
+    constexpr Unit MicrogramPerLitreUnkeyed { .dimension = dim::Mass / dim::Volume,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 1'000'000,
+                                              .symbolText = formula::symbol("\xc2\xb5g/L") };
+    STATIC_REQUIRE(!formula::has_ascii_key(MicrogramPerLitreUnkeyed));
+
+    constexpr Unit MicrogramPerLitre { .dimension = dim::Mass / dim::Volume,
+                                       .magnitudeNumerator = 1,
+                                       .magnitudeDenominator = 1'000'000,
+                                       .symbolText = formula::symbol("\xc2\xb5g/L"),
+                                       .asciiText = formula::symbol("ug/L") };
+    STATIC_REQUIRE(formula::has_ascii_key(MicrogramPerLitre));
+    STATIC_REQUIRE(formula::view_ascii(MicrogramPerLitre) == "ug/L");
+
+    // An ASCII symbol with a key that is not ASCII is refused like a missing key: the key is what a serialiser trusts.
+    constexpr Unit BadKey { .dimension = dim::Length,
+                            .magnitudeNumerator = 1,
+                            .magnitudeDenominator = 1'000'000,
+                            .symbolText = formula::symbol("um"),
+                            .asciiText = formula::symbol("\xc2\xb5m") };
+    STATIC_REQUIRE(!formula::has_ascii_key(BadKey));
+    STATIC_REQUIRE(formula::has_ascii_key(unit::Millimetre));
+}
+
+TEST_CASE("checked_ascii_symbol: printable ASCII only", "[unit][ascii]")
+{
+    // Bound to a name first: `view` of the temporary would be the deleted `view(Symbol&&)`.
+    constexpr std::expected<formula::Symbol, formula::SymbolError> asciiKey = formula::checked_ascii_symbol("ug/L");
+    STATIC_REQUIRE(asciiKey.has_value());
+    STATIC_REQUIRE(formula::view(*asciiKey) == "ug/L");
+    STATIC_REQUIRE(formula::checked_ascii_symbol("\xc2\xb5g/L").error() == formula::SymbolError::NotAscii);
+    STATIC_REQUIRE(formula::checked_ascii_symbol("tab\there").error() == formula::SymbolError::NotAscii);
+    STATIC_REQUIRE(formula::checked_ascii_symbol("abcdefghijklmnopqrstuvwxyz012345").error()
+                   == formula::SymbolError::TooLong);
+    STATIC_REQUIRE(formula::checked_ascii_symbol(std::string_view { "u\0g", 3 }).error()
+                   == formula::SymbolError::EmbeddedNull);
 }

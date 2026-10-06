@@ -380,6 +380,7 @@ struct SampleSizeLookupNode: NodeBase
     static_assert(detail::RequireSampleCountScalar<Count>::value);
     static_assert(detail::RequireSampleCountInOne<Count, Count::dimension == dim::Scalar>::value);
     static_assert(detail::RequireNamedScaledScalar<ResultUnit>::value);
+    static_assert(detail::RequireAsciiKey<ResultUnit>::value);
 
     /// One value per declared size, in `unit`, in the table's order -- the
     /// table's contents, and `Corrections<K>` for that type's reason: a short

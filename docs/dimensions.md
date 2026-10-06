@@ -3,10 +3,10 @@
 `formula-cpp` provides a compile-time dimension vector, `formula::Dimension`,
 and a unit descriptor built on top of it, `formula::Unit`. This page explains
 why a dimension is a type rather than a runtime tag, how to compose one, why
-its exponents are rational rather than integer, what a `Unit` carries, how
-conversion between units stays exact, where the declared-precision and
-bounds machinery sits, and how an application declares a base dimension the
-SI does not have, such as money.
+its exponents are rational rather than integer, what a `Unit` carries, how a
+unit is keyed for serialising and compared, how conversion between units stays
+exact, where the declared-precision and bounds machinery sits, and how an
+application declares a base dimension the SI does not have, such as money.
 
 The worked example is `examples/dimensions_and_units.cpp`. **Program output**
 on this page is copied verbatim from that program's output, and
@@ -17,11 +17,11 @@ source, and `docs.dimensions-snippets` fails unless each code block appears
 there as a run of consecutive lines, compared without their indentation
 (`cmake/CheckGuideSnippets.cmake`). A code block deliberately not from the
 example carries a `<!-- snippet: not from the example -->` comment directly
-above it; one on this page does, the block showing that
-`formula::exponent(1, 0)` does not compile. A couple of numeric facts that
-the example does not itself print are given as plain rationals instead, each
-naming the `static_assert` in the test suite that pins it -- never formatted
-as if a program had printed them.
+above it; two on this page do, the block declaring a unit with an ASCII key
+and the block showing that `formula::exponent(1, 0)` does not compile. A couple
+of numeric facts that the example does not itself print are given as plain
+rationals instead, each naming the `static_assert` in the test suite that pins
+it -- never formatted as if a program had printed them.
 
 ## Why dimensions are types
 
@@ -131,8 +131,9 @@ A `formula::Unit` is a small aggregate, and every field earns its place:
 | `magnitudeNumerator` / `magnitudeDenominator` | the exact multiplicative factor to the coherent unit -- the coherent SI unit, times one of each named base dimension -- as an integer ratio |
 | `offsetNumerator` / `offsetDenominator` | the exact additive offset, for an affine scale such as degrees Celsius or degrees Fahrenheit |
 | `symbolText` | a fixed-capacity display symbol (a `Symbol`, not a `std::string_view`); required for a dimensionless unit with a scale |
+| `asciiText` | a stable ASCII key for serialising the unit, read with `view_ascii`; empty when the symbol is its own key, required when the symbol is not ASCII |
 | `decimals` | the declared display precision |
-| `bounds` | an optional valid range, in the unit's own scale |
+| `bounds` | an optional valid range -- a minimum, a maximum, or both -- in the unit's own scale |
 
 Like `Dimension`, `Unit` is structural on purpose: a quantity (see
 [Quantities and measurements](quantities.md)) names its unit as a template
@@ -188,9 +189,74 @@ number, and every conversion here is by exact rational magnitude; a `Degree`
 would have to be either inexact or unconvertible, and neither is a choice to
 make silently.
 
-Their `decimals` values are ordinary engineering
-defaults, not a requirement taken from any standard -- a caller that needs a
-different precision states it at the point of use.
+Their `decimals` values are ordinary engineering defaults, not a requirement
+taken from any standard -- a caller that needs a different precision states it
+at the point of use, or declares it on the quantity (see
+[Quantities and measurements](quantities.md#a-quantitys-own-decimal-places)).
+
+### A stable ASCII key
+
+A unit's symbol is for display, and may be restyled: `µ` or `u`, a middle dot,
+a superscript. Code that serialises a unit -- a JSON annotation, a database
+column naming a unit, a client's choice of unit -- needs a name that stays the
+same, and reads it with `formula::view_ascii(unit)`: the unit's `asciiText`
+when it declares one, otherwise its `symbolText`. ASCII here means printable
+ASCII, the bytes 0x20 to 0x7E; the empty text counts.
+
+A unit whose symbol is not ASCII must declare its key:
+
+<!-- snippet: not from the example -->
+```cpp
+inline constexpr formula::Unit MicrogramPerLitre { .dimension = formula::dim::Mass / formula::dim::Volume,
+                                                   .magnitudeNumerator = 1,
+                                                   .magnitudeDenominator = 1'000'000,
+                                                   .symbolText = formula::symbol("µg/L"),
+                                                   .asciiText = formula::symbol("ug/L") };
+```
+
+Without the key, the unit is refused wherever it is written -- as a quantity's,
+constant's, rounding's, table's or other formula node's unit, the same places
+a dimensionless unit with a scale and no symbol is refused -- with
+`formula: a unit whose symbol is not ASCII must declare an ASCII key`. A key
+that is itself not ASCII is refused the same way: the key is what a serialiser
+trusts. The four built-in units whose symbols are not ASCII declare theirs:
+
+| Unit | Symbol | `asciiText` |
+|---|---|---|
+| `PerMille` | `‰` | `permille` |
+| `Micrometre` | `µm` | `um` |
+| `Celsius` | `°C` | `degC` |
+| `Fahrenheit` | `°F` | `degF` |
+
+A unit built at run time is not checked where it is written, so ask
+`formula::has_ascii_key(unit)` before trusting `view_ascii`; build its key from
+run-time text with `formula::checked_ascii_symbol()`, which refuses what
+`checked_symbol()` refuses and returns `SymbolError::NotAscii` for any byte
+outside printable ASCII. A trace's derived quotient unit carries a key when
+either of its units declares one: micrometres per second are shown as `µm/s`
+and keyed `um/s`.
+
+The key is never displayed: `render()`, traces, `number_text` and
+`std::format` write `symbolText`. It can still decide which unit a trace shows:
+when either unit declares a key, the quotient's key must fit a `Symbol` and
+hold no `/`. When it does not, the trace borrows no quotient of those two units,
+even where their symbols would fit, and falls back to the coherent unit.
+
+### Comparing units
+
+`==` compares every member of two units, `asciiText`, `decimals` and `bounds`
+among them: a unit declared to one decimal place is not `==` to the same unit
+declared to none. `formula::same_unit(leftUnit, rightUnit)` asks whether two
+units are the same unit: the same dimension, the same factor and offset as
+declared, the same `symbolText` and the same key (`view_ascii`), whatever their
+decimals and bounds. The factor and offset are compared as the integer pairs
+written, not reduced: a unit declared with a factor of 2/2000 is not the same
+unit as one declared with 1/1000, though it converts identically. A key
+declared equal to the symbol is the same key as none declared.
+Use `same_unit`, or `view_ascii`, to key a table by unit, and to ask whether two
+quantities that declare their own decimal places (see
+[Quantities and measurements](quantities.md#a-quantitys-own-decimal-places))
+share a unit.
 
 ## Exact conversion
 
@@ -340,6 +406,47 @@ holds nothing. A reading nobody took and a range nobody declared are
 different facts, for the same reason `NotChecked` is not `WithinBounds`. `formula::describe(BoundsCheck)` gives each outcome its own
 non-empty, mutually distinct wording, as shown above.
 
+A unit declares each end of its range on its own: `Bounds` holds `lowPresent`
+and `highPresent`, one for each end. `formula::bounds(lowNumerator,
+lowDenominator, highNumerator, highDenominator)` declares both,
+`formula::at_least(numerator, denominator)` a minimum only, and
+`formula::at_most(numerator, denominator)` a maximum only. Both ends are
+inclusive, and a unit that declares neither reports `NotChecked`. Each flag is
+a `BoundsEnd`, which reads as a `bool` but only a `bool` sets, so a `Bounds`
+written positionally before the two flags existed no longer compiles: in
+`{ true, 0, 1, 100, 1 }`, once 0 to 100, the 0 lands on `highPresent`. Only
+`{}` and `{ false }`, which declare no bounds, and `{ true }`, which once meant
+0 to 0 and now declares a minimum of 0, still compile. Write `bounds()`,
+`at_least()`, `at_most()` or designated initialisers.
+
+Limits known only at run time -- a specification row, a catalogue entry -- need
+no unit to carry them. `formula::checked_within(value, lowEnd, highEnd)` takes
+each end as a `std::optional<Rational>`, and either may be absent. Here a
+catalogue row gives the gauge a minimum and no maximum:
+
+```cpp
+std::optional<Rational> const catalogueMinimum = Rational { 25 };
+Rational const gaugeReading = 42;
+auto const catalogueVerdict = formula::checked_within(gaugeReading, catalogueMinimum, std::nullopt);
+if (!catalogueVerdict)
+{
+    std::println("checking the gauge against the catalogue: {}", catalogueVerdict.error());
+    return 1;
+}
+std::println("gauge at 42% against a catalogue minimum of 25%: {}", *catalogueVerdict);
+```
+
+```text
+gauge at 42% against a catalogue minimum of 25%: within the declared bounds
+```
+
+It answers by the rule `checked_within_bounds` applies to a unit's declared
+ends: `NotChecked` when neither end is given, never `WithinBounds`, and
+`DomainError` when the lower end is above the upper one, a malformed pair of
+limits rather than a value to judge. Given a `Measured`, it reports
+`NotMeasured` for a value nobody took. `formula::within` is the same check
+spelled to throw.
+
 ## Base dimensions the SI does not have
 
 The seven SI base quantities describe physics, and formulas are often about
@@ -425,7 +532,7 @@ shows the two additions it refuses. The library itself declares no currency:
 the application's.
 
 **Names.** A base's name must be an ASCII letter followed by ASCII letters or
-digits, at most 15 bytes long -- it is a `Symbol`, as a unit's symbol is --
+digits, at most 31 bytes long -- it is a `Symbol`, as a unit's symbol is --
 and not the symbol of an SI base unit: `m`, `kg`, `s`, `A`, `K`, `mol` or `cd`,
 since a base named `m` would read as metres wherever it is printed. And it is
 printed: it is the symbol of the base's coherent unit, written into a trace
@@ -497,10 +604,19 @@ the same kind, `formula_dimension_has_too_many_named_bases` -- a compile error
 in a constant expression, an abort at run time -- never by dropping a base. A
 named base's exponent is an `Exponent`, with the limits above.
 
-`SymbolCapacity` is 16 bytes **including the terminator** -- 15 usable
-characters, not 16 -- and a base's name is a `Symbol` too, so it is at most 15
-bytes long. The name is checked only where it is made, and `base_dimension` is
-`consteval`, so its four sentinels are always compile errors, never aborts:
+`SymbolCapacity` is 32 bytes **including the terminator** -- 31 usable
+bytes, not 32 -- which holds compound laboratory units such as
+`µmol/(L·min·kg)` (18 bytes of UTF-8). `symbol()` is `consteval`: it accepts
+only a constant expression, so a literal that does not fit is a compile error
+naming `formula_unit_symbol_too_long`, and no run-time text can reach it. A
+symbol from run-time text -- a catalogue row, a configuration file -- is built
+with `checked_symbol()`, which returns the `Symbol` byte for byte, or
+`SymbolError::TooLong` or `SymbolError::EmbeddedNull` instead of aborting or
+truncating; `describe()` spells either for an error message.
+
+A base's name is a `Symbol` too, so it is at most 31 bytes long. The name is
+checked only where it is made, and `base_dimension` is `consteval`, so its four
+sentinels are always compile errors, never aborts:
 `formula_base_dimension_name_must_not_be_empty`,
 `formula_base_dimension_name_too_long`,
 `formula_base_dimension_name_must_be_a_letter_then_letters_or_digits` and
@@ -508,7 +624,7 @@ bytes long. The name is checked only where it is made, and `base_dimension` is
 filled by hand is checked by none of them.
 
 `Unit`'s `magnitudeNumerator`, `magnitudeDenominator`,
-`offsetNumerator`, `offsetDenominator` and the four fields of `Bounds` are all
+`offsetNumerator`, `offsetDenominator` and the four integer fields of `Bounds` are all
 `std::int64_t`. `Rational`'s own numerator and denominator are 128-bit, so every
 value these fields state converts to one exactly.
 

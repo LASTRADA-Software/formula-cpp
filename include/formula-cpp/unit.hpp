@@ -19,16 +19,71 @@
 
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <string_view>
 
 namespace formula
 {
 
-/// Optional validity range, in the unit's own scale, as exact rationals.
+namespace detail
+{
+    /// Whether every byte of @p spelling is printable ASCII, 0x20 to 0x7E. The empty text is.
+    [[nodiscard]] constexpr bool is_printable_ascii(std::string_view spelling) noexcept
+    {
+        for (char const byteAt: spelling)
+            if (static_cast<unsigned char>(byteAt) < 0x20U || static_cast<unsigned char>(byteAt) > 0x7EU)
+                return false;
+        return true;
+    }
+} // namespace detail
+
+/// Builds an ASCII key from run-time text: `checked_symbol`'s refusals, and `SymbolError::NotAscii` for any byte
+/// outside printable ASCII.
+[[nodiscard]] constexpr std::expected<Symbol, SymbolError> checked_ascii_symbol(std::string_view spelling) noexcept
+{
+    // checked_symbol first: a NUL is below 0x20, and must be reported as EmbeddedNull, not NotAscii.
+    std::expected<Symbol, SymbolError> const built = checked_symbol(spelling);
+    if (!built)
+        return std::unexpected { built.error() };
+    if (!detail::is_printable_ascii(spelling))
+        return std::unexpected { SymbolError::NotAscii };
+    return *built;
+}
+
+/// Whether one end of a `Bounds` range is declared: a `bool` that only a `bool` can set.
+///
+/// It reads as a `bool` -- in `if`, `!`, `&&`, `||` and when assigned to one -- but no other type converts to it, so
+/// a `Bounds` written with positional initialisers whose second value is a number, `{ true, 0, 1, 100, 1 }`, does not
+/// compile instead of putting every value one member later. Structural, so a `Unit` holding it stays a template
+/// argument. Test it directly, `if (range.lowPresent)`: `range.lowPresent == true` is ambiguous, and it has no
+/// `std::format`.
+struct BoundsEnd
+{
+    /// Whether this end of the range is declared.
+    bool declared = false;
+
+    /// An end that is declared when @p isDeclared is `true`.
+    constexpr BoundsEnd(bool isDeclared) noexcept: declared { isDeclared } {}
+
+    /// Refuses every type but `bool`: a number, a pointer or an enumerator never stands for a declared end.
+    template <typename NotBool>
+    BoundsEnd(NotBool) = delete;
+
+    /// Whether this end of the range is declared.
+    [[nodiscard]] constexpr operator bool() const noexcept { return declared; }
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(BoundsEnd const&) const noexcept = default;
+};
+
+/// Optional validity range, in the unit's own scale, as exact rationals. Either end may be declared on its own, both
+/// may be, or neither; an undeclared end's fields are ignored.
 struct Bounds
 {
-    /// Whether a range was declared at all -- `false` for a unit with no bounds.
-    bool present = false;
+    /// Whether a minimum was declared. `false` for a unit with no lower limit.
+    BoundsEnd lowPresent = false;
+    /// Whether a maximum was declared. `false` for a unit with no upper limit.
+    BoundsEnd highPresent = false;
     /// Numerator of the declared minimum.
     std::int64_t lowNumerator = 0;
     /// Denominator of the declared minimum.
@@ -48,7 +103,19 @@ struct Bounds
                                       std::int64_t highNumerator,
                                       std::int64_t highDenominator) noexcept
 {
-    return { true, lowNumerator, lowDenominator, highNumerator, highDenominator };
+    return { true, true, lowNumerator, lowDenominator, highNumerator, highDenominator };
+}
+
+/// Builds a `Bounds` with a minimum only, as a numerator/denominator pair: no value is too large.
+[[nodiscard]] constexpr Bounds at_least(std::int64_t lowNumerator, std::int64_t lowDenominator) noexcept
+{
+    return { true, false, lowNumerator, lowDenominator, 0, 1 };
+}
+
+/// Builds a `Bounds` with a maximum only, as a numerator/denominator pair: no value is too small.
+[[nodiscard]] constexpr Bounds at_most(std::int64_t highNumerator, std::int64_t highDenominator) noexcept
+{
+    return { false, true, 0, 1, highNumerator, highDenominator };
 }
 
 /// A unit of measurement.
@@ -78,6 +145,10 @@ struct Unit
     std::int64_t offsetDenominator = 1;
     /// How the unit is written: `mm`, `°C`, and so on.
     Symbol symbolText {};
+    /// A stable ASCII key for serialising the unit -- a JSON annotation, a database column, a client's choice -- that
+    /// stays the same when `symbolText` is restyled. Empty when the symbol is its own key; required when the symbol
+    /// is not printable ASCII (see `RequireAsciiKey`). Never displayed: read it with `view_ascii`.
+    Symbol asciiText {};
     /// The declared display precision -- see `declared_decimals`.
     std::int32_t decimals = 3;
     /// The declared validity range, if any -- see `checked_within_bounds`.
@@ -86,6 +157,57 @@ struct Unit
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(Unit const&) const noexcept = default;
 };
+
+/// The unit's serialising key: `asciiText` when one is declared, otherwise `symbolText`. Stable across restyling of
+/// the display symbol. A unit the library takes as a quantity's, constant's, rounding's, table's or other formula
+/// node's unit is printable ASCII here (`RequireAsciiKey`); for any other unit, such as one built at run time, ask
+/// `has_ascii_key` first.
+[[nodiscard]] constexpr std::string_view view_ascii(Unit const& unitValue) noexcept
+{
+    std::string_view const declaredKey = view(unitValue.asciiText);
+    return declaredKey.empty() ? view(unitValue.symbolText) : declaredKey;
+}
+
+/// Deleted: the view would point into a destroyed temporary, as for `view(Symbol&&)`.
+std::string_view view_ascii(Unit&&) = delete;
+
+/// Whether @p unitValue has a printable-ASCII key: its declared `asciiText`, or, when none is declared, its symbol.
+[[nodiscard]] constexpr bool has_ascii_key(Unit const& unitValue) noexcept
+{
+    return detail::is_printable_ascii(view_ascii(unitValue));
+}
+
+namespace detail
+{
+    /// @p declared with its display precision replaced by @p places: how a quantity that declares its own places
+    /// holds its unit.
+    [[nodiscard]] constexpr Unit with_decimals(Unit declared, DecimalPlaces places) noexcept
+    {
+        declared.decimals = places.value;
+        return declared;
+    }
+
+    /// Whether two units put values on one scale: the same dimension, factor and offset, compared as declared.
+    [[nodiscard]] constexpr bool same_scale(Unit const& leftUnit, Unit const& rightUnit) noexcept
+    {
+        return leftUnit.dimension == rightUnit.dimension
+               && leftUnit.magnitudeNumerator == rightUnit.magnitudeNumerator
+               && leftUnit.magnitudeDenominator == rightUnit.magnitudeDenominator
+               && leftUnit.offsetNumerator == rightUnit.offsetNumerator
+               && leftUnit.offsetDenominator == rightUnit.offsetDenominator;
+    }
+} // namespace detail
+
+/// Whether two units are the same unit: the same scale (dimension, factor, offset, compared as the integer pairs
+/// declared, not reduced -- a factor of 2/2000 is not 1/1000 here), the same display symbol and the same key
+/// (`view_ascii`). Their declared decimals and bounds may differ -- a quantity read to a tenth of a milliampere and
+/// one read to whole milliamperes are both in milliamperes -- which is what `==`, comparing every member, does not
+/// answer. Use this, or `view_ascii`, to key a table by unit.
+[[nodiscard]] constexpr bool same_unit(Unit const& leftUnit, Unit const& rightUnit) noexcept
+{
+    return detail::same_scale(leftUnit, rightUnit) && view(leftUnit.symbolText) == view(rightUnit.symbolText)
+           && view_ascii(leftUnit) == view_ascii(rightUnit);
+}
 
 /// A rounding to decimal places, named once and used wherever a method rounds
 /// the same way: which unit the places are of, how many, and which way to go.
@@ -116,7 +238,8 @@ struct SignificantRounding
 
 /// Named units. The `decimals` values are ordinary engineering defaults, not
 /// requirements from any standard; a caller that needs a different precision
-/// states it at the point of use.
+/// states it at the point of use, or declares it on the quantity (`Quantity`'s
+/// `Places` parameter).
 ///
 /// **Symbols are emitted verbatim in plain text and in Markdown.**
 /// `render.hpp` appends `view(unit.symbolText)` to the number without escaping
@@ -153,6 +276,7 @@ namespace unit
                                      .magnitudeNumerator = 1,
                                      .magnitudeDenominator = 1000,
                                      .symbolText = symbol("\xe2\x80\xb0"),
+                                     .asciiText = symbol("permille"),
                                      .decimals = 1 };
     /// One part in a million. No decimals: a figure in parts per million is
     /// already at the resolution the number carries, and a fraction of one part
@@ -203,6 +327,7 @@ namespace unit
                                        .magnitudeNumerator = 1,
                                        .magnitudeDenominator = 1000000,
                                        .symbolText = symbol("\xc2\xb5" "m"),
+                                       .asciiText = symbol("um"),
                                        .decimals = 0 };
     /// One thousand metres.
     inline constexpr Unit Kilometre { .dimension = dim::Length,
@@ -314,6 +439,7 @@ namespace unit
                                     .offsetNumerator = 27315,
                                     .offsetDenominator = 100,
                                     .symbolText = symbol("\xc2\xb0" "C"),
+                                    .asciiText = symbol("degC"),
                                     .decimals = 1 };
     /// The other affine unit. A degree is exactly 5/9 of a kelvin, and zero
     /// degrees Fahrenheit is exactly 459.67 * 5/9 = 45967/180 kelvin, so no
@@ -328,6 +454,7 @@ namespace unit
                                        .offsetNumerator = 45967,
                                        .offsetDenominator = 180,
                                        .symbolText = symbol("\xc2\xb0" "F"),
+                                       .asciiText = symbol("degF"),
                                        .decimals = 1 };
 
     /// The coherent SI unit of force. One decimal rather than `Pascal`'s
@@ -577,6 +704,21 @@ namespace detail
         /// Always `true` once reached -- the `static_assert` above already failed compilation otherwise.
         static constexpr bool value = true;
     };
+
+    /// Fails to compile when @p U's symbol is not printable ASCII and it declares no ASCII key (`has_ascii_key`).
+    /// Asserted wherever `RequireNamedScaledScalar` is, so every unit the library takes as a quantity's, constant's,
+    /// rounding's, table's or other formula node's unit can be serialised by `view_ascii`. Write `::value`, as there.
+    template <Unit U>
+    struct RequireAsciiKey
+    {
+        static_assert(has_ascii_key(U),
+                      "formula: a unit whose symbol is not ASCII must declare an ASCII key (asciiText), for "
+                      "example .asciiText = formula::symbol(\"ug/L\") for ug/L written with a micro sign; the unit "
+                      "appears in this diagnostic as the template argument of RequireAsciiKey");
+
+        /// Always `true` once reached -- the `static_assert` above already failed compilation otherwise.
+        static constexpr bool value = true;
+    };
 } // namespace detail
 
 /// The coherent unit of a dimension: magnitude one, offset zero, no symbol --
@@ -657,23 +799,25 @@ namespace detail
     return detail::or_throw(checked_convert(magnitude, from, to));
 }
 
-/// The outcome of checking a value against its unit's declared bounds.
+/// The outcome of checking a value against bounds: those its unit declares (`checked_within_bounds`), or limits
+/// given at run time (`checked_within`).
 enum class BoundsCheck : std::uint8_t
 {
-    /// Bounds were declared and the value lies within them, inclusive.
+    /// There were bounds to check, and the value lies within them, inclusive.
     WithinBounds,
-    /// Below the declared minimum.
+    /// Below the minimum, declared by the unit or given at run time.
     BelowMinimum,
-    /// Above the declared maximum.
+    /// Above the maximum, declared by the unit or given at run time.
     AboveMaximum,
-    /// The unit declares no bounds, so nothing was checked. Deliberately NOT
-    /// the same as WithinBounds: a value that was never checked must not be
-    /// reported as one that was checked and passed.
+    /// There were no bounds -- the unit declares none, or neither end was
+    /// given at run time -- so nothing was checked. Deliberately NOT the same
+    /// as WithinBounds: a value that was never checked must not be reported as
+    /// one that was checked and passed.
     NotChecked,
-    /// There was no value to check. Distinct from NotChecked, which says the
-    /// unit declares no range: a measurement nobody took and a range nobody
-    /// declared are different facts, and a report that shows them as one is the
-    /// collapse NotChecked exists to prevent.
+    /// There was no value to check. Distinct from NotChecked, which says there
+    /// was no range: a measurement nobody took and a range nobody declared are
+    /// different facts, and a report that shows them as one is the collapse
+    /// NotChecked exists to prevent.
     NotMeasured,
 };
 
@@ -697,33 +841,59 @@ template <>
 inline constexpr bool formats_by_describe<BoundsCheck> = true;
 } // namespace detail
 
-/// Checks @p magnitude, expressed in @p unitOfValue, against that unit's bounds.
+/// Checks @p magnitude against limits held at run time -- a specification row, a catalogue entry -- either of which
+/// may be absent. Both ends are inclusive. With no end there is nothing to check (`NotChecked`, never
+/// `WithinBounds`); a lower end above the upper one is a malformed pair of limits, refused as `DomainError`.
+[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within(
+    Rational magnitude, std::optional<Rational> lowEnd, std::optional<Rational> highEnd) noexcept
+{
+    if (!lowEnd && !highEnd)
+        return BoundsCheck::NotChecked;
+    if (lowEnd && highEnd && *lowEnd > *highEnd)
+        return std::unexpected { ArithmeticError::DomainError };
+    if (lowEnd && magnitude < *lowEnd)
+        return BoundsCheck::BelowMinimum;
+    if (highEnd && magnitude > *highEnd)
+        return BoundsCheck::AboveMaximum;
+    return BoundsCheck::WithinBounds;
+}
+
+/// @throws ArithmeticException when the checked form would report an error.
+[[nodiscard]] constexpr BoundsCheck within(Rational magnitude, std::optional<Rational> lowEnd,
+                                           std::optional<Rational> highEnd)
+{
+    return detail::or_throw(checked_within(magnitude, lowEnd, highEnd));
+}
+
+/// Checks @p magnitude, expressed in @p unitOfValue, against the ends that unit's bounds declare, as
+/// `checked_within`; an end the unit does not declare is not checked.
 [[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(Rational magnitude,
                                                                                           Unit unitOfValue) noexcept
 {
-    if (!unitOfValue.bounds.present)
-        return BoundsCheck::NotChecked;
-
-    std::expected<Rational, ArithmeticError> const lowBound =
-        Rational::make(unitOfValue.bounds.lowNumerator, unitOfValue.bounds.lowDenominator);
-    std::expected<Rational, ArithmeticError> const highBound =
-        Rational::make(unitOfValue.bounds.highNumerator, unitOfValue.bounds.highDenominator);
-    if (!lowBound)
-        return std::unexpected { lowBound.error() };
-    if (!highBound)
-        return std::unexpected { highBound.error() };
+    std::optional<Rational> lowEnd;
+    std::optional<Rational> highEnd;
+    if (unitOfValue.bounds.lowPresent)
+    {
+        std::expected<Rational, ArithmeticError> const lowBound =
+            Rational::make(unitOfValue.bounds.lowNumerator, unitOfValue.bounds.lowDenominator);
+        if (!lowBound)
+            return std::unexpected { lowBound.error() };
+        lowEnd = *lowBound;
+    }
+    if (unitOfValue.bounds.highPresent)
+    {
+        std::expected<Rational, ArithmeticError> const highBound =
+            Rational::make(unitOfValue.bounds.highNumerator, unitOfValue.bounds.highDenominator);
+        if (!highBound)
+            return std::unexpected { highBound.error() };
+        highEnd = *highBound;
+    }
 
     // A unit whose declared minimum exceeds its maximum is a malformed unit,
-    // not a value to be judged. Reporting BelowMinimum or AboveMaximum here
-    // would be a wrong answer dressed up as a real one; refuse instead.
-    if (*lowBound > *highBound)
-        return std::unexpected { ArithmeticError::DomainError };
-
-    if (magnitude < *lowBound)
-        return BoundsCheck::BelowMinimum;
-    if (magnitude > *highBound)
-        return BoundsCheck::AboveMaximum;
-    return BoundsCheck::WithinBounds;
+    // not a value to be judged. Reporting BelowMinimum or AboveMaximum there
+    // would be a wrong answer dressed up as a real one, so `checked_within`
+    // refuses the pair instead.
+    return checked_within(magnitude, lowEnd, highEnd);
 }
 
 /// The unit's declared display precision, as the rounding layer's own type.

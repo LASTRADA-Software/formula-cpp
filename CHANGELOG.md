@@ -12,12 +12,89 @@ change is recorded here.
   speed's steps exactly on a worksheet, cites the model it follows, evaluates the speed's cube
   roots in `double`, and reports a `DomainError` on a steep descent, where the formula has no real
   answer.
+- **`checked_symbol()`** builds a unit `Symbol` from run-time text -- a catalogue row, a configuration file -- byte
+  for byte, and returns `std::expected<Symbol, SymbolError>`: `SymbolError::TooLong` for text that does not fit,
+  `SymbolError::EmbeddedNull` for text holding a NUL byte. It never truncates and never aborts. `describe()` spells a
+  `SymbolError` for an error message, and `std::format` writes it in the same words.
+- **A stable ASCII key per unit.** `Unit` gains `asciiText`, a key for serialising the unit -- a JSON annotation, a
+  database column, a client's choice -- that stays the same when its display symbol is restyled.
+  `view_ascii(unit)` returns it, or the symbol when no key is declared; `has_ascii_key(unit)` says whether that text
+  is printable ASCII; `checked_ascii_symbol()` builds a key from run-time text, refusing what `checked_symbol()`
+  refuses and any byte outside printable ASCII with `SymbolError::NotAscii`. The built-in units whose symbols are not
+  ASCII declare keys: `PerMille` `permille`, `Micrometre` `um`, `Celsius` `degC`, `Fahrenheit` `degF`. A trace's
+  derived quotient unit carries a key when either of its units declares one (`um/s` for `µm/s`). The key is never
+  displayed: renderings, traces, `number_text` and `std::format` still write the symbol.
+- **One-sided bounds, and limits checked at run time.** `at_least(numerator, denominator)` declares a unit's minimum
+  only, and `at_most(numerator, denominator)` its maximum only, beside `bounds()`, which declares both.
+  `checked_within(value, lowEnd, highEnd)` checks a `Rational` or a `Measured` against limits held at run time -- a
+  specification row, a catalogue entry -- each a `std::optional<Rational>` that may be absent, with no `Unit` built
+  to carry them. Both ends are inclusive; with no end it reports `NotChecked`, never `WithinBounds`; a lower end
+  above the upper one is refused as `DomainError`; an absent measurement is `NotMeasured`. `within` is the same
+  check spelled to throw. `checked_within_bounds` applies the same rule to the ends a unit declares.
+- **A quantity's own decimal places, and `same_unit`.** `Quantity` takes an optional fifth parameter, a
+  `DecimalPlaces` that defaults to the places its unit declares: `Quantity<FineCurrent, "I_f", "...", Milliampere,
+  DecimalPlaces { 1 }>` reads milliamperes to a tenth while the unit, and every other quantity in it, keeps its own
+  places. The quantity's `unit` carries those places: `checked_round_to_declared` rounds to them, and
+  `number_text`, `std::format` and traces pad to them and round an approximation to them, while an exact decimal is
+  still written in full. `same_unit(leftUnit, rightUnit)` says whether two units are the same unit -- the same
+  dimension, factor and offset as declared, symbol and key (`view_ascii`) -- whatever their declared decimals and
+  bounds, which `==`, comparing every member, does not answer. A factor of 2/2000 is not the same as 1/1000 there.
+- `parse_decimal_text` reads decimal text that arrives at run time -- a CSV import, a form field, a configuration
+  value -- into a `ParsedDecimal`: its exact value and the places it was typed to, so `"2.400"` is 12/5 at 3 places
+  and `"2.4"` is 12/5 at 1. `Rational::from_decimal_text` gives the value alone. Text that is not a decimal
+  (whitespace, a decimal comma, separators, `inf`, `nan`) is `DomainError`. Text beyond the parser's range is
+  `Overflow`, for example digits above 2^127 - 1 in magnitude, or a scale outside 10^-38 to 10^38 once trailing zeros
+  fold. The same parser reads `_r` literals.
+- `checked_transform` and `checked_combine<Result>` apply a callback that can fail to measured values: it returns
+  `std::expected<Rational, ArithmeticError>`, as `checked_mul` does, and its error comes back unchanged. An absent
+  value stays absent without calling it. Both are `noexcept` when the callback is, so
+  `checked_transform(reading, [](Rational litres) noexcept { return checked_mul(litres, Rational { 10 }); })` can be
+  written under a no-throw rule. A callback that returns a bare `Rational` does not compile; it belongs to
+  `transform` or `combine`. Nor does one that cannot be called with a `Rational`, which is refused with
+  `formula: a checked_transform callback must be callable with a Rational`, or, for `checked_combine`, with
+  `formula: a checked_combine callback must be callable with two Rationals`.
 
 ### Changed
 
+- **Breaking:** `symbol()` is `consteval`: its spelling must be a constant expression, so a symbol too long for
+  `SymbolCapacity` can no longer reach `std::abort()` at run time. Run-time text goes through `checked_symbol()`.
+- **Breaking:** `SymbolCapacity` is 32 bytes including the terminator, up from 16: a unit symbol or a named base's
+  name holds 31 bytes, enough for compound laboratory units such as `µmol/(L·min·kg)` (18 bytes of UTF-8). `Symbol`
+  is 16 bytes larger, and `Dimension` and `Unit`, which hold symbols, are larger with it, as is a trace's `Step`,
+  which holds a dimension and two units, so a trace takes more memory; the longest text `number_text` spells grows
+  from 97 to 113 bytes, still within `NumberTextCapacity`. A trace shows an `opaque_output` in the quotient of its
+  inputs' units, `AcmeGrams/AcmeVials` for instance, when that quotient's symbol is 16 to 31 bytes long, where it
+  used to fall back to the coherent unit.
+- **Breaking:** a unit whose symbol is not ASCII must declare an ASCII key, `.asciiText = formula::symbol("ug/L")`
+  for a symbol written `µg/L`, where the library takes it as a quantity's, constant's, rounding's, table's or other
+  formula node's unit. Without one that use no longer compiles, with
+  `formula: a unit whose symbol is not ASCII must declare an ASCII key`; a key that is itself not ASCII is refused
+  the same way. `Unit` is larger by the new `Symbol` member, which follows `symbolText`: a `Unit` built with
+  positional initialisers no longer compiles or puts its values in the wrong members, while designated initialisers
+  are unaffected. `Unit { dimension, 1, 1000, 0, 1, symbol("g"), 2 }` still compiles, but the 2 meant for `decimals`
+  becomes the key's first byte, 0x02, which is not printable, so every use that checks the key refuses the unit, and
+  `decimals` is back at its default of 3. Unit equality compares `asciiText` too, so two units that differ only in
+  their key are no longer equal: a micrometre built at run time without a key is not `unit::Micrometre`. To compare
+  what a unit is, ignoring its decimals and bounds, use `same_unit`, which compares keys through `view_ascii`: that
+  micrometre, keyed `µm`, is not the same unit as `unit::Micrometre`, keyed `um`, either.
+- **Breaking:** `Bounds::present` is replaced by `lowPresent` and `highPresent`, one for each end, so a unit can
+  declare a minimum or a maximum alone. Each is a `BoundsEnd`, which reads as a `bool` but takes nothing else, so a
+  `Bounds` built with positional initialisers in the old order no longer compiles: in `{ true, 0, 1, 100, 1 }`, once
+  a range of 0 to 100, the 0 lands on `highPresent` and is refused, rather than every value moving one member later.
+  `{}` and `{ false }` still compile and declare no bounds. `{ true }` alone still compiles too, but where it once
+  declared a range of 0 to 0 it now declares a minimum of 0 and no maximum. Write `bounds()`, `at_least()`,
+  `at_most()` or designated initialisers instead, which are unaffected. Code that read `present` reads
+  `lowPresent || highPresent`, or each end on its own. A unit that declared bounds with `bounds()` gives the same
+  answers as before.
 - The README and the documentation home page now lead with the cyclist's speed from power. The
   guides and the other examples use a road gradient, `s = h / L`, wherever they need a simple exact
   division.
+- `_r` literals take a 128-bit mantissa, so every integer up to 2^127 - 1 in magnitude can be written as one
+  (`12'345'678'901'234'567'890_r` compiles), and `Rational::from_decimal` and `_r` scale by powers of ten from
+  10^-38 to 10^38 rather than stopping at 10^18. `from_decimal` folds a mantissa's trailing zeros into a negative
+  exponent first, so `from_decimal(10, -39)` is 1/10^38. A zero literal with an exponent beyond ±1000, such as
+  `0e1001_r`, now reads as 0 rather than being refused, as the same text does at run time. Only refusals turn into
+  answers: every value that answered before is unchanged.
 
 ## [0.4.0] - 2026-10-05
 

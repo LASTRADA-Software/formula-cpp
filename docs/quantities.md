@@ -75,8 +75,9 @@ that happen to be exercised.
 
 ## Declaring a quantity
 
-`formula::Quantity` takes exactly four template parameters, and a quantity is
-declared with it in one of two spellings. The alias is the shorter, and the
+`formula::Quantity` takes four template parameters, and an optional fifth for
+the quantity's [own decimal places](#a-quantitys-own-decimal-places). A quantity
+is declared with it in one of two spellings. The alias is the shorter, and the
 one these guides and the examples use:
 
 ```cpp
@@ -132,7 +133,7 @@ Rise and ReturnRise share symbol, description and unit: yes
 | | alias | struct |
 |---|---|---|
 | forward declaration | not possible | `struct Rise;` |
-| two declarations with all four arguments equal | one type, under two names | two types |
+| two declarations with all their arguments equal | one type, under two names | two types |
 | one tag, another argument different | two types | -- (a struct is its own tag) |
 | how g++ and clang name it in a diagnostic | `Quantity<RiseTag, ...>` | `Rise` |
 | how cl names it in a diagnostic | usually `Rise`, not always | `Rise` |
@@ -142,9 +143,9 @@ Rise and ReturnRise share symbol, description and unit: yes
 `struct Rise;` for a struct quantity, and must include an alias's
 declaration.
 
-**Two aliases with all four arguments equal are one type.** Repeating a
+**Two aliases with all their arguments equal are one type.** Repeating a
 declaration -- `using A = formula::Quantity<ATag, "V", "a volume", unit::Litre>;`
-and a `using B` with the same four arguments -- declares one quantity under two
+and a `using B` with the same arguments -- declares one quantity under two
 names, and nothing can object: there is only one type, and naming it twice is
 not an error anywhere in C++. Give every alias a tag of its own. Two structs
 never collapse this way, whatever their bases.
@@ -182,14 +183,55 @@ but not always -- see
 Naming a tag after its quantity, `RiseTag`, is what keeps such a
 diagnostic readable.
 
-**There is no fifth parameter for the dimension.** A `Unit` already carries
+**There is no parameter for the dimension.** A `Unit` already carries
 its dimension (`unit.dimension`), so a separate dimension parameter would
 state it a second time and let the two disagree. That is not a hypothetical
-risk: the five-parameter spelling, with `dim::Mass` paired against
+risk: a spelling with a dimension parameter, with `dim::Mass` paired against
 `unit::Litre`, compiled without a diagnostic on every compiler it was tried
 on. `Quantity::dimension` is derived from the unit instead, so there is
 no second place for it to disagree with, and no spelling that lets a caller
 write the contradiction at all.
+
+### A quantity's own decimal places
+
+A quantity takes its declared decimal places from its unit, unless it declares
+its own. The fifth parameter, a `formula::DecimalPlaces`, defaults to the
+unit's places; given, it replaces them for that quantity alone, so two
+quantities in one unit can be read to different precision without a second
+unit:
+
+```cpp
+inline constexpr formula::Unit Milliampere { .dimension = formula::dim::Current,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .symbolText = formula::symbol("mA"),
+                                             .decimals = 0 };
+
+struct FineCurrent:
+    formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+                      formula::DecimalPlaces { 1 }>
+{
+};
+
+struct CoarseCurrent: formula::Quantity<CoarseCurrent, "I_c", "a current read to whole milliamperes", Milliampere>
+{
+};
+```
+
+A quantity's `unit` is its unit with those places in it, so everything that
+reads declared places reads the quantity's: 12.34 mA rounds to 12.3 mA through
+`checked_round_to_declared` for `FineCurrent` and to 12 mA for `CoarseCurrent`.
+`number_text`, `std::format` and a trace pad to, and round an approximation to,
+each quantity's own places: padded, 12 mA is written `12.0 mA` for `FineCurrent`
+and `12 mA` for `CoarseCurrent`, and 37/3 mA approximated is `≈12.3 mA` and
+`≈12 mA`. An exact decimal is always written in full, so 12.34 mA is `12.34 mA`
+for both.
+
+`FineCurrent::unit == Milliampere` is false, since `==` compares every member
+of a unit, its decimals among them. Whether two quantities share a unit is what
+`formula::same_unit` answers: the same scale as declared, symbol and ASCII key,
+whatever their decimals and bounds. `same_unit(FineCurrent::unit, Milliampere)`
+and `same_unit(FineCurrent::unit, CoarseCurrent::unit)` are both true.
 
 ## `Describe<T>`, and foreign types
 
@@ -275,6 +317,31 @@ writes an absent `Measured`:
 a present volume combined with an absent mass: (not measured)
 ```
 
+`formula::checked_transform` and `formula::checked_combine<Result>` are the
+same two functions for a callback that can fail: the callback returns
+`std::expected<Rational, ArithmeticError>` -- `formula::checked_mul` and its
+siblings do -- and the result is a
+`std::expected<Measured<...>, ArithmeticError>` that carries the callback's
+error unchanged. Absence propagates exactly as above, and an absent input
+never reaches the callback. Both are `noexcept` when the callback is, so
+arithmetic on a measurement can be written under a no-throw rule. A
+tenfold dilution of a reading:
+
+```cpp
+auto const diluted = formula::checked_transform(
+    reading, [](Rational litres) noexcept { return formula::checked_mul(litres, Rational { 10 }); });
+if (!diluted)
+    return std::unexpected { diluted.error() }; // Overflow, say
+```
+
+A callback that returns a bare `Rational` does not compile with either: it
+cannot fail, so it belongs to `transform` or `combine`. The message begins
+`formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>`
+and says so (`checked_combine`'s names itself, and `combine`). A callback that
+cannot be called with the value at all is refused too, with
+`formula: a checked_transform callback must be callable with a Rational`, or
+`formula: a checked_combine callback must be callable with two Rationals`.
+
 `formula::checked_convert_to<R>` converts a `Measured<Q>` into a
 `Measured<R>` and keeps this rule too -- an absent input converts to an
 absent output. The two dimensions are checked where the call is written,
@@ -355,12 +422,18 @@ substitutes for the other.** `NotChecked` means the unit declares no bounds
 at all -- there is a value, but nothing to check it against. `NotMeasured`
 means there is no value in the first place, regardless of whether the unit
 declares bounds. A reading nobody took and a range nobody declared are
-different facts. `test/measured_tests.cpp:206-268` pins all five
+different facts. `test/measured_tests.cpp:210-270` pins all five
 `BoundsCheck` outcomes side by side -- `WithinBounds`, `BelowMinimum` and
 `AboveMaximum` for present values against a bounded unit, `NotMeasured` for
 an absent value regardless of whether its unit declares bounds, and
 `NotChecked` for a present value in a unit (such as `unit::Litre`) that
 declares no bounds at all.
+
+`formula::checked_within`, which checks a value against limits held at run
+time rather than the ones its unit declares
+([Dimensions and units](dimensions.md#declared-precision-and-bounds)), takes a
+`Measured<Q>` too, and keeps the same rule: an absent measurement is
+`NotMeasured`, whatever limits it is given.
 
 A present measurement still converts exactly, carrying its quantity's own
 unit rather than needing one passed alongside it. From the worked example,
@@ -370,16 +443,16 @@ a rise of 450 m converted to kilometres:
 450 m converted to km = 0.45 km
 ```
 
-The conversion, the rounding and the bounds check each have a throwing twin,
-for callers who would only rethrow the error: `formula::convert_to<R>`,
-`formula::round_to_declared` and `formula::within_bounds`, which take the
-same arguments and return the value itself, and throw `ArithmeticException`
-where the `checked_` form returns an error. Absence behaves as above -- an
-absent measurement converts and rounds to an absent one and is `NotMeasured`
-for its bounds -- and a conversion across dimensions does not compile in
-either spelling. The worked example keeps the `checked_` forms, and checks
-each result before it reads it, as shown [above](#measurements-that-may-be-absent)
-for the conversion.
+The conversion, the rounding and the two bounds checks each have a throwing
+twin, for callers who would only rethrow the error: `formula::convert_to<R>`,
+`formula::round_to_declared`, `formula::within_bounds` and `formula::within`,
+which take the same arguments and return the value itself, and throw
+`ArithmeticException` where the `checked_` form returns an error. Absence
+behaves as above -- an absent measurement converts and rounds to an absent one
+and is `NotMeasured` for its bounds -- and a conversion across dimensions does
+not compile in either spelling. The worked example keeps the `checked_` forms,
+and checks each result before it reads it, as shown
+[above](#measurements-that-may-be-absent) for the conversion.
 
 ## Limits
 

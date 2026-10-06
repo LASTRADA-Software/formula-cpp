@@ -767,7 +767,9 @@ struct BandedLookupNode: NodeBase
     static_assert(RequireValidBandTable<Bands>::value);
     static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
     static_assert(detail::RequireNamedScaledScalar<KeyUnit>::value);
+    static_assert(detail::RequireAsciiKey<KeyUnit>::value);
     static_assert(detail::RequireNamedScaledScalar<ResultUnit>::value);
+    static_assert(detail::RequireAsciiKey<ResultUnit>::value);
 
     /// One correction per band, stated in `unit` -- the table's *contents*,
     /// runtime state for the same reason `ConstantNode::number` is. See the
@@ -1175,6 +1177,7 @@ struct ExactLookupNode: NodeBase
     static_assert(detail::RequireScopedEnumKey<KeyOf<Keys>>::value);
     static_assert(RequireValidKeyTable<Keys>::value);
     static_assert(detail::RequireNamedScaledScalar<ResultUnit>::value);
+    static_assert(detail::RequireAsciiKey<ResultUnit>::value);
 
     /// One correction per key, stated in `unit`, in the same order `keys`
     /// declares -- the table's *contents*, runtime state for the same reason
@@ -1810,7 +1813,9 @@ struct InterpolatingLookupNode: NodeBase
     static_assert(RequireValidBreakpointTable<Points>::value);
     static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
     static_assert(detail::RequireNamedScaledScalar<KeyUnit>::value);
+    static_assert(detail::RequireAsciiKey<KeyUnit>::value);
     static_assert(detail::RequireNamedScaledScalar<ResultUnit>::value);
+    static_assert(detail::RequireAsciiKey<ResultUnit>::value);
 
     /// The value this table states at each breakpoint, in `unit`, in the same
     /// order `breakpoints` declares -- the table's *contents*, runtime state

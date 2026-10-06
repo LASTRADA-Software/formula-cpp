@@ -1083,6 +1083,7 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 class RoundingRule
 {
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
   public:
     /// The unit the rounding happens in -- see `rounding_node.hpp` for why a

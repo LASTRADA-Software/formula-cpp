@@ -6,9 +6,12 @@
 /// dimensions and up to four named ones, usable as a non-type template
 /// parameter so that a dimension is part of a type rather than a runtime tag.
 
+#include <formula-cpp/error.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <expected>
 #include <limits>
 #include <string_view>
 
@@ -182,11 +185,12 @@ namespace detail
     return exponentValue.denominator == 1;
 }
 
-/// Bytes available for a unit symbol, including the terminator. Enough for the
-/// UTF-8 spellings that occur in practice: `m3`, `°C` (3 bytes), `µm` (3). A
-/// symbol that does not fit is a compile error (see `symbol()`), never a
-/// silent truncation; bump this deliberately if a real symbol ever needs more.
-inline constexpr std::size_t SymbolCapacity = 16;
+/// Bytes available for a unit symbol, including the terminator: 31 usable.
+/// Enough for compound laboratory units such as `µmol/(L·min·kg)` (18 bytes
+/// of UTF-8). A literal that does not fit is a compile error (see
+/// `symbol()`), and run-time text that does not fit is refused by
+/// `checked_symbol()`; neither ever truncates.
+inline constexpr std::size_t SymbolCapacity = 32;
 
 /// A fixed-capacity symbol. An array of a structural type is structural, which a
 /// `std::string_view` is not -- and unlike a `FixedString<N>` template this keeps
@@ -213,10 +217,11 @@ namespace detail
     /// when it goes wrong. Truncating instead of refusing would let two
     /// distinct symbols collapse into the same `Symbol` object and therefore
     /// the same NTTP type, and could split a multi-byte UTF-8 character in
-    /// half. Calling this makes the enclosing expression a non-constant one,
-    /// so the mistake is a compile error at the point of use. Defined, not
-    /// merely declared, because a runtime call must still link; reaching it at
-    /// runtime is a programming error with no recovery.
+    /// half. Its body is reached only during constant evaluation, where
+    /// reaching a non-`constexpr` function is the refusal: the enclosing
+    /// expression stops being a constant one, so the mistake is a compile
+    /// error at the point of use that names this function. `symbol()` is
+    /// `consteval`, so no run-time call to it exists.
     [[noreturn]] inline void formula_unit_symbol_too_long()
     {
         std::abort();
@@ -226,8 +231,10 @@ namespace detail
 /// Builds a Symbol from a byte string. Refuses -- see
 /// `formula_unit_symbol_too_long` -- rather than truncating when the text does
 /// not fit in `SymbolCapacity` bytes including the terminator; every symbol
-/// shipped by this library is well within the limit.
-[[nodiscard]] constexpr Symbol symbol(char const* spelling) noexcept
+/// shipped by this library is well within the limit. `consteval`, so the
+/// spelling must be a constant expression; a spelling that only exists at run
+/// time goes through `checked_symbol()`, which reports a refusal instead.
+[[nodiscard]] consteval Symbol symbol(char const* spelling) noexcept
 {
     Symbol built {};
     std::size_t characterIndex = 0;
@@ -250,9 +257,10 @@ namespace detail
 /// text is a legal initialiser that leaves no room for a terminator. Handing
 /// that to `std::string_view { value.characters }` reads until it happens to
 /// find a zero somewhere after the array. Measured on a `Symbol` followed by
-/// seven bytes of padding: 23 characters returned from a 16-byte array, the
-/// neighbours included. A symbol built by `symbol()` is always terminated, but
-/// this function cannot assume its argument came from there.
+/// seven bytes of padding: 23 characters returned from what was then a
+/// 16-byte array, the neighbours included. A symbol built by `symbol()` or
+/// `checked_symbol()` is always terminated, but this function cannot assume
+/// its argument came from there.
 [[nodiscard]] constexpr std::string_view view(Symbol const& unitSymbol) noexcept
 {
     std::size_t symbolLength = 0;
@@ -267,6 +275,51 @@ namespace detail
 /// `clang++ -Wall -Wextra -Wdangling`. Bind the `Symbol` to a named local
 /// first, then call `view()` on that.
 std::string_view view(Symbol&&) = delete;
+
+/// Why `checked_symbol` or `checked_ascii_symbol` refused a spelling.
+enum class SymbolError : std::uint8_t
+{
+    /// The spelling does not fit `SymbolCapacity` bytes, terminator included.
+    TooLong,
+    /// The spelling contains a NUL byte, which would end the stored symbol early.
+    EmbeddedNull,
+    /// The spelling holds a byte outside printable ASCII (0x20 to 0x7E); only `checked_ascii_symbol` asks.
+    NotAscii,
+};
+
+/// @p symbolError in prose, for an error message.
+[[nodiscard]] constexpr std::string_view describe(SymbolError symbolError) noexcept
+{
+    switch (symbolError)
+    {
+        case SymbolError::TooLong: return "the symbol does not fit SymbolCapacity bytes, terminator included";
+        case SymbolError::EmbeddedNull: return "the symbol contains a NUL byte";
+        case SymbolError::NotAscii: return "the symbol holds a byte outside printable ASCII";
+    }
+    return "unknown symbol error";
+}
+
+namespace detail
+{
+template <>
+inline constexpr bool formats_by_describe<SymbolError> = true;
+} // namespace detail
+
+/// Builds a Symbol from run-time text -- a catalogue row, a configuration file -- byte for byte. Refuses text that
+/// does not fit or that holds a NUL; never truncates, never aborts. UTF-8 is not validated: a symbol is bytes.
+[[nodiscard]] constexpr std::expected<Symbol, SymbolError> checked_symbol(std::string_view spelling) noexcept
+{
+    if (spelling.size() + 1 > SymbolCapacity)
+        return std::unexpected { SymbolError::TooLong };
+    Symbol built {};
+    for (std::size_t characterIndex = 0; characterIndex < spelling.size(); ++characterIndex)
+    {
+        if (spelling[characterIndex] == '\0')
+            return std::unexpected { SymbolError::EmbeddedNull };
+        built.characters[characterIndex] = spelling[characterIndex];
+    }
+    return built;
+}
 
 /// How many named base dimensions one `Dimension` can hold at once: a tariff in
 /// euros per kilowatt-hour needs one, an exchange rate between two currencies

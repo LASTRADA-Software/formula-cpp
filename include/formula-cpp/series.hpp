@@ -71,6 +71,7 @@ struct SeriesVarNode: SeriesNodeBase
                   "no formula containing it can be trusted; the quantity appears in this "
                   "diagnostic as the template argument of SeriesVarNode");
     static_assert(detail::RequireNamedScaledScalar<Describe<Q>::unit>::value);
+    static_assert(detail::RequireAsciiKey<Describe<Q>::unit>::value);
     static_assert(N > 0,
                   "formula: this series has no elements; a series is a value at each point of a method's domain, "
                   "and a domain of no points has nothing to sum, round or trace -- the quantity appears in this "
@@ -181,6 +182,7 @@ struct SeriesConstantNode: SeriesNodeBase
                   "domain, and a domain of no points has nothing to sum, round or trace -- give it at least one "
                   "value");
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The values. No `{}` initialiser, deliberately: see `Elements`.
     Elements<N> elements;
@@ -498,6 +500,7 @@ struct ElementwiseRoundNode: SeriesNodeBase
                                      detail::RequireRoundingUnitMatches<U, S>,
                                      std::true_type>::value);
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The series rounded. No `{}` initialiser, deliberately: see
     /// `Corrections` (`lookup.hpp`).

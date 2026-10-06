@@ -153,6 +153,9 @@ namespace detail
     {
         if (radicandInUnitSquared.sign() < 0)
             return std::unexpected { ArithmeticError::DomainError };
+        // As `checked_round` reports them, whichever path the root takes.
+        if (places.value > 18 || places.value < -18)
+            return std::unexpected { ArithmeticError::Overflow };
 
         std::expected<Rational, ArithmeticError> const exactRoot = checked_exact_nth_root(radicandInUnitSquared, 2);
         if (exactRoot.has_value())
@@ -282,6 +285,7 @@ struct RoundedRootNode: NodeBase
     static_assert(detail::RequireRootUnitMatches<U, Radicand>::value);
     static_assert(detail::RequireRootUnitWithoutOffset<U, U.dimension * U.dimension == Radicand::dimension>::value);
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The expression whose square root is taken: a variance, a mean square,
     /// a sum of squared uncertainties.

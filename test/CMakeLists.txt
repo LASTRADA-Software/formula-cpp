@@ -32,6 +32,7 @@ add_executable(formula-cpp-tests
     expression_tests.cpp
     rational_tests.cpp
     rational_literal_tests.cpp
+    decimal_parsing_tests.cpp
     render_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp
@@ -325,7 +326,7 @@ formula_add_negative_test(expression_too_many_named_bases "formula_dimension_has
 # once for the constant it initialises and once for the call, each naming the
 # sentinel, while cl and g++ report it once.
 formula_add_negative_test(base_dimension_name_empty "formula_base_dimension_name_must_not_be_empty")
-# A 16-byte name would also overflow symbol(); the base's own rule must be the one that fires.
+# A 32-byte name would also overflow symbol(); the base's own rule must be the one that fires.
 formula_add_negative_test(base_dimension_name_too_long "formula_base_dimension_name_too_long"
     REJECT "formula_unit_symbol_too_long")
 formula_add_negative_test(base_dimension_name_not_identifier
@@ -353,6 +354,15 @@ formula_add_negative_test(scaled_scalar_unit_without_symbol_constant
 formula_add_negative_test(scaled_scalar_unit_without_symbol_snap
     "formula: a dimensionless unit with a scale must have a symbol" EXPECT_COUNT 1
     REJECT "key unit does not measure" "breakpoints do not strictly ascend")
+formula_add_negative_test(unit_without_ascii_key_var
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1)
+formula_add_negative_test(unit_without_ascii_key_measured
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1)
+formula_add_negative_test(unit_without_ascii_key_constant
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1)
+formula_add_negative_test(unit_without_ascii_key_snap
+    "formula: a unit whose symbol is not ASCII must declare an ASCII key" EXPECT_COUNT 1
+    REJECT "key unit does not measure" "breakpoints do not strictly ascend")
 
 # A conversion between measured quantities of different dimensions is refused where
 # it is written, with or without a value, and once.
@@ -363,10 +373,32 @@ formula_add_negative_test(measured_convert_dimension_mismatch_absent
 formula_add_negative_test(measured_convert_currency_mismatch
     "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
 
+# A checked_transform or checked_combine callback reports failure through
+# std::expected; one returning a bare Rational belongs to transform or combine.
+formula_add_negative_test(checked_transform_plain_callback
+    "formula: a checked_transform callback must return std::expected" EXPECT_COUNT 1)
+formula_add_negative_test(checked_combine_plain_callback
+    "formula: a checked_combine callback must return std::expected" EXPECT_COUNT 1)
+# A callback that cannot be called with the measured values at all is refused
+# in the library's own words, not the standard library's.
+formula_add_negative_test(checked_transform_uncallable_callback
+    "formula: a checked_transform callback must be callable with a Rational" EXPECT_COUNT 1)
+formula_add_negative_test(checked_combine_uncallable_callback
+    "formula: a checked_combine callback must be callable with two Rationals" EXPECT_COUNT 1)
+
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately
 # non-`constexpr` sentinel rather than truncating it.
 formula_add_negative_test(unit_symbol_too_long "formula_unit_symbol_too_long")
+# symbol() is consteval, so a spelling that only exists at run time is refused
+# where it is passed. cl says "call to immediate function is not a constant
+# expression", clang and g++ "call to consteval function ... is not a constant
+# expression"; the expected text is the part they share.
+formula_add_negative_test(unit_symbol_from_runtime_text "is not a constant expression")
+# Only a bool sets a Bounds end's flag, so a positional Bounds whose second value is a number is refused. g++ says
+# "use of deleted function", clang "invokes a deleted function", cl "attempting to reference a deleted function";
+# the expected text is the part they share.
+formula_add_negative_test(bounds_positional_initialiser "deleted function")
 
 formula_add_negative_test(fixed_string_not_terminated
     "formula_fixed_string_must_be_null_terminated")

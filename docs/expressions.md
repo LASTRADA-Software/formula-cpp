@@ -67,22 +67,22 @@ the repository, on MSVC's `cl.exe` (19.51, from Visual Studio's `cl-debug`
 preset):
 
 ```
-include\formula-cpp/expression.hpp(189): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
-include\formula-cpp/expression.hpp(189): note: the template instantiation context (the oldest one first) is
+include\formula-cpp/expression.hpp(191): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
+include\formula-cpp/expression.hpp(191): note: the template instantiation context (the oldest one first) is
 test\negative\quantity_alias_add_dimension_mismatch.cpp(12): note: see reference to function template instantiation 'auto formula::operator +<formula::VarNode<Volume>,formula::VarNode<Length>>(Left,Right) noexcept' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-include\formula-cpp/expression.hpp(274): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
-include\formula-cpp/expression.hpp(247): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
+include\formula-cpp/expression.hpp(276): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
+include\formula-cpp/expression.hpp(249): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-include\formula-cpp/expression.hpp(206): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
+include\formula-cpp/expression.hpp(208): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,

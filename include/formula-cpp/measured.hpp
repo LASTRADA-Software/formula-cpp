@@ -12,6 +12,7 @@
 #include <expected>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 
 namespace formula
 {
@@ -172,6 +173,86 @@ template <Described Result, Described Q, Described R, typename F>
 
 namespace detail
 {
+    /// False: @p F cannot be called with @p Arguments, so it returns nothing at all. Kept apart from the
+    /// specialisation below so that `std::invoke_result_t` is never formed for such a callback, and the caller's own
+    /// `static_assert` speaks instead of the standard library's missing `type`.
+    template <bool Invocable, typename F, typename... Arguments>
+    struct ReturnsCheckedRational: std::false_type
+    {
+    };
+
+    /// Whether @p F, which can be called with @p Arguments, returns exactly `std::expected<Rational, ArithmeticError>`.
+    template <typename F, typename... Arguments>
+    struct ReturnsCheckedRational<true, F, Arguments...>:
+        std::is_same<std::invoke_result_t<F&, Arguments...>, std::expected<Rational, ArithmeticError>>
+    {
+    };
+
+    /// Whether @p F, called with @p Arguments, returns exactly `std::expected<Rational, ArithmeticError>`; false
+    /// when it cannot be called with them.
+    template <typename F, typename... Arguments>
+    inline constexpr bool returns_checked_rational =
+        ReturnsCheckedRational<std::is_invocable_v<F&, Arguments...>, F, Arguments...>::value;
+} // namespace detail
+
+/// `transform` for a callback that can fail: @p function returns `std::expected<Rational, ArithmeticError>` --
+/// `checked_mul` and its siblings, say -- and its error is returned unchanged. An absent measurement stays absent
+/// without calling @p function. `noexcept` when @p function is, so one line of arithmetic on a measurement can be
+/// written under a no-throw rule.
+template <Described Q, typename F>
+[[nodiscard]] constexpr std::expected<Measured<Q>, ArithmeticError> checked_transform(Measured<Q> measured, F function)
+    noexcept(std::is_nothrow_invocable_v<F&, Rational>)
+{
+    static_assert(std::is_invocable_v<F&, Rational>,
+                  "formula: a checked_transform callback must be callable with a Rational");
+    static_assert(!std::is_invocable_v<F&, Rational> || detail::returns_checked_rational<F, Rational>,
+                  "formula: a checked_transform callback must return std::expected<Rational, ArithmeticError>; use "
+                  "transform for a callback that returns a Rational");
+    // A callback refused above never reaches the call: the branch below is discarded for it, so the build fails
+    // with the library's message alone. The else branch is therefore never part of a working build.
+    if constexpr (detail::returns_checked_rational<F, Rational>)
+    {
+        if (measured.is_absent())
+            return Measured<Q> {};
+        std::expected<Rational, ArithmeticError> const transformed = function(measured.value());
+        if (!transformed)
+            return std::unexpected { transformed.error() };
+        return Measured<Q> { *transformed };
+    }
+    else
+        return Measured<Q> {};
+}
+
+/// `combine` for a callback that can fail, as `checked_transform` is for `transform`. Absent if either measurement
+/// is absent, without calling @p function.
+template <Described Result, Described Q, Described R, typename F>
+[[nodiscard]] constexpr std::expected<Measured<Result>, ArithmeticError> checked_combine(Measured<Q> lhs,
+                                                                                         Measured<R> rhs,
+                                                                                         F function)
+    noexcept(std::is_nothrow_invocable_v<F&, Rational, Rational>)
+{
+    static_assert(std::is_invocable_v<F&, Rational, Rational>,
+                  "formula: a checked_combine callback must be callable with two Rationals");
+    static_assert(!std::is_invocable_v<F&, Rational, Rational> || detail::returns_checked_rational<F, Rational, Rational>,
+                  "formula: a checked_combine callback must return std::expected<Rational, ArithmeticError>; use "
+                  "combine for a callback that returns a Rational");
+    // A callback refused above never reaches the call: the branch below is discarded for it, so the build fails
+    // with the library's message alone. The else branch is therefore never part of a working build.
+    if constexpr (detail::returns_checked_rational<F, Rational, Rational>)
+    {
+        if (lhs.is_absent() || rhs.is_absent())
+            return Measured<Result> {};
+        std::expected<Rational, ArithmeticError> const combined = function(lhs.value(), rhs.value());
+        if (!combined)
+            return std::unexpected { combined.error() };
+        return Measured<Result> { *combined };
+    }
+    else
+        return Measured<Result> {};
+}
+
+namespace detail
+{
 
     /// Fails to compile when a measurement is converted into a quantity of
     /// another dimension: no such conversion exists, and both dimensions are
@@ -235,6 +316,17 @@ template <Described Q>
     return checked_within_bounds(value.value(), Describe<Q>::unit);
 }
 
+/// Checks a measurement against limits held at run time, as `checked_within` on a `Rational`; an absent
+/// measurement is `BoundsCheck::NotMeasured`.
+template <Described Q>
+[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within(
+    Measured<Q> measured, std::optional<Rational> lowEnd, std::optional<Rational> highEnd) noexcept
+{
+    if (measured.is_absent())
+        return BoundsCheck::NotMeasured;
+    return checked_within(measured.value(), lowEnd, highEnd);
+}
+
 /// Rounds a measurement to the precision its quantity's unit declares.
 template <Described Q>
 [[nodiscard]] constexpr std::expected<Measured<Q>, ArithmeticError> checked_round_to_declared(
@@ -258,6 +350,17 @@ template <Described Q>
 [[nodiscard]] constexpr BoundsCheck within_bounds(Measured<Q> measured)
 {
     return detail::or_throw(checked_within_bounds(measured));
+}
+
+/// Throwing spelling of `checked_within` on a measurement, for callers who would only rethrow.
+///
+/// An absent measurement is `BoundsCheck::NotMeasured`, as there. Throws
+/// `ArithmeticException` where `checked_within` returns an error.
+template <Described Q>
+[[nodiscard]] constexpr BoundsCheck within(Measured<Q> measured, std::optional<Rational> lowEnd,
+                                           std::optional<Rational> highEnd)
+{
+    return detail::or_throw(checked_within(measured, lowEnd, highEnd));
 }
 
 /// Throwing spelling of `checked_round_to_declared`, for callers who would only rethrow.

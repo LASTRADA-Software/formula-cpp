@@ -347,6 +347,7 @@ struct Conformity
                                      detail::RequireConformityUnitMatches<U, S>,
                                      std::true_type>::value);
     static_assert(detail::RequireNamedScaledScalar<U>::value);
+    static_assert(detail::RequireAsciiKey<U>::value);
 
     /// The series judged.
     S subject;

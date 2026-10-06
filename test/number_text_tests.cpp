@@ -48,12 +48,13 @@ struct Share: formula::Quantity<Share, "s_h", "a share", unit::One>
 {
 };
 
-/// 18 declared decimals and a symbol of 16 bytes with no terminator -- as
+/// 18 declared decimals and a symbol of 32 bytes with no terminator -- as
 /// many as a `Symbol` holds and `view()` reads -- so that a value in it is
 /// the longest text this library spells.
 inline constexpr formula::Unit Widest {
     .dimension = dim::Scalar,
-    .symbolText = formula::Symbol { { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p' } },
+    .symbolText = formula::Symbol { { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
+                                      'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5' } },
     .decimals = 18
 };
 struct WidestReading: formula::Quantity<WidestReading, "r_w", "a reading in the widest unit", Widest>
@@ -592,19 +593,63 @@ TEST_CASE("a measured value in a dimensioned unit with no symbol is shown in the
 TEST_CASE("the longest text this library spells fits its buffer", "[number_text]")
 {
     // A sign, the 39 digits of 2^127, a slash, the 39 digits of 2^127 - 1, a
-    // space and a 16-byte symbol: 97 bytes, the longest text the buffer is
+    // space and a 32-byte symbol: 113 bytes, the longest text the buffer is
     // sized for.
     NumberText const widest =
         formula::number_text(Measured<WidestReading> { Rational { IntMin, IntMax } }, NumberStyle::fraction());
     CHECK(widest.view()
-          == "-170141183460469231731687303715884105728/170141183460469231731687303715884105727 abcdefghijklmnop");
+          == "-170141183460469231731687303715884105728/170141183460469231731687303715884105727 "
+             "abcdefghijklmnopqrstuvwxyz012345");
     CHECK(widest.view().size() == formula::detail::LongestNumberText);
 
     // The longest marked decimal -- the marker, a sign, 38 whole digits, a
-    // point, 18 places, a space and the symbol -- is 78 bytes, shorter.
+    // point, 18 places, a space and the symbol -- is 94 bytes, shorter.
     NumberText const widestDecimal = formula::number_text(Measured<WidestReading> { Rational { IntMin, 3 } },
                                                           NumberStyle::approximate_decimal(RoundingMode::HalfEven));
     CHECK(widestDecimal.view()
-          == "\xe2\x89\x88" "-56713727820156410577229101238628035242.666666666666666667 abcdefghijklmnop");
-    CHECK(widestDecimal.view().size() == 78);
+          == "\xe2\x89\x88" "-56713727820156410577229101238628035242.666666666666666667 "
+             "abcdefghijklmnopqrstuvwxyz012345");
+    CHECK(widestDecimal.view().size() == 94);
+}
+
+// ---- a quantity's own decimal places ----
+
+namespace
+{
+
+// Invented: milliamperes, declared to whole milliamperes, and a quantity in
+// them that declares one place of its own.
+inline constexpr formula::Unit Milliampere { .dimension = dim::Current,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .symbolText = formula::symbol("mA"),
+                                             .decimals = 0 };
+struct FineCurrent: formula::Quantity<FineCurrent, "I_f", "a current read to a tenth of a milliampere", Milliampere,
+                                      DecimalPlaces { 1 }>
+{
+};
+struct CoarseCurrent: formula::Quantity<CoarseCurrent, "I_c", "a current read to whole milliamperes", Milliampere>
+{
+};
+
+} // namespace
+
+TEST_CASE("a measured value is written to the places its quantity declares", "[number_text][decimals]")
+{
+    constexpr NumberStyle paddedExact = NumberStyle::exact_decimal(DecimalPadding::Padded);
+    constexpr NumberStyle evenApproximation = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
+
+    // 37/3 mA is 12.333... mA: rounded, to one place and to none.
+    STATIC_REQUIRE(formula::number_text(Measured<FineCurrent> { Rational { 37, 3 } }, evenApproximation)
+                   == "\xe2\x89\x88" "12.3 mA");
+    STATIC_REQUIRE(formula::number_text(Measured<CoarseCurrent> { Rational { 37, 3 } }, evenApproximation)
+                   == "\xe2\x89\x88" "12 mA");
+    // An exact decimal is never cut short, whatever the places.
+    STATIC_REQUIRE(formula::number_text(Measured<FineCurrent> { Rational { 1234, 100 } }, evenApproximation)
+                   == "12.34 mA");
+    STATIC_REQUIRE(formula::number_text(Measured<CoarseCurrent> { Rational { 1234, 100 } }, evenApproximation)
+                   == "12.34 mA");
+    // Padded to the places each declares.
+    STATIC_REQUIRE(formula::number_text(Measured<FineCurrent> { Rational { 12 } }, paddedExact) == "12.0 mA");
+    STATIC_REQUIRE(formula::number_text(Measured<CoarseCurrent> { Rational { 12 } }, paddedExact) == "12 mA");
 }

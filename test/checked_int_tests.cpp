@@ -289,5 +289,9 @@ TEST_CASE("the helpers that read an integer of either width", "[checked-int]")
     STATIC_REQUIRE(formula::detail::decimal_digits(Int128 { 0 }) == 1);
     STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 18)
                    == std::optional<Int128> { Int128 { 3'000'000'000'000'000'000LL } });
-    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 19) == std::nullopt);
+    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 3 }, 19)
+                   == std::optional<Int128> { Int128 { 3'000'000'000'000'000'000LL } * Int128 { 10 } });
+    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 1 }, 38) == formula::detail::pow10_wide(38));
+    STATIC_REQUIRE(formula::detail::mul_pow10(Int128 { 1 }, 39) == std::nullopt);
+    STATIC_REQUIRE(formula::detail::pow10_wide(-1) == std::nullopt);
 }

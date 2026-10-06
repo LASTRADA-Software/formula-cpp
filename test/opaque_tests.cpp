@@ -1145,6 +1145,94 @@ TEST_CASE("a quotient of two units is not offered when its dimension would need 
     CHECK(tariff->magnitudeDenominator == 3600000);
 }
 
+TEST_CASE("a quotient of two units is offered only while its symbol fits a Symbol", "[opaque][trace]")
+{
+    // A mass over a volume, spelled in 15 bytes each: with the slash, 31
+    // bytes, the most a Symbol holds before its terminator.
+    constexpr formula::Unit sampleMass { .dimension = formula::dim::Mass,
+                                         .symbolText = formula::symbol("AcmeSampleGrams") };
+    constexpr formula::Unit vialVolume { .dimension = formula::dim::Volume,
+                                         .symbolText = formula::symbol("AcmeVialVolumes") };
+    std::optional<formula::Unit> const fits = formula::detail::unit_quotient(sampleMass, vialVolume);
+    REQUIRE(fits.has_value());
+    CHECK(formula::view(fits->symbolText) == "AcmeSampleGrams/AcmeVialVolumes");
+    CHECK(formula::view(fits->symbolText).size() == formula::SymbolCapacity - 1);
+    CHECK(fits->dimension == formula::dim::Mass / formula::dim::Volume);
+
+    // One byte more would leave no room for the terminator: no quotient is
+    // offered, rather than a truncated symbol.
+    constexpr formula::Unit longerMass { .dimension = formula::dim::Mass,
+                                         .symbolText = formula::symbol("AcmeSampleGrams2") };
+    CHECK_FALSE(formula::detail::unit_quotient(longerMass, vialVolume).has_value());
+}
+
+TEST_CASE("a bracketed quotient, and a quotient's key, are offered only while they fit a Symbol", "[opaque][trace]")
+{
+    // The divisor is more than one unit word, so it is bracketed, and both
+    // brackets count: 15 + 1 + 13 + 2 bytes is 31, the most a Symbol holds.
+    constexpr formula::Unit sampleMass { .dimension = formula::dim::Mass,
+                                         .symbolText = formula::symbol("AcmeSampleGrams") };
+    constexpr formula::Unit vialVolume { .dimension = formula::dim::Volume,
+                                         .symbolText = formula::symbol("Acme.VialVols") };
+    std::optional<formula::Unit> const fits = formula::detail::unit_quotient(sampleMass, vialVolume);
+    REQUIRE(fits.has_value());
+    CHECK(formula::view(fits->symbolText) == "AcmeSampleGrams/(Acme.VialVols)");
+    CHECK(formula::view(fits->symbolText).size() == formula::SymbolCapacity - 1);
+
+    // One byte more, and no quotient is offered.
+    constexpr formula::Unit longerMass { .dimension = formula::dim::Mass,
+                                         .symbolText = formula::symbol("AcmeSampleGrams2") };
+    CHECK_FALSE(formula::detail::unit_quotient(longerMass, vialVolume).has_value());
+
+    // The key is held to the same limit on its own, brackets and all: a short
+    // symbol with a long key gives a quotient whose key is 31 bytes ...
+    constexpr formula::Unit keyedMass { .dimension = formula::dim::Mass,
+                                        .symbolText = formula::symbol("AcmeMass"),
+                                        .asciiText = formula::symbol("AcmeSampleGrams") };
+    std::optional<formula::Unit> const keyFits = formula::detail::unit_quotient(keyedMass, vialVolume);
+    REQUIRE(keyFits.has_value());
+    CHECK(formula::view(keyFits->symbolText) == "AcmeMass/(Acme.VialVols)");
+    CHECK(formula::view_ascii(*keyFits) == "AcmeSampleGrams/(Acme.VialVols)");
+    CHECK(formula::view_ascii(*keyFits).size() == formula::SymbolCapacity - 1);
+
+    // ... and a key one byte longer refuses the quotient, though its symbol
+    // would still fit.
+    constexpr formula::Unit longerKeyedMass { .dimension = formula::dim::Mass,
+                                              .symbolText = formula::symbol("AcmeMass"),
+                                              .asciiText = formula::symbol("AcmeSampleGrams2") };
+    CHECK_FALSE(formula::detail::unit_quotient(longerKeyedMass, vialVolume).has_value());
+}
+
+TEST_CASE("unit_quotient: a quotient of keyed units carries a quotient key", "[trace][unit][ascii]")
+{
+    std::optional<formula::Unit> const perSecond = formula::detail::unit_quotient(unit::Micrometre, unit::Second);
+    REQUIRE(perSecond.has_value());
+    REQUIRE(formula::view(perSecond->symbolText) == "\xc2\xb5m/s");
+    REQUIRE(formula::view_ascii(*perSecond) == "um/s");
+
+    // Only the divisor has a key: the key is built from both, and the
+    // display symbol keeps the micro sign.
+    std::optional<formula::Unit> const kilogramPerMicrometre =
+        formula::detail::unit_quotient(unit::Kilogram, unit::Micrometre);
+    REQUIRE(kilogramPerMicrometre.has_value());
+    REQUIRE(formula::view(kilogramPerMicrometre->symbolText) == "kg/\xc2\xb5m");
+    REQUIRE(formula::view_ascii(*kilogramPerMicrometre) == "kg/um");
+
+    // Neither operand has a key of its own: the quotient has none either, and view_ascii reads its symbol.
+    std::optional<formula::Unit> const metrePerSecond = formula::detail::unit_quotient(unit::Metre, unit::Second);
+    REQUIRE(metrePerSecond.has_value());
+    REQUIRE(formula::view(metrePerSecond->asciiText).empty());
+    REQUIRE(formula::view_ascii(*metrePerSecond) == "m/s");
+
+    // A key holding a slash reads two ways after another, as a symbol does:
+    // no quotient is offered.
+    constexpr formula::Unit slashedKey { .dimension = formula::dim::Mass / formula::dim::Volume,
+                                         .symbolText = formula::symbol("\xc2\xb5gL"),
+                                         .asciiText = formula::symbol("ug/L") };
+    CHECK_FALSE(formula::detail::unit_quotient(slashedKey, unit::Second).has_value());
+    CHECK_FALSE(formula::detail::unit_quotient(unit::Metre, slashedKey).has_value());
+}
+
 TEST_CASE("an output's marker is judged by its operand step's kind, not by a row", "[opaque][trace]")
 {
     // A call's step and its output's, built by hand with no side tables: the
