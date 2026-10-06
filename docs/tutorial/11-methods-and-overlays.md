@@ -35,7 +35,8 @@ its three parts, in that order:
 - `formula::variants(...)` lists the variants, each written
   `formula::variant<Tag>(expression)`. The cube's strength is the load over
   `a * b`, the cylinder's the load over `pi * d^2 / 4`. `formula::pi` is the
-  library's exact fraction for pi, 245850922/78256779. Every variant must
+  library's fixed fraction for pi, 245850922/78256779, within 8e-17 of it;
+  the trace shows which number was used. Every variant must
   measure the same dimension, here a stress.
 - `formula::rounding_rule<tenthMpa>()` rounds whichever variant ran, to one
   decimal place of a megapascal, ties away from zero.
@@ -58,7 +59,7 @@ the method has no variant for does not compile.
 ## The specimens
 
 A cube of 150 mm by 150 mm carried 675 kN, and a cylinder of 150 mm diameter
-carried 530 kN:
+carried 540 kN:
 
 ```cpp
 --8<-- "examples/tutorial/11_methods_and_overlays.cpp:specimens"
@@ -70,10 +71,11 @@ Each environment holds only what its variant reads.
 --8<-- "examples/tutorial/11_methods_and_overlays.cpp:base"
 ```
 
-The cube's strength is 675 kN over 22500 mm2, exactly 30 MPa. The cylinder's
-loaded area is pi times 22500 mm2 over 4, about 17671.5 mm2, and its strength
-530 kN over that area, about 29.99 MPa, which the method's rule rounds to
-30.0 MPa, written 30 MPa. The last two steps of each trace say whose rule
+The cube's strength is 675 kN over 22500 mm², exactly 30 MPa. The cylinder's
+loaded area is pi times 22500 mm² over 4, about 17671.5 mm², and its strength
+540 kN over that area, about 30.56 MPa, which the method's rule rounds to
+30.6 MPa; the trace writes it as the exact fraction 153/5 MPa. The last two
+steps of each trace say whose rule
 rounded the value, `(method default)`, and which variant ran, `variant Cube
 (1st of 2), selected by tag`.
 
@@ -102,10 +104,12 @@ not compile. The overlaid method is run exactly like the base method:
 --8<-- "examples/tutorial/11_methods_and_overlays.cpp:jurisdiction"
 ```
 
-Both strengths round to 30 MPa under the jurisdiction's rule too. What
-differs is the rounding step: it reads `rounded to 0 dp`, and names the
-jurisdiction's overlay and its citation in place of `(method default)`. A
-reader of the trace can see which rule applied and where it comes from.
+The cube's strength is a whole number of megapascals, so it is 30 MPa under
+either rule. The cylinder's is not: about 30.56 MPa rounds to 31 MPa under
+the jurisdiction's rule, where the base method gives 30.6 MPa. The rounding
+step of each trace reads `rounded to 0 dp`, and names the jurisdiction's
+overlay and its citation in place of `(method default)`, so a reader of the
+trace can see which rule applied and where it comes from.
 
 ## Output
 

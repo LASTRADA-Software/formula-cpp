@@ -86,7 +86,7 @@ int main()
     // --8<-- [start:specimens]
     auto const cube = formula::environment(
         formula::Measured<Load> { 675 }, formula::Measured<SideA> { 150 }, formula::Measured<SideB> { 150 });
-    auto const cylinder = formula::environment(formula::Measured<Load> { 530 }, formula::Measured<Diameter> { 150 });
+    auto const cylinder = formula::environment(formula::Measured<Load> { 540 }, formula::Measured<Diameter> { 150 });
     // --8<-- [end:specimens]
 
     // --8<-- [start:base]
