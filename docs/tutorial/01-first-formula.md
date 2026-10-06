@@ -12,7 +12,7 @@ in `cmake/CPM.cmake`, these lines fetch it and link a program against it:
 
 ```cmake
 include(cmake/CPM.cmake)
-CPMAddPackage("gh:LASTRADA-Software/formula-cpp@0.4.0")
+CPMAddPackage("gh:LASTRADA-Software/formula-cpp@0.5.0")
 
 add_executable(strength main.cpp)
 target_compile_features(strength PRIVATE cxx_std_23)
