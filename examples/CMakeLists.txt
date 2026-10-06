@@ -325,4 +325,9 @@ add_test(NAME docs.display-snippets
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
 
-formula_add_example(cycling_speed cycling_speed.cpp "all checks passed: yes")
+# README.md and docs/index.md quote this program's three speeds at 250 W
+# verbatim, and say that the descent at no power has no real answer. Pinned
+# here, in the order the program prints them, in a bracket argument for the
+# reason the constraints example above gives: the literal `.` and `(...)`
+# around each speed need escaping in the regex.
+formula_add_example(cycling_speed cycling_speed.cpp [==[flat road, asphalt, 250 W: +10\.332 m/s \(37\.2 km/h\).*3 % climb, asphalt, 250 W: +6\.783 m/s \(24\.4 km/h\).*flat road, cobbles, 250 W: +8\.335 m/s \(30\.0 km/h\).*8 % descent, asphalt, 0 W: +argument outside the domain.*all checks passed: yes]==])
