@@ -4,3 +4,5 @@
 #   <path relative to the repository root>|<the line, exactly, trimmed>|<why it is not history>
 #
 # Keep it short: every entry is a place the check does not look.
+
+docs/statistics.md|40 g, the limit 0.9 g, and the same two determinations no longer agree:|compares two computations on one set of data: with the level rounded first, the two determinations fail the limit they meet unrounded

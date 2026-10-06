@@ -329,7 +329,7 @@ then says beside each verdict that it was the jurisdiction's; see
 
 ## Every citation here is invented
 
-Every citation used to demonstrate constraints on this page and in
+Every citation that demonstrates constraints on this page and in
 `examples/constraints.cpp` names a fictional `Example Standard`, never a
 real one, for the reason [Citations and rendering](citations.md) gives in
 full: a real standard's clause numbers and thresholds are copyrighted

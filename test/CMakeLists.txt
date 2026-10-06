@@ -3023,6 +3023,14 @@ add_test(NAME hygiene.docs-current-state-self-test
             -D "WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/docs-current-state-self-test"
             -P "${PROJECT_SOURCE_DIR}/cmake/TestDocsCurrentState.cmake")
 
+# User documentation -- README.md, docs/ (not docs/superpowers/) and the doc
+# comments that form the API reference -- describes the library as it is now.
+# History belongs in CHANGELOG.md. See CONTRIBUTING.md, "Documentation".
+add_test(NAME hygiene.docs-current-state
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckDocsCurrentState.cmake")
+
 # A compiler diagnostic quoted in docs/ names a header and a line number, and
 # the number goes stale the moment anyone inserts a line above it -- which
 # happened twice in this repository before anything checked. See the script's

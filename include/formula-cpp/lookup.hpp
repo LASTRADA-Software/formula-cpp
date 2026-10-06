@@ -666,14 +666,12 @@ namespace detail
 ///    before it, refuses first. `method_lookup_tests.cpp` has a row for each
 ///    member, and fails on cl too for every one but `Method::variantSet`.
 ///
-/// **`corrections` is no longer a range, and `operator[]` is const and returns
-/// by value.** So `for (auto& correction: node.corrections)`,
+/// **`corrections` is not a range, and `operator[]` is const and returns by
+/// value.** So `for (auto& correction: node.corrections)`,
 /// `auto& correction = node.corrections[index]` and
-/// `node.corrections[index] = ...` no longer compile, where they did while the
-/// member was a `std::array`. `values` stays public and is the route for all
-/// three -- this is a transparent aggregate of a table's contents, not an
-/// encapsulation. Written down because **no in-tree consumer needed changing**,
-/// which is exactly why nothing in this repository will remind anybody.
+/// `node.corrections[index] = ...` do not compile. `values` is public and is
+/// the route for all three -- this is a transparent aggregate of a table's
+/// contents, not an encapsulation.
 ///
 /// A named type with two arity-disjoint constructor templates rather than
 /// one constrained by `requires` alone: the *matching*-arity constructor
@@ -1607,8 +1605,7 @@ namespace detail
     /// choice affects is how large the intermediates get, which is to say how
     /// far the computation gets before it has to report `Overflow`.
     ///
-    /// **Neither order dominates**, and the comment that used to stand here
-    /// claimed one did. Both directions:
+    /// **Neither order dominates.** Both directions:
     ///
     ///  - keys `{0, 10}` with values `{0, 2^126}`, asked at 5: dividing first
     ///    answers `2^125` exactly; multiplying first would form `5 * 2^126` and
@@ -1631,8 +1628,7 @@ namespace detail
     /// Both of those tables are in `lookup_tests.cpp`, asserted as behaviour --
     /// one showing the chosen order returning a value the rejected order could
     /// not, one showing the chosen order refusing a table the rejected order
-    /// could have answered. The order was previously pinned by nothing at all:
-    /// the entire suite compiled unchanged under either.
+    /// could have answered.
     ///
     /// `highKey - lowKey` cannot be zero: `RequireValidBreakpointTable` has
     /// already refused a table whose rows do not strictly ascend, so there is

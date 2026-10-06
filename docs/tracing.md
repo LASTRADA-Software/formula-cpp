@@ -965,7 +965,7 @@ traced, and its line says its inside is not shown -- see
 
 ## Every citation here is invented
 
-Every citation used to demonstrate tracing on this page -- and in
+Every citation that demonstrates tracing on this page -- and in
 `examples/tracing.cpp` and the gallery's derivation -- names a fictional
 `Example Standard`, never a real one, for the reason `docs/citations.md` gives
 in full: a real standard's clause numbers and equations are copyrighted

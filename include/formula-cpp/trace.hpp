@@ -578,7 +578,8 @@ inline constexpr bool formats_by_describe<Branch> = true;
 ///
 /// Zero-initialises to `Recorded`, which is right for both sides of every
 /// step with two operands, and for every step that is not binary; a step
-/// built by hand therefore renders as it did before these existed.
+/// built by hand that leaves both sides unset therefore renders with both
+/// operands recorded.
 ///
 /// `RecordingSink` fills `Step::leftOperand` and `Step::rightOperand` in;
 /// like every other field of a `Step`, they are public data, and a side set
@@ -1019,9 +1020,9 @@ struct Step
     /// A second unit this step needs to name, which is **not** the unit its
     /// own value is in. Kept separate from `unit` above for the reason
     /// documented there: this one deliberately does not share `dimension`, so
-    /// it is never used to convert `value` -- it is read only by the
-    /// renderer. A default-constructed `Unit` (dimension `Scalar`, empty
-    /// symbol) for every step that has no second unit to name.
+    /// nothing converts `value` with it -- it is read only by the renderer. A
+    /// default-constructed `Unit` (dimension `Scalar`, empty symbol) for every
+    /// step that has no second unit to name.
     ///
     ///  - For `NumericValue`: the unit the escape hatch read its number in --
     ///    `Megapascal` for `numeric_value_of<Megapascal, "...">(...)`.

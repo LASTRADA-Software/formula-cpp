@@ -140,7 +140,7 @@ enum class OpaqueFailure : std::uint8_t
 enum class OpaqueValues : std::uint8_t
 {
     /// Every output is a `Rational`, exactly: `opaque_output`'s route. The zero
-    /// value, so a call described before this existed reads as it did.
+    /// value, so a call described without naming its values reads as exact.
     Exact,
     /// The call was evaluated for an output rounded where it is used
     /// (`rounded_output`): no output exists as a `Rational` until it is

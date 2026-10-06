@@ -212,14 +212,13 @@ struct Describe<T>
 /// primary template above for why that took a redesign.
 ///
 /// All four members `Measured` and `checked_convert_to` actually read, not
-/// merely the two that were enough to satisfy the concept's own author. A type
-/// specialising only `symbol` and `unit` used to pass this concept, pass
-/// `RequireDescribed`, and only then fail deep inside `checked_convert_to` with
-/// the compiler's own "no member named 'dimension'" -- exactly the raw
-/// diagnostic `RequireDescribed` exists to replace, delivered from the one
-/// place it was supposed to be caught first. Measured: a `Describe`
-/// specialisation naming only `symbol` and `unit` satisfied the two-member
-/// concept and only broke three calls deeper.
+/// merely two of them. Were the concept to ask only for `symbol` and `unit`, a
+/// type specialising those two would pass it, pass `RequireDescribed`, and
+/// only then fail deep inside `checked_convert_to` with the compiler's own "no
+/// member named 'dimension'" -- exactly the raw diagnostic `RequireDescribed`
+/// exists to replace, delivered from the one place it is supposed to be caught
+/// first. Measured: a `Describe` specialisation naming only `symbol` and
+/// `unit` satisfies a two-member concept and breaks only three calls deeper.
 template <typename T>
 concept Described = requires {
     { Describe<T>::symbol } -> std::convertible_to<std::string_view>;

@@ -91,7 +91,7 @@
 /// So a quantity defined twice, one definition reading itself, is refused
 /// only as defined twice; and a definition that reads itself and also sits
 /// on a longer cycle is refused as reading itself, the cycle judged once it
-/// no longer does. Two definitions that each read themselves are two
+/// stops reading itself. Two definitions that each read themselves are two
 /// mistakes, and draw a message each.
 ///
 /// A calculation holding a definition refused where it was written is asked

@@ -268,8 +268,8 @@ struct RequireEnumeratorNameSpelling
 /// **`volatile` is deliberately not checked.** Asking whether
 /// `EnumeratorName<Shape volatile>` is specialized instantiates it, and for
 /// exactly that generic bridge that declares `of(Shape volatile)`: a
-/// volatile-qualified parameter, which clang and clang-cl report as
-/// deprecated (`-Wdeprecated-volatile`, on by default); g++ 13 and cl stay
+/// volatile-qualified parameter, which C++20 deprecates and clang and
+/// clang-cl warn about (`-Wdeprecated-volatile`, on by default); g++ 13 and cl stay
 /// quiet. The check would turn an ordinary bridge into a build failure under
 /// `-Werror` on clang, to catch a specialization nobody writes. Measured on
 /// all four; with this library's own warning flags it failed to compile the

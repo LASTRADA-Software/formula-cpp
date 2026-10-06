@@ -616,7 +616,7 @@ net draw typed in:         total 89.37 EUR, net draw 250 kWh, recomputed 5, reus
 
 The value typed in stands in place of the calculated one: what is built on it
 is calculated again from it -- five values, for 89.37 EUR -- its source reads
-`ManuallyEntered`, and what the net draw was calculated from is no longer
+`ManuallyEntered`, and what the net draw was calculated from is not
 read. `is_overridden<NetDraw>()` says whether it stands. The grid cost's
 derivation reads it as typed in, and the net draw's own block is one line
 saying what it stands in place of. Cut short at five lines, the derivation

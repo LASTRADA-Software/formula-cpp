@@ -242,7 +242,7 @@ struct Documentation
 
 namespace detail
 {
-    /// A distinct address per @tparam Q, used to deduplicate the symbol table
+    /// A distinct address per @tparam Q, which deduplicates the symbol table
     /// by quantity *type* without reaching for RTTI (`typeid`, `<typeindex>`).
     ///
     /// **Writable, and deliberately not `constexpr` or `const`.** Identical
@@ -886,7 +886,7 @@ namespace detail
     }
 
     /// The escape hatch still reads a variable, even though what it produces
-    /// no longer carries a dimension.
+    /// carries no dimension.
     template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
     void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node)
     {

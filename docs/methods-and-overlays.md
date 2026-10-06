@@ -548,7 +548,7 @@ west: 2 constraint(s)
 ```
 
 **`with_constraints` replaces the constraints, it does not add to them.** The
-west's method no longer checks the base method's 47.3 kN. A jurisdiction that
+west's method does not check the base method's 47.3 kN. A jurisdiction that
 keeps a base check restates it in its own set, with its own citation. An
 overlay can also leave fewer constraints than the method had, or none:
 `with_constraints(formula::constraints(), citation)` is accepted, because a

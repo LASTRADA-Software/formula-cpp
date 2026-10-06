@@ -461,12 +461,12 @@ namespace detail
     /// A `Conditional` step, in the same infix shape `render()` gives the
     /// `WhenNode` it came from: `if #1 > #2 then #3`.
     ///
-    /// It used to read `when(#1, #2, #3)`, which is positionally identical to
-    /// the public `when(predicate, thenBranch, elseBranch)` and means
-    /// something else entirely -- `(predicate lhs, predicate rhs, the branch
-    /// that ran)`. A reader who had just met the API mapped the three slots
-    /// onto it and concluded the *then* value was the second one, then read a
-    /// `[then]` suffix next to a number that came from the third. A notation
+    /// Not `when(#1, #2, #3)`, which is positionally identical to the public
+    /// `when(predicate, thenBranch, elseBranch)` and means something else
+    /// entirely -- `(predicate lhs, predicate rhs, the branch that ran)`. A
+    /// reader who has just met the API maps the three slots onto it and
+    /// concludes the *then* value is the second one, then reads a `[then]`
+    /// suffix next to a number that came from the third. A notation
     /// that needs prose to decode is not a smaller version of the problem; it
     /// is the problem. This shape needs none: it is the one `render()`
     /// already writes, minus the branch that did not run.

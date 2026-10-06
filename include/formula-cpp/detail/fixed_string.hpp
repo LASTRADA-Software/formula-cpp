@@ -47,8 +47,8 @@ struct FixedString
         // The parameter is any char array, not only a string literal, and
         // `view()` below drops the last byte on the assumption that it is a
         // terminator. Given `char const raw[] = {'a','b','c'}` that assumption
-        // is false and the 'c' disappears in silence -- measured on all three
-        // compilers before this check existed. Refuse instead.
+        // is false and, without this check, the 'c' disappears in silence --
+        // measured on all three compilers. Refuse instead.
         if (literal[N - 1] != '\0')
             formula_fixed_string_must_be_null_terminated();
 

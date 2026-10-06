@@ -466,7 +466,7 @@ namespace detail
     /// can be sequenced. The agreement rule is asked **only once every
     /// argument is a variant**: a non-variant has no `dimension` to compare,
     /// and asking anyway buries the one message that matters. Measured on cl
-    /// 19.51 before this gate existed, `variants(42, 43)` reported six errors
+    /// 19.51 without this gate, `variants(42, 43)` reports six errors
     /// -- `C2825`, `C2510` and `C2065`, once for `First` and once for `Other`
     /// -- every one of them the compiler's own wording for "that has no such
     /// member", and not one of them ours. `method_variants_agreement_gated.cpp`
@@ -1476,12 +1476,12 @@ namespace detail
     /// Fails to compile when a method's rounding rule rounds in a unit that
     /// does not measure the dimension its variants report.
     ///
-    /// A `Megapascal` rule on a method whose variants measure a length used to
-    /// be accepted by `method(...)` and refused only inside `evaluate_method`,
-    /// by the rounding node it builds -- so a method nobody evaluated in a test
-    /// would ship broken. Templated on the variants pack and the rule, the two
-    /// places the two dimensions come from, so that both appear in the
-    /// diagnostic.
+    /// A `Megapascal` rule on a method whose variants measure a length is
+    /// refused where the method is built, rather than only inside
+    /// `evaluate_method` by the rounding node it builds, which would let a
+    /// method nobody evaluated in a test ship broken. Templated on the variants
+    /// pack and the rule, the two places the two dimensions come from, so that
+    /// both appear in the diagnostic.
     template <typename Vs, typename Rounding>
     struct RequireRoundingRuleMeasuresVariants
     {
@@ -1828,10 +1828,9 @@ namespace detail
 ///
 /// **It rounds exactly as a `RoundNode` does**, and derives from one, so the
 /// unit, the places and the mode are stated once. What it adds is provenance.
-/// A method's rule used to be applied through an ordinary `rounded<>` node,
-/// traced as an ordinary `Round` step, which says to how many places a value
-/// was rounded but not whose rule that was: the method's author's, or a
-/// jurisdiction's. A trace records this node as a
+/// An ordinary `rounded<>` node is traced as an ordinary `Round` step, which
+/// says to how many places a value was rounded but not whose rule that was:
+/// the method's author's, or a jurisdiction's. A trace records this node as a
 /// `StepKind::RoundingRuleApplied` step (`trace.hpp`), which says both.
 ///
 /// **Only `evaluate_method` builds one**, around the variant it selected and
