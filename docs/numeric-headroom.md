@@ -155,6 +155,7 @@ Each program's largest integers over everything it evaluates at run time.
 
 | program | numerator bits | denominator bits | intermediate bits | headroom |
 |---|---|---|---|---|
+| example `readme` | 25 | 20 | 25 | 102 |
 | example `simple` | 12 | 12 | 12 | 115 |
 | example `exact_numbers` | 9 | 10 | 9 | 117 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 105 |

@@ -40,6 +40,36 @@ function(formula_add_example name source expectedOutput)
         PASS_REGULAR_EXPRESSION "${expectedOutput}.*overflow census: ")
 endfunction()
 
+# An example whose whole output a page includes: built and run as every
+# example is, and its output compared, byte for byte, with the
+# `<name>.expected.txt` beside its source. The pass regex given to
+# formula_add_example is "." -- any output -- because the comparison is the
+# real check, and restating the output as a regex would be a second copy to
+# keep in step.
+function(formula_add_pinned_example name source)
+    formula_add_example(${name} "${source}" ".")
+    string(REGEX REPLACE "\\.cpp$" ".expected.txt" expected "${source}")
+    add_test(NAME "example.${name}.output"
+        COMMAND "${CMAKE_COMMAND}"
+                -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-${name}>"
+                -D "EXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/${expected}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/CheckExpectedOutput.cmake")
+endfunction()
+
+# The README's program: the shortest complete use of the library. README.md
+# shows its source and output, pinned below; docs/index.md includes both.
+formula_add_pinned_example(readme readme.cpp)
+
+# The output check must catch a difference, not only pass on a match: run
+# against an expected file that says 31 MPa, it must report one.
+add_test(NAME example.readme.output-detects-a-difference
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-readme>"
+            -D "EXPECTED=${PROJECT_SOURCE_DIR}/test/fixtures/readme-wrong.expected.txt"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckExpectedOutput.cmake")
+set_tests_properties(example.readme.output-detects-a-difference PROPERTIES
+    PASS_REGULAR_EXPRESSION "differs from")
+
 formula_add_example(simple simple.cpp "s = 0.03 \\(derived\\)")
 formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes.*all checks passed: yes")
 formula_add_example(dimensions_and_units dimensions_and_units.cpp "all checks passed: yes")
