@@ -83,6 +83,8 @@ formula_add_pinned_example(tutorial_04_missing_and_entered tutorial/04_missing_a
 formula_add_pinned_example(tutorial_05_rounding tutorial/05_rounding.cpp)
 formula_add_pinned_example(tutorial_06_constraints tutorial/06_constraints.cpp)
 formula_add_pinned_example(tutorial_07_documentation tutorial/07_documentation.cpp)
+formula_add_pinned_example(tutorial_08_tracing tutorial/08_tracing.cpp)
+formula_add_pinned_example(tutorial_09_worksheets tutorial/09_worksheets.cpp)
 
 formula_add_example(simple simple.cpp "s = 0.03 \\(derived\\)")
 formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes.*all checks passed: yes")

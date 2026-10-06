@@ -34,5 +34,7 @@ an invented `Example Standard`.
 5. [Rounding](05-rounding.md) -- rounding where the method says, in the mode it names.
 6. [Constraints](06-constraints.md) -- rules a specimen must meet, and the four outcomes of checking one.
 7. [Citations, rendering and documentation](07-documentation.md) -- where a formula comes from, written out as text, LaTeX and a symbol table.
+8. [Tracing](08-tracing.md) -- how each number was reached, step by step.
+9. [Calculations and worksheets](09-worksheets.md) -- the whole test as one calculation, recalculated as inputs change.
 
 ## Advanced track

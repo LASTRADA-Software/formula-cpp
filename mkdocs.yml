@@ -52,6 +52,8 @@ nav:
       - 5. Rounding: tutorial/05-rounding.md
       - 6. Constraints: tutorial/06-constraints.md
       - 7. Citations, rendering and documentation: tutorial/07-documentation.md
+      - 8. Tracing: tutorial/08-tracing.md
+      - 9. Calculations and worksheets: tutorial/09-worksheets.md
   - Guides:
       - Numbers: numbers.md
       - Numeric headroom: numeric-headroom.md
