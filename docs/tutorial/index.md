@@ -32,5 +32,7 @@ an invented `Example Standard`.
 3. [Exact numbers](03-exact-numbers.md) -- why the results are exact, and how to round them for reading.
 4. [Missing and entered values](04-missing-and-entered.md) -- a measurement nobody took, and a value typed in.
 5. [Rounding](05-rounding.md) -- rounding where the method says, in the mode it names.
+6. [Constraints](06-constraints.md) -- rules a specimen must meet, and the four outcomes of checking one.
+7. [Citations, rendering and documentation](07-documentation.md) -- where a formula comes from, written out as text, LaTeX and a symbol table.
 
 ## Advanced track

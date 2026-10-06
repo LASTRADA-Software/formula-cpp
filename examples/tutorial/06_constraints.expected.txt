@@ -1,0 +1,17 @@
+specimen 2, one rule:
+  b <= 151 mm: violated (reject the specimen: side b out of tolerance)
+specimen 1, 150.2 mm by 149.8 mm:
+  a >= 149 mm: satisfied
+  a <= 151 mm: satisfied
+  b >= 149 mm: satisfied
+  b <= 151 mm: satisfied
+specimen 2, 150.2 mm by 152.5 mm:
+  a >= 149 mm: satisfied
+  a <= 151 mm: satisfied
+  b >= 149 mm: satisfied
+  b <= 151 mm: violated (reject the specimen: side b out of tolerance)
+specimen 3, side b not measured:
+  a >= 149 mm: satisfied
+  a <= 151 mm: satisfied
+  b >= 149 mm: not checked
+  b <= 151 mm: not checked

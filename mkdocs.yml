@@ -50,6 +50,8 @@ nav:
       - 3. Exact numbers: tutorial/03-exact-numbers.md
       - 4. Missing and entered values: tutorial/04-missing-and-entered.md
       - 5. Rounding: tutorial/05-rounding.md
+      - 6. Constraints: tutorial/06-constraints.md
+      - 7. Citations, rendering and documentation: tutorial/07-documentation.md
   - Guides:
       - Numbers: numbers.md
       - Numeric headroom: numeric-headroom.md
