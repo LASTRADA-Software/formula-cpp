@@ -6,6 +6,18 @@ change is recorded here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
+The fifth release. A tutorial on the documentation site builds a compressive-strength test step by step, and the README
+is now a short landing page. Unit symbols and ASCII keys can be built from run-time text with `checked_symbol()` and
+`checked_ascii_symbol()`, and a unit whose symbol is not ASCII declares a stable ASCII key to serialise it by. A unit
+can declare a minimum or a maximum alone, and `checked_within` checks a value against limits held at run time. A
+quantity can read to its own decimal places, `same_unit` says whether two units are the same unit, and
+`parse_decimal_text` reads run-time decimal text into its exact value and the places it was typed to.
+`checked_transform` and `checked_combine` apply a callback that can fail to measured values, and a formula bound with
+`yields` can be used inside another formula. A workflow reports the test suite's coverage to Codecov. Some changes break
+code written for 0.4.0; each is marked **Breaking:** under Changed.
+
 ### Added
 
 - `examples/cycling_speed.cpp`, a cyclist's steady-state speed from power. It calculates the
@@ -871,7 +883,8 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   for 205.5 g, and so were a curve over it and a value read off that curve. Each now reads in the
   series' unit, `411/2 g`, when that unit has a symbol and no offset.
 
-[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.5.0
 [0.4.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.4.0
 [0.3.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.2.0

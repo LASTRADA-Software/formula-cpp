@@ -83,7 +83,7 @@ New to the library? Start with the [tutorial](https://lastrada-software.github.i
 ### CPM
 
 ```cmake
-CPMAddPackage("gh:LASTRADA-Software/formula-cpp@0.4.0")
+CPMAddPackage("gh:LASTRADA-Software/formula-cpp@0.5.0")
 target_link_libraries(your_target PRIVATE formula-cpp::formula-cpp)
 ```
 
