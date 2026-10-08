@@ -123,7 +123,8 @@ struct TraceRenderOptions
     /// value, a decimal, so it reads without `≈` in every style, its mode in
     /// brackets after it. A value the style cannot spell in its
     /// unit -- one padded or rounded in a unit whose declared decimals lie
-    /// outside -18 to 18, say -- reads `(not shown: ...)`, as a value its unit
+    /// outside the -18 to 18 text is written at, say -- reads
+    /// `(not shown: ...)`, as a value its unit
     /// cannot show does; a bound or a limit the author typed falls back to its
     /// exact fraction instead.
     ///

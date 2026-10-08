@@ -270,13 +270,15 @@ namespace detail
     static_assert(LongestNumberText <= NumberTextCapacity,
                   "formula: NumberTextCapacity is too small for the longest number this library spells");
 
-    /// 10^18, the finest scale this header writes a decimal on: rounding's
-    /// places stop at 18, as `DecimalPlaces` does, though `Rational::Int`
-    /// holds powers of ten up to 10^38.
+    /// 10^18, the finest scale this header writes a decimal on: text stops at
+    /// 18 places, the most a 64-bit fraction part holds, though rounding
+    /// reaches 38 (`MaximumDecimalPlaces`) and `Rational::Int` holds powers of
+    /// ten up to 10^38.
     inline constexpr std::uint64_t ExactDecimalScale = 1'000'000'000'000'000'000ULL;
 
-    /// The places `ExactDecimalScale` spans -- also the largest
-    /// `DecimalPlaces` `checked_round` accepts.
+    /// The places `ExactDecimalScale` spans: the most decimal places text is
+    /// written at, either way -- the text layer's own limit, refused here and
+    /// in `format.hpp`, not `checked_round`'s.
     inline constexpr int ExactDecimalPlaces = 18;
 
     /// @p shownValue as an exact decimal with at least @p minimumPlaces
@@ -427,15 +429,15 @@ namespace detail
 /// `checked_round`'s arithmetic, so it can overflow where the rounding does,
 /// and it is the only one here that reports to the overflow census.
 ///
-/// @return `Overflow` for more than 18 places -- `checked_round`'s own
-///         refusal, since 10^-19 is not a representable step -- or wherever
-///         `checked_round` overflows at a negative @p places; `DomainError`
-///         for a tie under a rounding mode that is none of the seven.
-///         Nothing saturates.
+/// @return `Overflow` for places outside -18 to 18 (`ExactDecimalPlaces`)
+///         -- the text layer's own limit, though `checked_round` reaches 38
+///         -- or wherever `checked_round` overflows at a negative @p places;
+///         `DomainError` for a tie under a rounding mode that is none of the
+///         seven. Nothing saturates.
 [[nodiscard]] constexpr std::expected<NumberText, ArithmeticError> checked_decimal_text(
     Rational unrounded, DecimalPlaces places, RoundingMode roundingMode, DecimalPadding decimalPadding) noexcept
 {
-    if (places.value > detail::ExactDecimalPlaces)
+    if (places.value > detail::ExactDecimalPlaces || places.value < -detail::ExactDecimalPlaces)
         return std::unexpected { ArithmeticError::Overflow };
 
     if (places.value < 0)
@@ -554,9 +556,9 @@ namespace detail
 /// is `0.600`, `123/1000` in a unit of 1 decimal is `0.123`.
 ///
 /// @return `Overflow` when the style reads the unit's decimals -- it pads, or
-///         it approximates -- and they lie outside the -18 to 18 that
-///         `DecimalPlaces` spans, whatever the value; otherwise any error of
-///         `checked_decimal_text`.
+///         it approximates -- and they lie outside the -18 to 18 text is
+///         written at (`checked_decimal_text`), whatever the value; otherwise
+///         any error of `checked_decimal_text`.
 [[nodiscard]] constexpr std::expected<NumberText, ArithmeticError> checked_number_text(Rational shownValue,
                                                                                       NumberStyle shownStyle,
                                                                                       Unit const& shownIn) noexcept

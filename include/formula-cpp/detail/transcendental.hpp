@@ -3,7 +3,7 @@
 
 /// @file
 /// An integer kernel that encloses the natural logarithm, the decimal logarithm and the exponential of a
-/// rational: two ends between which the value certainly lies, computed in 384-bit fixed point with only
+/// rational: two ends between which the value certainly lies, computed in 448-bit fixed point with only
 /// integer operations the language defines exactly, so that no floating-point mode enters and the same
 /// inputs are meant to give the same bits, at compile time and at run time. It is what the rounded forms
 /// (`rounded_transcendental.hpp`) round: when both ends round to the same decimal, that is the rounding of
@@ -14,12 +14,12 @@
 /// - **The argument** is a/b in lowest terms, as a `Rational` holds it: |a| <= 2^127 (the magnitude of
 ///   `Int128`'s minimum) and 0 < b < 2^127. The kernel reads the two magnitudes as `UInt128` and never narrows
 ///   them.
-/// - **Two fixed points.** A value v is an integer V in `WideUnsigned<12>` (384 bits), V = floor(v 2^F): F =
+/// - **Two fixed points.** A value v is an integer V in `WideUnsigned<14>` (448 bits), V = floor(v 2^F): F =
 ///   128 fraction bits for a logarithm, whose value is below 89, and F = 192 for an exponential, whose value
 ///   can be as wide as a `Rational` -- up to 2^127 -- and must still be enclosed more narrowly than its last
 ///   kept unit. Every operation truncates a non-negative value, so a lower bound stays one; each upper bound
 ///   is the lower bound plus a slack derived here. No `<cmath>`, no floating point, no intrinsics, **and no
-///   call of the general `divmod`** (too costly in a constant evaluation over 384 bits): the scaled quotients
+///   call of the general `divmod`** (too costly in a constant evaluation over 448 bits): the scaled quotients
 ///   are long divisions over `UInt128` words, whose whole part is `u128_divmod` -- the compiler's own 128-bit
 ///   integer where it has one, portable code elsewhere, the same quotient either way -- k is a binary search,
 ///   and the series' divisors are below 2^32 (`divmod_small`).
@@ -38,33 +38,34 @@
 ///   upper = floor(upper_ln (M + 1) / 2^128) + 1, under 254 · 0.44 + 89 + 2 < 203 units apart, since
 ///   |ln(a/b)| <= ln(2^127) < 89. upper_ln is below 89 · 2^128 + 254 < 2^135 and M + 1 below 2^127, so
 ///   log10's widest product, upper_ln (M + 1), is below 2^262.
-/// - **exp(x)**, x = a/b != 0, -43 <= x <= 887/10 (the rounded forms answer outside it), in F = 192 bits.
+/// - **exp(x)**, x = a/b != 0, -89 <= x <= 887/10 (the rounded forms answer outside it), in F = 192 bits.
 ///   X = floor(|x| 2^192), exact or one below. L' = floor(ln 2 2^192). For x > 0, k is the largest integer
 ///   in [0, 127] with k (L' + 1) <= X (128 ln 2 > 887/10 bounds it), and R = X - k (L' + 1) <= r 2^192 for
-///   r = x - k ln 2; for x < 0, m is the smallest in [1, 63] with m L' >= X' (X' = X + 1 when X is inexact;
-///   63 ln 2 > 43 bounds it), R = m L' - X' <= r 2^192 for r = m ln 2 - |x|, and exp(x) = 2^-m exp(r).
-///   Either way 0 <= R < L' + 1, so r < ln 2 + 2^-184, and r 2^192 - R < 128: one unit for X, and one per
-///   multiple of ln 2's unit, k <= 127 or m <= 63. E = sum T_j, T_0 = 2^192,
+///   r = x - k ln 2; for x < 0, m is the smallest in [1, 129] with m L' >= X' (X' = X + 1 when X is inexact;
+///   129 ln 2 > 89 bounds it), R = m L' - X' <= r 2^192 for r = m ln 2 - |x|, and exp(x) = 2^-m exp(r).
+///   Either way 0 <= R < L' + 1, so r < ln 2 + 2^-184, and r 2^192 - R < 130: one unit for X, and one per
+///   multiple of ln 2's unit, k <= 127 or m <= 129. E = sum T_j, T_0 = 2^192,
 ///   T_j = floor(floor(T_{j-1} R / 2^192) / j), until T_j = 0 (by j = 43 for r < 0.7; `TaylorTermLimit` = 50
 ///   refuses a longer one), so E <= exp(R 2^-192) 2^192 <= exp(r) 2^192. T_{j-1} <= 2^192 and R <= L' <
-///   0.7 2^192, so the product T_{j-1} R is below 2^384: the kernel's widest, and the reason 192 fraction
-///   bits are the most 384 bits allow. Each T_j is short by e_j < e_{j-1} r / j + 1 < 2, and the tail after
-///   the last term is below 3, so exp(R 2^-192) 2^192 - E < 2 · 50 + 3; the 128 units of r add less than
-///   2 · 1.0001 · 128 < 257. So exp(r) 2^192 < E + 360 <= E + `ExponentialSlack` = 512: lower = E 2^k / 2^192,
+///   0.7 2^192, so the product T_{j-1} R is below 2^384. Each T_j is short by e_j < e_{j-1} r / j + 1 < 2,
+///   and the tail after the last term is below 3, so exp(R 2^-192) 2^192 - E < 2 · 50 + 3; the 130 units of
+///   r add less than 2 · 1.0001 · 130 < 261. So exp(r) 2^192 < E + 364 <= E + `ExponentialSlack` = 512:
+///   lower = E 2^k / 2^192,
 ///   upper = (E + 512) 2^k / 2^192 (for x < 0, denominator 2^(192+m)). Since E >= 2^192, the ends are at
 ///   most 2^-183 of the value apart: at the largest result a `Rational` holds, 2^127 last kept units, that is
-///   2^-56 of one unit. E < 2^193, so the widest numerator, (E + 512) 2^127, is below 2^321;
-///   `decide_rounding`'s scaling by up to 10^18 keeps it below 2^381.
+///   2^-56 of one unit. E < 2^193, so the widest numerator, (E + 512) 2^127, is below 2^321, and the widest
+///   denominator, 2^(192+129), is 2^321 exactly; `decide_rounding`'s scaling by up to 10^38 (below 2^126.3)
+///   keeps each below 2^448.
 /// - **Undecided.** When the two ends round differently, `decide_rounding` answers `Overflow`: the rounding
 ///   needs more bits than the kernel holds. The rounded decimal exists, so `Inexact` would be wrong, and a new
 ///   error enumerator would break `describe()` and consumers' switches.
 ///
 /// ## What it costs
 ///
-/// Measured on cl 19.51.36257, whose default constant-evaluation budget measured about 1 049 000 steps: one
-/// enclosure costs between 23 100 and 43 700 steps (ln 3: 23 100; ln (2^127 - 1) / 2^126: 43 700; log10 7: 28 600;
-/// exp 1: 32 900; exp -43: 38 200; exp 88: 38 400), and a whole rounding of log10 2 to 3 places, with
-/// `decide_rounding`, about 242 300.
+/// Measured on cl 19.51.36260, whose default constant-evaluation budget measured about 1 049 000 steps: one
+/// enclosure costs between 26 400 and 48 100 steps (ln 3: 26 400; ln (2^127 - 1) / 2^126: 48 100; log10 7: 32 600;
+/// exp 1: 37 600; exp -43: 43 900; exp -89: 40 100; exp 88: 44 000), a whole rounding of log10 2 to 3 places, with
+/// `decide_rounding`, about 279 200, of ln 2 to 30 places about 353 900, and of exp 1 to 30 places about 505 800.
 
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/detail/wide_int.hpp>
@@ -77,11 +78,12 @@
 
 namespace formula::detail
 {
-/// The kernel's width, 384 bits: room for its widest product, the exponential series' T_{j-1} R (under
-/// 2^384), for the logarithm's widest product, upper_ln (M + 1) (under 2^262), for the exponential's widest
-/// numerator (under 2^321), and for `decide_rounding`'s scaling by up to 10^18 of every end it is handed
-/// (under 2^381).
-inline constexpr std::size_t KernelLimbs = 12;
+/// The kernel's width, 448 bits: room for `decide_rounding`'s scaling by up to 10^38 -- the most decimal
+/// places rounding takes, `MaximumDecimalPlaces` -- of every end it is handed (under 2^448), the widest of
+/// them the exponential's numerator or denominator (at most 2^321): e^-80 to whole 10^38s scales the
+/// denominator 2^(192+116) by 10^38, past 2^384; for the exponential series' T_{j-1} R (under 2^384); and
+/// for the logarithm's widest product, upper_ln (M + 1) (under 2^262).
+inline constexpr std::size_t KernelLimbs = 14;
 /// A value in the kernel's fixed point.
 using KernelWord = WideUnsigned<KernelLimbs>;
 /// How many of a logarithm's fixed-point bits are fraction.
@@ -109,14 +111,14 @@ struct Enclosure
     WideRatio<KernelLimbs> upper;
 };
 
-/// @p highHalf * 2^64 + @p lowHalf as a kernel word. 128 bits in 384: neither step can overflow.
+/// @p highHalf * 2^64 + @p lowHalf as a kernel word. 128 bits in 448: neither step can overflow.
 [[nodiscard]] constexpr KernelWord kernel_word(std::uint64_t highHalf, std::uint64_t lowHalf) noexcept
 {
     return *add_checked_or_none(*shift_left_checked_or_none(KernelWord::from_u64(highHalf), 64),
                                 KernelWord::from_u64(lowHalf));
 }
 
-/// @p topWord * 2^128 + @p middleWord * 2^64 + @p bottomWord as a kernel word. 192 bits in 384: no step can
+/// @p topWord * 2^128 + @p middleWord * 2^64 + @p bottomWord as a kernel word. 192 bits in 448: no step can
 /// overflow.
 [[nodiscard]] constexpr KernelWord kernel_word(std::uint64_t topWord,
                                                std::uint64_t middleWord,
@@ -331,7 +333,7 @@ struct LogarithmMagnitude
     return signed_enclosure(shift_right(*lowerProduct, KernelFractionBits), *farther, natural->sign);
 }
 
-/// exp(@p argument), enclosed -- see the file comment. @pre @p argument != 0 and -43 <= @p argument <= 887/10.
+/// exp(@p argument), enclosed -- see the file comment. @pre @p argument != 0 and -89 <= @p argument <= 887/10.
 [[nodiscard]] constexpr std::optional<Enclosure> exponential_enclosure(Rational argument) noexcept
 {
     bool const negative = argument.sign() < 0;
@@ -362,14 +364,14 @@ struct LogarithmMagnitude
     }
     else
     {
-        // The smallest m in [1, 63] with m L' >= X' (X rounded up): 63 ln 2 > 43 >= |x|.
+        // The smallest m in [1, 129] with m L' >= X' (X rounded up): 129 ln 2 > 89 >= |x|.
         std::optional<KernelWord> const roundedUp = fixedMagnitude.exact
                                                         ? std::optional<KernelWord> { fixedMagnitude.below }
                                                         : add_small_checked_or_none(fixedMagnitude.below, 1U);
         if (!roundedUp)
             return std::nullopt;
         std::uint32_t below = 0;
-        std::uint32_t above = 63;
+        std::uint32_t above = 129;
         while (below + 1 < above)
         {
             std::uint32_t const middle = (below + above) / 2;

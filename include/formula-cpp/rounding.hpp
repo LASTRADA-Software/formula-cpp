@@ -88,6 +88,16 @@ struct DecimalPlaces
     [[nodiscard]] constexpr bool operator==(DecimalPlaces const&) const noexcept = default;
 };
 
+/// The most decimal places rounding takes either way: a place outside
+/// `-MaximumDecimalPlaces` to `MaximumDecimalPlaces` is `ArithmeticError::Overflow`.
+///
+/// The scale `Rational::from_decimal` spans, 10^-38 to 10^38: the largest power
+/// of ten `Rational::Int` holds. A place inside the range can still overflow
+/// where an intermediate does not fit, and that is reported the same way, never
+/// a wrong or clamped value. Text output stops at 18 places of its own
+/// (`number_text.hpp`).
+inline constexpr std::int32_t MaximumDecimalPlaces = 38;
+
 /// A count of significant digits. Must be at least 1.
 struct SignificantDigits
 {
@@ -258,12 +268,16 @@ namespace detail
 }
 
 /// Rounds `unrounded` to `places` decimal places under `roundingMode`.
+///
+/// `Overflow` for places outside -`MaximumDecimalPlaces` to
+/// `MaximumDecimalPlaces`, or where `unrounded` scaled by 10^places does not
+/// fit `Rational::Int`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round(Rational unrounded,
                                                                                DecimalPlaces places,
                                                                                RoundingMode roundingMode) noexcept
 {
     // The step is 10^-places, which must itself be representable.
-    if (places.value > 18 || places.value < -18)
+    if (places.value > MaximumDecimalPlaces || places.value < -MaximumDecimalPlaces)
         return std::unexpected { ArithmeticError::Overflow };
 
     std::expected<Rational, ArithmeticError> const increment = Rational::from_decimal(1, -places.value);
@@ -295,7 +309,7 @@ namespace detail
     // Keeping `significant` digits of a value whose leading digit sits at 10^e
     // means rounding at the 10^(e - significant + 1) place.
     long long const places = static_cast<long long>(significant.value) - 1 - static_cast<long long>(*exponent);
-    if (places > 18 || places < -18)
+    if (places > MaximumDecimalPlaces || places < -MaximumDecimalPlaces)
         return std::unexpected { ArithmeticError::Overflow };
 
     return checked_round(unrounded, DecimalPlaces { static_cast<std::int32_t>(places) }, roundingMode);
@@ -325,15 +339,20 @@ namespace detail
 ///   `Rational::Int` is `|numerator| * (10^N / gcd(10^N, denominator))` -- for
 ///   a binary denominator, `|numerator| * 5^N`. There the limit is set by the
 ///   **numerator's** magnitude, not the denominator's and not the value's
-///   size: `1 / 2^121` rounds at all 18 places, while a 100-bit numerator over
-///   the same denominator does not. A `double` below 2^53 in magnitude has a
-///   numerator of at most 53 bits, and rounding it forms at most
-///   2^53 * 5^18 * 2^18, below 2^113, so it rounds at every place from 0 to
-///   18. A whole `double` past that has a numerator of its own magnitude and
-///   nothing to cancel: 1e21 is refused at 18 places, and 1e38 at 1.
+///   size: `1 / 2^121` rounds at all 38 places, while a 100-bit numerator over
+///   the same denominator rounds at 11 and is refused at 12. A `double` below
+///   2^53 in magnitude has a numerator of at most 53 bits, and rounding it
+///   forms at most 2^53 * 10^N, below 2^127 up to N = 22, so it rounds at
+///   every place from 0 to 22; 2^53 - 1 is refused at 23. A fraction whose
+///   denominator is at least 2^N cancels all of the 2^N and forms at most
+///   2^53 * 5^N, which fits up to N = 31: 0.45, `8106479329266893 / 2^54`,
+///   rounds at 31 places and is refused at 32. A whole `double` past 2^53 has
+///   a numerator of its own magnitude and nothing to cancel: 1e21 is refused
+///   at 18 places, and 1e38 at 1.
 /// - Rounding to a NEGATIVE number of places -- to whole tens or hundreds --
 ///   uses an integer step, which multiplies the **denominator** instead. There
-///   the denominator is the constraint: `2^-100` is refused at -18 places.
+///   the denominator is the constraint: `2^-100` rounds at -8 places and is
+///   refused at -9, since 2^100 * 10^9 is past 2^127.
 ///
 /// Prefer `from_decimal` for an exact decimal; use this function only for a
 /// genuinely measured `double`.

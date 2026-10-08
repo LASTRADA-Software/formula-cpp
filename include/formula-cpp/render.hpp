@@ -349,7 +349,7 @@ namespace detail
     /// For a helper with no clause to say a number is not shown: a table's
     /// bound, an envelope's limit. The fraction style never fails. Any other
     /// can -- a padded or approximated number in a unit whose declared
-    /// decimals lie outside the -18 to 18 `DecimalPlaces` spans, for one --
+    /// decimals lie outside the -18 to 18 text is written at, for one --
     /// and the fraction is then the one text still exact.
     [[nodiscard]] inline std::string styled_number_text(Rational shownNumber, NumberStyle numberStyle, Unit const& shownIn)
     {

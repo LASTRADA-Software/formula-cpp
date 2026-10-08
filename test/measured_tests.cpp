@@ -343,12 +343,12 @@ TEST_CASE("a conversion overflow is reported as an error, not re-read as absence
 namespace
 {
 
-// decimals = 19: the same unrepresentable precision unit_tests.cpp uses to
-// exercise checked_round_to_declared's own error path, carried through a
-// quantity this time.
+// decimals = 39, one past `MaximumDecimalPlaces`: the same unrepresentable
+// precision unit_tests.cpp uses to exercise checked_round_to_declared's own
+// error path, carried through a quantity this time.
 inline constexpr formula::Unit UnrepresentablePrecision { .dimension = formula::dim::Scalar,
                                                           .symbolText = formula::symbol("bad"),
-                                                          .decimals = 19 };
+                                                          .decimals = 39 };
 
 struct UnroundableReading:
     formula::Quantity<UnroundableReading, "u", "a reading whose unit declares an unrepresentable precision",

@@ -136,8 +136,12 @@ namespace detail
     /// does for `checked_round`: then S is 1/10^(2|p|), and it is B that grows
     /// instead of q.
     ///
-    /// Every intermediate is a 128-bit unsigned integer (`detail::UInt128`).
-    /// So the headroom is `floor(v) * 10^(2p) < 2^128` (and
+    /// Every intermediate is a 128-bit unsigned integer (`detail::UInt128`),
+    /// and so is S = 10^(2|p|) itself: an irrational root rounds at no more
+    /// than 19 places either way, whatever the radicand -- 10^38 fits 128 bits
+    /// and 10^40 does not -- though `MaximumDecimalPlaces` allows 38. A
+    /// rational root is `checked_round`'s, and takes every place it does.
+    /// Within those 19 the headroom is `floor(v) * 10^(2p) < 2^128` (and
     /// `b * 10^(2p) < 2^128` for the remainder): an integer radicand of about
     /// 10^6 fits at 16 places and overflows at 17. **The bound is on the
     /// denominator b too**, whatever the value: at p places a denominator above
@@ -155,7 +159,7 @@ namespace detail
         if (radicandInUnitSquared.sign() < 0)
             return std::unexpected { ArithmeticError::DomainError };
         // As `checked_round` reports them, whichever path the root takes.
-        if (places.value > 18 || places.value < -18)
+        if (places.value > MaximumDecimalPlaces || places.value < -MaximumDecimalPlaces)
             return std::unexpected { ArithmeticError::Overflow };
 
         std::expected<Rational, ArithmeticError> const exactRoot = checked_exact_nth_root(radicandInUnitSquared, 2);

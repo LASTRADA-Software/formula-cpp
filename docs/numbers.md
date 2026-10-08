@@ -313,12 +313,17 @@ the answer.
 `Rational`'s numerator and denominator are `formula::Int128`, signed 128-bit
 integers: each holds up to 2^127 − 1, and a numerator down to −2^127 -- up to
 39 decimal digits. `from_decimal`'s exponent, the `_r` literal and
-`parse_decimal_text` reach 10^-38 to 10^38. `DecimalPlaces` and the
-decimal-place form of `round` stay limited to ±18 places; an out-of-range
-`DecimalPlaces` reports `Overflow`, while an out-of-range `SignificantDigits`
-(fewer than 1) reports `DomainError` -- both mean "argument outside the
-domain of the operation", but a caller switching on the code should expect
-either one.
+`parse_decimal_text` reach 10^-38 to 10^38, and so does rounding: `round`
+and `checked_round` take places from -38 to 38, `MaximumDecimalPlaces`,
+whether named as `DecimalPlaces` or reached through `SignificantDigits` -- 15
+significant digits of 2.12345678901234e-5 are rounded at 19 places. A place
+outside that range reports `Overflow`, while an out-of-range
+`SignificantDigits` (fewer than 1) reports `DomainError` -- both mean
+"argument outside the domain of the operation", but a caller switching on the
+code should expect either one. A place inside the range still reports
+`Overflow` where the scaled value does not fit, as below. Text is another
+matter: a number is written at no more than 18 places either way
+([Displaying numbers](display.md)), however many it was rounded to.
 
 Rounding to `N` decimal places scales the value by `10^N`. Common factors of
 two cancel against the denominator first, so what must fit in `Rational::Int`
@@ -330,17 +335,22 @@ is
 
 which for a power-of-two denominator is `|numerator| * 5^N`. **The limit is set
 by the numerator's magnitude**, not by the denominator and not by the size of
-the value: `1 / 2^121` rounds correctly at all 18 places, while a 100-bit
-numerator over the same denominator is refused at 18.
+the value: `1 / 2^121` rounds correctly at all 38 places, while a 100-bit
+numerator over the same denominator rounds at 11 places and is refused at 12.
+Even a small value can be refused well inside the range: 2/3 at 38 places
+forms 2 · 10^38, past 2^127.
 
 A `double` below 2^53 in magnitude has a numerator of at most 53 bits, and
-rounding it at up to 18 places forms at most 2^53 · 5^18 · 2^18, below 2^113,
-so such a value from `from_double_exact` or `rational_from_double` rounds at
-every place from 0 to 18: 0,45 as a `double` is exactly
-`8106479329266893 / 2^54`, and rounds to 18 places as 0.450000000000000011.
-Past that the limit returns: a whole `double` such as 1e21 has a numerator of
-its own magnitude and nothing to cancel, so it is refused at 18 places, 1e38
-even at 1, and `2^-100` at -18 places multiplies its denominator past 2^127.
+rounding it at `N` places forms at most 2^53 · 10^N, below 2^127 up to
+`N` = 22, so such a value from `from_double_exact` or `rational_from_double`
+rounds at every place from 0 to 22; 2^53 - 1 is refused at 23. A fraction
+whose denominator is at least 2^N cancels all of the 2^N and forms at most
+2^53 · 5^N, which fits up to `N` = 31: 0,45 as a `double` is exactly
+`8106479329266893 / 2^54`, rounds to 18 places as 0.450000000000000011 and
+to 31 as 0.4500000000000000111022302462516, and is refused at 32. Past 2^53
+the limit returns: a whole `double` such as 1e21 has a numerator of its own
+magnitude and nothing to cancel, so it is refused at 18 places, 1e38 even at
+1, and `2^-100` at -9 places multiplies its denominator past 2^127.
 `from_decimal(45, -2)` is `9/20` -- the same nominal value, and what a method
 that writes 0,45 means.
 
@@ -351,8 +361,8 @@ over `2^147`, is refused.
 
 For an exact decimal, prefer `from_decimal`: its numerator is whatever you
 passed -- usually a handful of significant digits -- so the limit above does not
-bite. Its *denominator* need not be small at all: `from_decimal(1, -18)` is
-`1/10^18`, and it still rounds correctly at every decimal place from 0 to 18.
+bite. Its *denominator* need not be small at all: `from_decimal(1, -38)` is
+`1/10^38`, and it still rounds correctly at every decimal place from 0 to 38.
 That is the clearest demonstration that the denominator is not what constrains
 rounding to decimals.
 

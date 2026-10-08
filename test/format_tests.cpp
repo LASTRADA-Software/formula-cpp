@@ -37,7 +37,7 @@ struct Share: formula::Quantity<Share, "s_h", "a share", unit::One>
 {
 };
 
-/// A unit declaring more decimals than `DecimalPlaces` spans: 19. Invented.
+/// A unit declaring more decimals than text is written at: 19. Invented.
 inline constexpr formula::Unit OverPrecise { .dimension = formula::dim::Length,
                                              .symbolText = formula::symbol("u"),
                                              .decimals = 19 };
@@ -45,7 +45,7 @@ struct OverPreciseLength: formula::Quantity<OverPreciseLength, "l_u", "a length 
 {
 };
 
-/// A unit declaring fewer decimals than `DecimalPlaces` spans: -19. Invented.
+/// A unit declaring fewer decimals than text is written at: -19. Invented.
 inline constexpr formula::Unit UnderPrecise { .dimension = formula::dim::Length,
                                               .symbolText = formula::symbol("v"),
                                               .decimals = -19 };

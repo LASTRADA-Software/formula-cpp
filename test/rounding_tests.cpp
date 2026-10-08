@@ -10,6 +10,7 @@ using formula::ArithmeticError;
 using formula::ArithmeticException;
 using formula::Rational;
 using formula::RoundingMode;
+using namespace formula::literals;
 
 namespace
 {
@@ -208,7 +209,45 @@ static_assert(formula::checked_round(Rational { 5 }, formula::SignificantDigits 
               == ArithmeticError::DomainError);
 static_assert(formula::checked_round(Rational { 5 }, formula::SignificantDigits { -1 }, RoundingMode::Floor).error()
               == ArithmeticError::DomainError);
-static_assert(formula::checked_round(Rational { 5 }, formula::DecimalPlaces { 19 }, RoundingMode::Floor).error()
+
+// ---- the places rounding reaches: MaximumDecimalPlaces either way, the scale from_decimal spans ----
+
+static_assert(formula::MaximumDecimalPlaces == 38);
+// 19 places either way, one past the limit while Rational was 64-bit.
+static_assert(formula::checked_round(Rational { 1, 3 }, formula::DecimalPlaces { 19 }, RoundingMode::Floor)
+              == 0.3333333333333333333_r);
+static_assert(formula::checked_round(5e19_r + 1, formula::DecimalPlaces { -19 }, RoundingMode::HalfEven) == 5e19_r);
+// 38 places, the last: 1/3 to 10^-38, and 1/6 rounded up in that place.
+static_assert(formula::checked_round(Rational { 1, 3 }, formula::DecimalPlaces { 38 }, RoundingMode::Floor)
+              == 0.33333333333333333333333333333333333333_r);
+static_assert(formula::checked_round(Rational { 1, 6 }, formula::DecimalPlaces { 38 }, RoundingMode::HalfEven)
+              == 0.16666666666666666666666666666666666667_r);
+// A place inside the range still overflows where the scaled value does not fit: 2/3 * 10^38 is past 2^127,
+// though the rounding, 0.66666666666666666666666666666666666667, would fit.
+static_assert(formula::checked_round(Rational { 2, 3 }, formula::DecimalPlaces { 38 }, RoundingMode::HalfEven).error()
+              == ArithmeticError::Overflow);
+// -38 places, to whole 10^38s: 1.4 * 10^38 rounds down to 10^38, and 7 to 0 or up to 10^38.
+static_assert(formula::checked_round(14e37_r, formula::DecimalPlaces { -38 }, RoundingMode::HalfEven) == 1e38_r);
+static_assert(formula::checked_round(Rational { 7 }, formula::DecimalPlaces { -38 }, RoundingMode::Ceiling) == 1e38_r);
+static_assert(formula::checked_round(Rational { 7 }, formula::DecimalPlaces { -38 }, RoundingMode::Floor) == Rational {});
+// One past, either way, on zero, which rounds to itself at any place that is accepted.
+static_assert(formula::checked_round(Rational {}, formula::DecimalPlaces { 39 }, RoundingMode::Floor).error()
+              == ArithmeticError::Overflow);
+static_assert(formula::checked_round(Rational {}, formula::DecimalPlaces { -39 }, RoundingMode::Floor).error()
+              == ArithmeticError::Overflow);
+static_assert(formula::checked_round(Rational { 5 }, formula::DecimalPlaces { 39 }, RoundingMode::Floor).error()
+              == ArithmeticError::Overflow);
+
+// Significant digits reach the same places. 15 digits of -2.12345678901234e-5 are -212345678901234 / 10^19,
+// at 19 places, and of -1/30000 -0.0000333333333333333.
+static_assert(formula::checked_round(-2.12345678901234e-5_r, formula::SignificantDigits { 15 }, RoundingMode::HalfEven)
+              == -0.0000212345678901234_r);
+static_assert(formula::checked_round(Rational { -1, 30'000 }, formula::SignificantDigits { 15 }, RoundingMode::HalfEven)
+              == -0.0000333333333333333_r);
+// One digit of 3 * 10^-38 is at place 38; one digit of 1 / (1.5 * 10^38), 6.7 * 10^-39, would be at place 39.
+static_assert(formula::checked_round(3e-38_r, formula::SignificantDigits { 1 }, RoundingMode::HalfEven) == 3e-38_r);
+static_assert(formula::checked_round(Rational { 1 } / 15e37_r, formula::SignificantDigits { 1 }, RoundingMode::Floor)
+                  .error()
               == ArithmeticError::Overflow);
 
 TEST_CASE("intermediate and final rounding compose, and the order matters", "[rounding]")
@@ -295,30 +334,46 @@ TEST_CASE("rounding precision is limited by the numerator, not the magnitude", "
     //     |numerator| * (10^N / gcd(10^N, denominator)),
     // which for a binary denominator is |numerator| * 5^N. The NUMERATOR
     // decides. A double below 2^53 in magnitude has one of at most 53 bits,
-    // and rounding it at up to 18 places forms at most 2^53 * 5^18 * 2^18,
-    // below 2^113, so every place from 0 to 18 fits.
+    // and rounding it at N places forms at most 2^53 * 10^N, below 2^127 up
+    // to N = 22, so every place from 0 to 22 fits. A fraction whose
+    // denominator is at least 2^N forms at most 2^53 * 5^N, which fits up to
+    // N = 31.
 
     // 0.45 as a double is exactly 8106479329266893 / 2^54 -- a 53-bit
-    // numerator. Six places, which overflowed 64 bits, and eighteen fit.
+    // numerator. Six places, which overflowed 64 bits, eighteen, and 31 fit;
+    // 32 does not: 8106479329266893 * 5^32 is past 2^127.
     CHECK(formula::rational_from_double(0.45, formula::DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero).has_value());
     CHECK(formula::rational_from_double(0.45, formula::DecimalPlaces { 6 }, RoundingMode::HalfAwayFromZero)
           == Rational { 9, 20 });
     CHECK(formula::rational_from_double(0.45, formula::DecimalPlaces { 18 }, RoundingMode::HalfAwayFromZero)
           == Rational { 450'000'000'000'000'011, 1'000'000'000'000'000'000 });
+    CHECK(formula::rational_from_double(0.45, formula::DecimalPlaces { 31 }, RoundingMode::HalfAwayFromZero)
+          == 0.4500000000000000111022302462516_r);
+    CHECK(error_of(formula::rational_from_double(0.45, formula::DecimalPlaces { 32 }, RoundingMode::HalfAwayFromZero))
+          == ArithmeticError::Overflow);
     // Just below 2^52, half a unit off a whole number, it is exact at 18 places.
     CHECK(formula::rational_from_double(4503599627370495.5, formula::DecimalPlaces { 18 }, RoundingMode::Floor)
           == Rational { 9007199254740991, 2 });
-    // And 2^53 - 1, the largest whole number below 2^53, is exact at 18.
+    // And 2^53 - 1, the largest whole number below 2^53, is exact at 18 and
+    // at 22, where it cancels nothing; at 23, 2^53 * 10^23 is past 2^127.
     CHECK(formula::rational_from_double(9007199254740991.0, formula::DecimalPlaces { 18 }, RoundingMode::Floor)
           == Rational { 9007199254740991 });
+    CHECK(formula::rational_from_double(9007199254740991.0, formula::DecimalPlaces { 22 }, RoundingMode::Floor)
+          == Rational { 9007199254740991 });
+    CHECK(error_of(formula::rational_from_double(9007199254740991.0, formula::DecimalPlaces { 23 }, RoundingMode::Floor))
+          == ArithmeticError::Overflow);
     // Past 2^53 the claim stops: a whole double's numerator is its own
-    // magnitude, with nothing to cancel, so 1e21 overflows at 18 places and
-    // 1e38 at 1; and at -18 places 2^-100's denominator times 10^18 does.
+    // magnitude, with nothing to cancel, so 1e21 rounds at 17 places and
+    // overflows at 18, and 1e38 overflows at 1.
+    CHECK(formula::rational_from_double(1e21, formula::DecimalPlaces { 17 }, RoundingMode::Floor) == 1e21_r);
     CHECK(error_of(formula::rational_from_double(1e21, formula::DecimalPlaces { 18 }, RoundingMode::Floor))
           == ArithmeticError::Overflow);
     CHECK(error_of(formula::rational_from_double(1e38, formula::DecimalPlaces { 1 }, RoundingMode::Floor))
           == ArithmeticError::Overflow);
-    CHECK(error_of(formula::rational_from_double(0x1p-100, formula::DecimalPlaces { -18 }, RoundingMode::Floor))
+    // At a negative number of places the denominator is scaled: 2^-100 rounds
+    // up to 10^8 at -8 places, and at -9 2^100 * 10^9 is past 2^127.
+    CHECK(formula::rational_from_double(0x1p-100, formula::DecimalPlaces { -8 }, RoundingMode::Ceiling) == 1e8_r);
+    CHECK(error_of(formula::rational_from_double(0x1p-100, formula::DecimalPlaces { -9 }, RoundingMode::Ceiling))
           == ArithmeticError::Overflow);
 
     // What does fail is from_double_exact, before any rounding happens, when
@@ -339,12 +394,20 @@ TEST_CASE("rounding precision is limited by the numerator, not the magnitude", "
               .has_value());
 
     // The denominator is not what limits it: numerator 1 over 2^121 rounds at
-    // every supported place, while a 100-bit numerator over the SAME
-    // denominator does not. This pair is what distinguishes the two
-    // explanations.
+    // every supported place, up to 38, while a 100-bit numerator over the SAME
+    // denominator rounds at 11 places and not at 12. This pair is what
+    // distinguishes the two explanations.
     constexpr Rational::Int twoTo121 = Rational::Int { 1 } << 121;
     CHECK(formula::checked_round(Rational { 1, twoTo121 }, formula::DecimalPlaces { 18 }, RoundingMode::Floor)
               .has_value());
+    CHECK(formula::checked_round(Rational { 1, twoTo121 }, formula::DecimalPlaces { 38 }, RoundingMode::Ceiling)
+          == 38e-38_r); // 1/2^121 is 37.6 units of 10^-38
+    CHECK(formula::checked_round(
+              Rational { (Rational::Int { 1 } << 100) - 1, twoTo121 }, formula::DecimalPlaces { 11 }, RoundingMode::Floor)
+          == 0.00000047683_r);
+    CHECK(error_of(formula::checked_round(
+              Rational { (Rational::Int { 1 } << 100) - 1, twoTo121 }, formula::DecimalPlaces { 12 }, RoundingMode::Floor))
+          == ArithmeticError::Overflow);
     CHECK(error_of(formula::checked_round(
               Rational { (Rational::Int { 1 } << 100) - 1, twoTo121 }, formula::DecimalPlaces { 18 }, RoundingMode::Floor))
           == ArithmeticError::Overflow);

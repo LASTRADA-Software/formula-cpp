@@ -903,9 +903,10 @@ inline constexpr bool formats_by_describe<BoundsCheck> = true;
 }
 
 /// A rounding to the decimal places @p roundedIn declares, under @p roundingMode.
-/// A unit whose declared decimals lie outside -18 to 18 is not refused here:
-/// `checked_round` returns `ArithmeticError::Overflow` for that many places, so
-/// evaluating the rounding does.
+/// A unit whose declared decimals lie outside -38 to 38
+/// (`MaximumDecimalPlaces`) is not refused here: `checked_round` returns
+/// `ArithmeticError::Overflow` for that many places, so evaluating the
+/// rounding does.
 [[nodiscard]] constexpr DecimalRounding declared_rounding(Unit roundedIn, RoundingMode roundingMode) noexcept
 {
     return DecimalRounding { roundedIn, declared_decimals(roundedIn), roundingMode };

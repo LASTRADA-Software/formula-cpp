@@ -480,7 +480,7 @@ STATIC_REQUIRE(**formula::checked_evaluate_si<formula::Rational>(formula::log10(
 | Function | Exact at | Elsewhere, in `Rational` |
 |---|---|---|
 | `ln(x)` | x = 1: 0 | `Inexact` |
-| `log10(x)` | x = 10^k, k from -18 to 18: k -- `1000` and `1/1000` alike | `Inexact` |
+| `log10(x)` | x = 10^k, k from -38 to 38: k -- `1000` and `1/1000` alike | `Inexact` |
 | `exp(x)` | x = 0: 1 | `Inexact`, however large |
 
 `Inexact` is the exact layer refusing to approximate, as it refuses
@@ -510,16 +510,22 @@ CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 2 }) == Ratio
 `"rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2 with the directions paired the other way"`,
 whose `lnAt` helper evaluates `rounded_ln<Places, Mode>` at the given ratio.)
 
-The places are the method's own, and at most 18; the result must fit a
-`Rational` there, which any logarithm does: the `log10` of 10^18 - 1 is
-reported to all 18 places. The integer kernel takes every argument a
+The places are the method's own, from -38 to 38 as for `round`; the result
+must fit a `Rational` there, which any logarithm does up to 36 places: the
+`log10` of 10^18 - 1 is reported to 18 places, and `ln` 2 to 30, as
+0.693147180559945309417232121458. The integer kernel takes every argument a
 `Rational` holds: `ln` of 2^127 - 1 is 88.029691931113054295 at 18 places,
-under `Floor`. `exp` of more than 88.7 is `Overflow`, since e^x is then past
-the largest `Rational`; below that it answers wherever the result fits the
-declared places -- e^45 to 18 places, e^88 to whole units -- and is
+under `Floor`. A logarithm's computation is up to 2^-120 wide, at least
+1.6 · 10^-37, so at 37 or 38 places every logarithm the kernel computes is
+`Overflow`. The exact points below -- `ln` 1, `log10` of a power of ten --
+are answered without the kernel, wherever their value fits: `ln` 1 at every
+places, `log10` of 10 and of 1/10 at 38.
+`exp` of more than 88.7 is `Overflow`, since e^x is then past the largest
+`Rational`; below that it answers wherever the result fits the declared
+places -- e^1 to 37 places, e^45 to 18, e^88 to whole units -- and is
 `Overflow` where it does not, as e^88.5 is at every places. Two kinds of
 argument never reach the kernel: a power of ten, 10^-38 up to 10^38, is
-answered exactly, so `log10` of 10^30 is 30; and `exp` of less than -43 is
+answered exactly, so `log10` of 10^30 is 30; and `exp` of less than -89 is
 0, or one unit under `Ceiling` and `AwayFromZero`, whatever its width.
 Only ln 1, log10 10^k and
 exp 0 can tie, and the mode breaks the tie as `rounded<>` does: `log10` of
@@ -539,7 +545,7 @@ guess. `rounded<...>(ln(x))` is not
 | argument failed | its error | its error | its error |
 | argument zero or below | `DomainError` | -- | `DomainError` (the logarithms) |
 | not a point where the value is rational | `Inexact` | `Inexact` | the rounded decimal |
-| result too large at the declared places, or places outside -18 to 18 | -- | -- | `Overflow` |
+| result too large at the declared places, or places outside -38 to 38 | -- | -- | `Overflow` |
 | rounding not decidable | -- | -- | `Overflow` |
 | `checked_evaluate_si<double>` | `std::log`, `std::log10`; `DomainError` for zero, below and NaN | `std::exp`; too large is `+inf` | does not compile, as `rounded_sqrt` does not |
 
