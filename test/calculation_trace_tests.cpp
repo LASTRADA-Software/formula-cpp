@@ -212,7 +212,7 @@ inline constexpr auto sharesAdded =
 /// A vocabulary writing the typed share as the computed one is written, `s`.
 inline constexpr auto alikeShares = formula::vocabulary(formula::renames<TypedShare>("s"));
 
-/// A unit declaring more decimals than `DecimalPlaces` spans: 19. Invented.
+/// A unit declaring more decimals than text is written at: 19. Invented.
 inline constexpr formula::Unit OverPrecise { .dimension = formula::dim::Length,
                                              .symbolText = formula::symbol("u"),
                                              .decimals = 19 };
@@ -1208,8 +1208,8 @@ TEST_CASE("a derived quantity standing for a typed value is rounded, as the valu
 TEST_CASE("a derivation's header says a value is not shown where its style cannot spell it",
           "[calculation][worksheet][trace][decimals]")
 {
-    // A length in a unit declaring 19 decimals, more than a rounding or a
-    // padding can take: under a style that pads or rounds, its header and
+    // A length in a unit declaring 19 decimals, more than text is written
+    // at: under a style that pads or rounds, its header and
     // the line reading it say it is not shown, while its root, a width in
     // millimetres scaled by a pure number and so in millimetres too, spells
     // it. In fractions every value is shown.

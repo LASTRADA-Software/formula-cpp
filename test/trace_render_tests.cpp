@@ -2969,7 +2969,7 @@ struct Coefficient: formula::Quantity<Coefficient, "c", "a dimensionless coeffic
 {
 };
 
-/// A unit whose declared decimals no `DecimalPlaces` can hold: 19. Invented,
+/// A unit declaring more decimals than text is written at: 19. Invented,
 /// to make a padded or rounded spelling fail.
 inline constexpr formula::Unit OverPreciseUnit { .dimension = formula::dim::Length,
                                                  .symbolText = formula::symbol("u"),
@@ -3059,7 +3059,7 @@ TEST_CASE("a value the style cannot spell in its unit is not shown, and says why
     // Fractions and unpadded exact decimals never read the unit's decimals.
     CHECK(renderedIn(trace, formula::NumberStyle::fraction()) == "1. l_u = 3/5 u\n");
     CHECK(renderedIn(trace, formula::NumberStyle::exact_decimal()) == "1. l_u = 0.6 u\n");
-    // Padding or rounding does, and 19 is more than any `DecimalPlaces` holds.
+    // Padding or rounding does, and 19 is more places than text is written at.
     CHECK(renderedIn(trace, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
           == "1. l_u = (not shown: overflow in exact arithmetic)\n");
     CHECK(renderedIn(trace, approximately) == "1. l_u = (not shown: overflow in exact arithmetic)\n");

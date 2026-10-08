@@ -63,7 +63,7 @@ struct WidestReading: formula::Quantity<WidestReading, "r_w", "a reading in the 
 
 /// Declared decimals of -1: whole tens.
 inline constexpr formula::Unit Tens { .dimension = dim::Scalar, .symbolText = formula::symbol("t10"), .decimals = -1 };
-/// Declared decimals of 19 and of -19, one past what `DecimalPlaces` spans on either side.
+/// Declared decimals of 19 and of -19, one past the 18 text is written at on either side.
 inline constexpr formula::Unit TooFine { .dimension = dim::Scalar, .symbolText = formula::symbol("tf"), .decimals = 19 };
 inline constexpr formula::Unit TooCoarse { .dimension = dim::Scalar, .symbolText = formula::symbol("tc"), .decimals = -19 };
 
@@ -489,7 +489,7 @@ TEST_CASE("each notation writes the number its own way", "[number_text]")
     STATIC_REQUIRE(formula::number_text(Rational { 5, 2 }, paddedExact, Tens) == "2.5");
 }
 
-TEST_CASE("a style that reads the unit's decimals refuses decimals outside what DecimalPlaces spans", "[number_text]")
+TEST_CASE("a style that reads the unit's decimals refuses decimals outside the 18 text is written at", "[number_text]")
 {
     constexpr NumberStyle paddedExact = NumberStyle::exact_decimal(DecimalPadding::Padded);
     constexpr NumberStyle evenApproximation = NumberStyle::approximate_decimal(RoundingMode::HalfEven);

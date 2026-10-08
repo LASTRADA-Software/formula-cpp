@@ -87,7 +87,8 @@ namespace formula::detail
 
 /// Refuses a number format that rounds to more than 18 decimal places, or
 /// that rounds a `Measured` at its unit's decimals when those lie outside -18
-/// to 18. Not `constexpr`, for the reason
+/// to 18: text stops at 18 places either way (`detail::ExactDecimalPlaces`),
+/// though rounding itself reaches 38. Not `constexpr`, for the reason
 /// `formula_number_format_needs_a_rounding_mode` gives.
 /// @throws std::format_error always.
 [[noreturn]] inline void formula_number_format_places_out_of_range()
@@ -334,7 +335,7 @@ inline constexpr RoundingModeName RoundingModeNames[] {
         {
             if (!beyondRange)
                 placesAsked = placesAsked * 10 + (specText[at] - '0');
-            beyondRange = beyondRange || placesAsked > 18;
+            beyondRange = beyondRange || placesAsked > ExactDecimalPlaces;
             ++at;
         }
         if (beyondRange)
@@ -442,7 +443,7 @@ template <typename OutputIterator>
 /// Reads a `Measured<Q>` or `Outcome<Q>` replacement field's spec, as
 /// `parse_number_format_field` does, and refuses `~Mode` without `.N` when
 /// the unit @p Q's value is shown in (`shown_unit_of`) declares decimals
-/// outside the -18 to 18 that `DecimalPlaces` spans.
+/// outside the -18 to 18 text is written at (`ExactDecimalPlaces`).
 template <Described Q>
 [[nodiscard]] constexpr std::format_parse_context::iterator parse_measured_format_field(
     std::format_parse_context& parseContext, NumberFormatSpec& parsed)
@@ -450,7 +451,7 @@ template <Described Q>
     auto const specEnd = parse_number_format_field(parseContext, parsed);
     constexpr int declaredPlaces = shown_unit_of(Describe<Q>::unit, Describe<Q>::dimension).decimals;
     if (parsed.body == NumberFormatBody::Approximated && !parsed.places.has_value()
-        && (declaredPlaces > 18 || declaredPlaces < -18))
+        && (declaredPlaces > ExactDecimalPlaces || declaredPlaces < -ExactDecimalPlaces))
         formula_number_format_places_out_of_range();
     return specEnd;
 }
@@ -749,8 +750,7 @@ struct formatter<formula::Measured<Q>, char>
 {
     /// Reads the spec up to its `}`, as `formatter<Rational>` does. `~Mode`
     /// without `.N` rounds at `Q`'s declared decimals, so a unit whose declared
-    /// decimals lie outside the -18 to 18 that `DecimalPlaces` spans is
-    /// refused here.
+    /// decimals lie outside the -18 to 18 text is written at is refused here.
     constexpr auto parse(std::format_parse_context& parseContext)
     {
         return formula::detail::parse_measured_format_field<Q>(parseContext, _spec);
