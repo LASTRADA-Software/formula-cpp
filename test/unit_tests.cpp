@@ -968,10 +968,11 @@ TEST_CASE("rounding to a unit's declared precision uses that unit's decimals", "
 TEST_CASE("round_to_declared throws exactly where checked_round_to_declared reports an error", "[unit]")
 {
     // A unit whose declared decimals fall outside what a rounding step can
-    // represent -- the same guard checked_round's own tests exercise directly.
-    // Pinned the way convert()/checked_convert() are: the checked form reports
-    // the error, and the throwing form throws it, on the very same input.
-    Unit const unrepresentableDecimals { .dimension = dim::Scalar, .symbolText = formula::symbol("bad"), .decimals = 19 };
+    // represent, 39, one past `MaximumDecimalPlaces` -- the same guard
+    // checked_round's own tests exercise directly. Pinned the way
+    // convert()/checked_convert() are: the checked form reports the error,
+    // and the throwing form throws it, on the very same input.
+    Unit const unrepresentableDecimals { .dimension = dim::Scalar, .symbolText = formula::symbol("bad"), .decimals = 39 };
 
     auto const checked = formula::checked_round_to_declared(
         *Rational::make(1, 1), unrepresentableDecimals, formula::RoundingMode::HalfAwayFromZero);

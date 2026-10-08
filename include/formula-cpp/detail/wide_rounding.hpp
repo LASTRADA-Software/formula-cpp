@@ -8,11 +8,13 @@
 ///
 /// `round_wide_ratio` is built to agree with `checked_round`: for a value
 /// `checked_round` accepts, it gives the same result in all seven modes at every
-/// place from -18 to 18 (`test/wide_rounding_tests.cpp` checks 43729 such
-/// cases). It also answers some values `checked_round` refuses -- where a
-/// numerator times 10^places leaves 128 bits but the rounded result fits -- and
-/// refuses, with `Overflow`, a result that does not fit `Rational`, as
-/// `checked_round` does.
+/// place from -38 to 38 (`MaximumDecimalPlaces`), in a width that holds any
+/// `Rational::Int` times 10^38 -- 256 bits, `WideRatio<8>`
+/// (`test/wide_rounding_tests.cpp` checks 95498 such cases). A narrower width
+/// refuses with `Overflow` where the scaled value leaves it. It also answers
+/// some values `checked_round` refuses -- where a numerator times 10^places
+/// leaves 128 bits but the rounded result fits -- and refuses, with
+/// `Overflow`, a result that does not fit `Rational`, as `checked_round` does.
 ///
 /// Every fraction is reduced before it is scaled, so an operation may hand over
 /// one far from lowest terms: the width only has to hold the value, not the way
@@ -80,8 +82,10 @@ template <std::size_t L>
 
 /// The decimal @p unrounded rounds to at @p places under @p roundingMode, as
 /// `Rational::from_decimal(kept, -places)`. `Overflow` for places outside
-/// -18 to 18, or a kept integer that does not fit `Rational::Int`, as
-/// `checked_round` reports them; `DivisionByZero` for a zero denominator.
+/// -`MaximumDecimalPlaces` to `MaximumDecimalPlaces`, or a kept integer that
+/// does not fit `Rational::Int`, as `checked_round` reports them, and where
+/// the value scaled by 10^places leaves `L` limbs; `DivisionByZero` for a
+/// zero denominator.
 ///
 /// The magnitude is rounded and the sign applied afterwards: the directed
 /// modes read the sign (Floor rounds a negative magnitude up, Ceiling a
@@ -92,7 +96,7 @@ template <std::size_t L>
                                                                                   DecimalPlaces places,
                                                                                   RoundingMode roundingMode) noexcept
 {
-    if (places.value > 18 || places.value < -18)
+    if (places.value > MaximumDecimalPlaces || places.value < -MaximumDecimalPlaces)
         return std::unexpected { ArithmeticError::Overflow };
     if (unrounded.denominator.is_zero())
         return std::unexpected { ArithmeticError::DivisionByZero };

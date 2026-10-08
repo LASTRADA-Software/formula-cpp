@@ -293,8 +293,12 @@ TEST_CASE("the long division never forms ten times a remainder near IntMax", "[n
         CHECK_FALSE(spelled->is_exact());
 }
 
-TEST_CASE("more places than DecimalPlaces spans is refused as checked_round refuses it", "[number_text]")
+TEST_CASE("more places than text is written at, 18 either way, is refused", "[number_text]")
 {
+    // Text's own limit, not checked_round's, which rounds 1/3 at 19 places and at -19.
+    REQUIRE(formula::checked_round(Rational { 1, 3 }, DecimalPlaces { 19 }, RoundingMode::HalfEven).has_value());
+    REQUIRE(formula::checked_round(Rational { 1, 3 }, DecimalPlaces { -19 }, RoundingMode::HalfEven).has_value());
+
     auto const tooFine = formula::checked_decimal_text(
         Rational { 1, 3 }, DecimalPlaces { 19 }, RoundingMode::HalfEven, DecimalPadding::Padded);
     REQUIRE_FALSE(tooFine.has_value());

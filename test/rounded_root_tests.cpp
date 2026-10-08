@@ -14,6 +14,7 @@ using formula::DecimalPlaces;
 using formula::Rational;
 using formula::RoundingMode;
 using formula::var;
+using namespace formula::literals;
 
 /// A gram squared, the unit a variance of masses in grams is stated in.
 /// Invented here rather than shipped: the library has no squared mass unit.
@@ -182,15 +183,36 @@ TEST_CASE("rounded_sqrt reports overflow rather than a wrapped result", "[rounde
     STATIC_REQUIRE(outcome.error() == formula::ArithmeticError::Overflow);
 }
 
-TEST_CASE("rounded_sqrt takes places from -18 to 18, as checked_round does", "[rounded_root]")
+TEST_CASE("rounded_sqrt takes places from -38 to 38, as checked_round does", "[rounded_root]")
 {
     using formula::detail::rounded_square_root;
-    // The root of 2 is irrational, so this is the digit-by-digit path, not checked_round's.
+    // The root of 2 is irrational, so this is the digit-by-digit path, not checked_round's: 18 places, and
+    // 19, which 2 * 10^38 still holds. At 20 places 10^40 leaves 128 bits, for every irrational root.
     STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 18 }, RoundingMode::Floor).value()
                    == *Rational::from_decimal(1'414'213'562'373'095'048, -18));
-    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 19 }, RoundingMode::Floor).error()
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 19 }, RoundingMode::Floor).value()
+                   == 1.4142135623730950488_r);
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 19 }, RoundingMode::Ceiling).value()
+                   == 1.4142135623730950489_r);
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 20 }, RoundingMode::Floor).error()
                    == formula::ArithmeticError::Overflow);
-    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { -19 }, RoundingMode::Floor).error()
+    // At -19 places the divisor is 10^38, which fits; at -20 it does not.
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { -19 }, RoundingMode::Ceiling).value() == 1e19_r);
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { -20 }, RoundingMode::Ceiling).error()
+                   == formula::ArithmeticError::Overflow);
+    // A rational root is checked_round's, and takes every place it does: the root of 1/9 at 38 places, and
+    // of 4 at -38.
+    STATIC_REQUIRE(rounded_square_root(Rational { 1, 9 }, DecimalPlaces { 38 }, RoundingMode::Floor).value()
+                   == 0.33333333333333333333333333333333333333_r);
+    STATIC_REQUIRE(rounded_square_root(Rational { 4 }, DecimalPlaces { -38 }, RoundingMode::Ceiling).value() == 1e38_r);
+    // One past either way is refused, whichever path the root takes.
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { 39 }, RoundingMode::Floor).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(rounded_square_root(Rational { 2 }, DecimalPlaces { -39 }, RoundingMode::Floor).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(rounded_square_root(Rational { 1, 9 }, DecimalPlaces { 39 }, RoundingMode::Floor).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(rounded_square_root(Rational { 1, 9 }, DecimalPlaces { -39 }, RoundingMode::Floor).error()
                    == formula::ArithmeticError::Overflow);
 }
 

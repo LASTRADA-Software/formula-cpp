@@ -26,6 +26,7 @@ using formula::detail::narrow_wide_ratio;
 using formula::detail::round_wide_ratio;
 using formula::detail::rounded_in_unit;
 using formula::detail::wide_from_rational;
+using namespace formula::literals;
 
 constexpr std::array everyMode { RoundingMode::HalfAwayFromZero, RoundingMode::HalfTowardZero, RoundingMode::HalfEven,
                                  RoundingMode::Ceiling,          RoundingMode::Floor,          RoundingMode::TowardZero,
@@ -55,13 +56,14 @@ constexpr W4 pastIntMin = W4::from_u128(UInt128 { std::uint64_t { 1 } << 63, 1 }
 TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the same Rational", "[wide-rounding]")
 {
     // Wherever checked_round answers, round_wide_ratio gives the same, in
-    // every mode and at every place it accepts. Counted: 48833 cases, those
-    // of the grid and the four extremes, at every place from -18 to 18 and in
-    // every mode, where checked_round answers.
+    // every mode and at every place it accepts. Counted: 95498 cases, those
+    // of the grid and the four extremes, at every place from -38 to 38 and in
+    // every mode, where checked_round answers. In 256 bits, which hold any
+    // `Rational::Int` times 10^38.
     int checkedCases = 0;
     int agreedCases = 0;
     auto const judge = [&](Rational exact) {
-        for (int places = -18; places <= 18; ++places)
+        for (int places = -formula::MaximumDecimalPlaces; places <= formula::MaximumDecimalPlaces; ++places)
             for (RoundingMode const each: everyMode)
             {
                 std::expected<Rational, formula::ArithmeticError> const expected =
@@ -70,7 +72,7 @@ TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the sam
                     continue;
                 ++checkedCases;
                 std::expected<Rational, formula::ArithmeticError> const wide =
-                    round_wide_ratio(from(exact), DecimalPlaces { places }, each);
+                    round_wide_ratio(wide_from_rational<8>(exact), DecimalPlaces { places }, each);
                 if (wide.has_value() && *wide == *expected)
                     ++agreedCases;
             }
@@ -81,8 +83,23 @@ TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the sam
     for (Rational const extreme:
          { Rational { IntMin }, Rational { IntMax }, Rational { IntMin, 3 }, Rational { IntMax, 2 } })
         judge(extreme);
-    CHECK(checkedCases == 48833);
+    CHECK(checkedCases == 95498);
     CHECK(agreedCases == checkedCases);
+}
+
+TEST_CASE("wide rounding: a width narrower than 256 bits refuses what leaves it", "[wide-rounding]")
+{
+    // 7/2^100 at 38 places: checked_round cancels 2^38 and forms 7 * 5^38 / 2^62, which fits; the wide
+    // fraction scales 7 by 10^38 first, past 2^128, so 128 bits refuse it and 256 bits answer as
+    // checked_round does.
+    constexpr Rational sevenOverTwoTo100 { 7, Rational::Int { 1 } << 100 };
+    constexpr std::expected<Rational, formula::ArithmeticError> rounded =
+        formula::checked_round(sevenOverTwoTo100, DecimalPlaces { 38 }, RoundingMode::HalfEven);
+    STATIC_REQUIRE(rounded.has_value());
+    STATIC_REQUIRE(round_wide_ratio(from(sevenOverTwoTo100), DecimalPlaces { 38 }, RoundingMode::HalfEven).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(round_wide_ratio(wide_from_rational<8>(sevenOverTwoTo100), DecimalPlaces { 38 }, RoundingMode::HalfEven)
+                   == rounded);
 }
 
 TEST_CASE("wide rounding: a value checked_round refuses is answered when its rounding fits", "[wide-rounding]")
@@ -203,9 +220,14 @@ TEST_CASE("wide rounding: the kept integer must fit Rational and the places must
                           DecimalPlaces { -18 },
                           RoundingMode::HalfEven)
         == Rational { Rational::Int { 1181 } * 1'000'000'000'000'000'000 });
-    STATIC_REQUIRE(round_wide_ratio(from(Rational { 1, 3 }), DecimalPlaces { 19 }, RoundingMode::HalfEven).error()
+    // Places from -38 to 38, as checked_round takes them: 1/3 at 38 places and 7 at -38, and one past
+    // either way refused -- on zero in 256 bits, where 10^39 fits and zero would otherwise round to itself.
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 1, 3 }), DecimalPlaces { 38 }, RoundingMode::HalfEven)
+                   == 0.33333333333333333333333333333333333333_r);
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 7 }), DecimalPlaces { -38 }, RoundingMode::Ceiling) == 1e38_r);
+    STATIC_REQUIRE(round_wide_ratio(wide_from_rational<8>(Rational {}), DecimalPlaces { 39 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::Overflow);
-    STATIC_REQUIRE(round_wide_ratio(from(Rational { 1, 3 }), DecimalPlaces { -19 }, RoundingMode::HalfEven).error()
+    STATIC_REQUIRE(round_wide_ratio(wide_from_rational<8>(Rational {}), DecimalPlaces { -39 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(
         round_wide_ratio(R4 { false, W4::from_u64(1), W4 {} }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()

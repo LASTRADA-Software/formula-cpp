@@ -427,15 +427,15 @@ namespace detail
 /// `checked_round`'s arithmetic, so it can overflow where the rounding does,
 /// and it is the only one here that reports to the overflow census.
 ///
-/// @return `Overflow` for more than 18 places -- `checked_round`'s own
-///         refusal, since 10^-19 is not a representable step -- or wherever
-///         `checked_round` overflows at a negative @p places; `DomainError`
-///         for a tie under a rounding mode that is none of the seven.
-///         Nothing saturates.
+/// @return `Overflow` for places outside -18 to 18 (`ExactDecimalPlaces`)
+///         -- the text layer's own limit, though `checked_round` reaches 38
+///         -- or wherever `checked_round` overflows at a negative @p places;
+///         `DomainError` for a tie under a rounding mode that is none of the
+///         seven. Nothing saturates.
 [[nodiscard]] constexpr std::expected<NumberText, ArithmeticError> checked_decimal_text(
     Rational unrounded, DecimalPlaces places, RoundingMode roundingMode, DecimalPadding decimalPadding) noexcept
 {
-    if (places.value > detail::ExactDecimalPlaces)
+    if (places.value > detail::ExactDecimalPlaces || places.value < -detail::ExactDecimalPlaces)
         return std::unexpected { ArithmeticError::Overflow };
 
     if (places.value < 0)
