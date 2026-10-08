@@ -21,6 +21,7 @@ using formula::DecimalPlaces;
 using formula::Rational;
 using formula::RoundingMode;
 using formula::var;
+using namespace formula::literals;
 
 struct Ratio: formula::Quantity<Ratio, "r", "an invented ratio", unit::One>
 {
@@ -173,17 +174,85 @@ TEST_CASE("rounded_transcendental: an exponential answers wherever it fits a Rat
 
 TEST_CASE("rounded_transcendental: a tiny exponential is zero or one unit by mode", "[rounded_transcendental]")
 {
-    // exp -50 = 1.9 * 10^-22, below a quarter of any last kept unit: 0, except one unit upward.
-    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::HalfAwayFromZero>(Rational { -50 }) == Rational {});
-    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::Floor>(Rational { -50 }) == Rational {});
-    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::TowardZero>(Rational { -50 }) == Rational {});
-    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::Ceiling>(Rational { -50 }) == Rational { 1, 1000 });
-    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::AwayFromZero>(Rational { -50 }) == Rational { 1, 1000 });
-    STATIC_REQUIRE(expAt<DecimalPlaces { -2 }, RoundingMode::Ceiling>(Rational { -50 }) == Rational { 100 });
-    STATIC_REQUIRE(expAt<DecimalPlaces { -2 }, RoundingMode::HalfEven>(Rational { -50 }) == Rational {});
-    // exp -43 = 2.1 * 10^-19, through the kernel at its lowest power of two, 2^-63.
+    // exp -100 = 3.7 * 10^-44, below a quarter of any last kept unit: 0, except one unit upward.
+    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::HalfAwayFromZero>(Rational { -100 }) == Rational {});
+    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::Floor>(Rational { -100 }) == Rational {});
+    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::TowardZero>(Rational { -100 }) == Rational {});
+    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::Ceiling>(Rational { -100 }) == Rational { 1, 1000 });
+    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::AwayFromZero>(Rational { -100 }) == Rational { 1, 1000 });
+    STATIC_REQUIRE(expAt<DecimalPlaces { -2 }, RoundingMode::Ceiling>(Rational { -100 }) == Rational { 100 });
+    STATIC_REQUIRE(expAt<DecimalPlaces { -2 }, RoundingMode::HalfEven>(Rational { -100 }) == Rational {});
+    // And at 38 places, the last: still below a quarter of 10^-38.
+    STATIC_REQUIRE(expAt<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { -100 }) == Rational {});
+    STATIC_REQUIRE(expAt<DecimalPlaces { 38 }, RoundingMode::Ceiling>(Rational { -100 }) == 1e-38_r);
+    // exp -43 = 2.1 * 10^-19, through the kernel.
     CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::HalfEven>(Rational { -43 }) == Rational {});
     CHECK(expAt<DecimalPlaces { 18 }, RoundingMode::Ceiling>(Rational { -43 }) == Rational { 1, 1'000'000'000'000'000'000 });
+    // exp -50 = 1.9287498479639177830 * 10^-22 is no longer below a quarter of the last kept unit past 21
+    // places: through the kernel, and its digits.
+    CHECK(expAt<DecimalPlaces { 22 }, RoundingMode::HalfEven>(Rational { -50 }) == 2e-22_r);
+    CHECK(expAt<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { -50 })
+          == 0.00000000000000000000019287498479639178_r);
+    // exp -89 = 2.2 * 10^-39, the smallest argument the kernel takes, at its lowest power of two, 2^-129:
+    // below a quarter of 10^-38, 2.5 * 10^-39, so 0 to nearest at 38 places and one unit up under Ceiling.
+    CHECK(expAt<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { -89 }) == Rational {});
+    CHECK(expAt<DecimalPlaces { 38 }, RoundingMode::Ceiling>(Rational { -89 }) == 1e-38_r);
+    CHECK(expAt<DecimalPlaces { 38 }, RoundingMode::Floor>(Rational { -89 }) == Rational {});
+}
+
+TEST_CASE("rounded_transcendental: the exponential's shortcut starts where the kernel stops and no earlier",
+          "[rounded_transcendental]")
+{
+    // The shortcut below -89 (ExponentialArgumentFloor) is right only where e^x is below a quarter of
+    // 10^-38, and the kernel reaches only to -129 ln 2 = -89.416. Pinned from both sides.
+    // exp -88.19 = 5.0069 * 10^-39, just past half a unit at 38 places: through the kernel, 10^-38 to
+    // nearest. A floor above -88.19 would answer 0.
+    CHECK(expAt<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { -8819, 100 }) == 1e-38_r);
+    // exp -70 = 3.9754497359086468 * 10^-31, its digits at 38 places; a floor above -70 would answer 0.
+    CHECK(expAt<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { -70 })
+          == 0.00000000000000000000000000000039754497_r);
+    // exp -89.5 = 1.35 * 10^-39, past the kernel's reach: the shortcut's 0, and one unit under Ceiling. A
+    // floor below -89.416 would send it to the kernel, which answers Overflow.
+    STATIC_REQUIRE(expAt<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { -895, 10 }) == Rational {});
+    STATIC_REQUIRE(expAt<DecimalPlaces { 38 }, RoundingMode::Ceiling>(Rational { -895, 10 }) == 1e-38_r);
+}
+
+TEST_CASE("rounded_transcendental: places reach 38 either way, as checked_round's do", "[rounded_transcendental]")
+{
+    // Through the kernel, so at run time. ln 2 = 0.693147180559945309417232121458|1765..., to 30 places.
+    CHECK(lnAt<DecimalPlaces { 30 }, RoundingMode::HalfEven>(Rational { 2 }) == 0.693147180559945309417232121458_r);
+    CHECK(lnAt<DecimalPlaces { 30 }, RoundingMode::Ceiling>(Rational { 2 }) == 0.693147180559945309417232121459_r);
+    // log10 7 = 0.845098040014256830712216258592|6363..., to 30 places.
+    CHECK(log10At<DecimalPlaces { 30 }, RoundingMode::HalfEven>(Rational { 7 }) == 0.845098040014256830712216258593_r);
+    // exp 1 = 2.7182818284590452353602874713526624977|572..., to 37 places; at 38 the kept integer,
+    // 2.7 * 10^38, is past 2^127.
+    CHECK(expAt<DecimalPlaces { 37 }, RoundingMode::HalfEven>(Rational { 1 })
+          == 2.7182818284590452353602874713526624978_r);
+    CHECK(expAt<DecimalPlaces { 37 }, RoundingMode::Floor>(Rational { 1 }) == 2.7182818284590452353602874713526624977_r);
+    CHECK(expAt<DecimalPlaces { 38 }, RoundingMode::Floor>(Rational { 1 }) == overflow);
+    // A logarithm's two ends are at least 1.6 * 10^-37 apart, wider than a unit at 37 places: there and at
+    // 38 it cannot place ln 2 between two units, and the answer is Overflow, never a guess.
+    CHECK(lnAt<DecimalPlaces { 37 }, RoundingMode::Floor>(Rational { 2 }) == overflow);
+    CHECK(lnAt<DecimalPlaces { 38 }, RoundingMode::Floor>(Rational { 2 }) == overflow);
+    CHECK(log10At<DecimalPlaces { 37 }, RoundingMode::Floor>(Rational { 7 }) == overflow);
+    // The exact points never reach the kernel, and answer wherever their value fits: ln 1 at every places,
+    // log10 10 at 38 and log10 1/10 at 37. log10 100 at 38 places is 2 * 10^38 units, and log10 10^18 at 37
+    // is 1.8 * 10^38: past 2^127 both, so Overflow.
+    STATIC_REQUIRE(lnAt<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { 1 }) == Rational {});
+    STATIC_REQUIRE(log10At<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { 10 }) == Rational { 1 });
+    STATIC_REQUIRE(log10At<DecimalPlaces { 37 }, RoundingMode::HalfEven>(Rational { 1, 10 }) == Rational { -1 });
+    STATIC_REQUIRE(log10At<DecimalPlaces { 38 }, RoundingMode::HalfEven>(Rational { 100 }) == overflow);
+    STATIC_REQUIRE(log10At<DecimalPlaces { 37 }, RoundingMode::HalfEven>(Rational { 1'000'000'000'000'000'000 })
+                   == overflow);
+    // To whole 10^38s at -38 places: exp 88 = 1.65 * 10^38 is 10^38 under Floor, and 2 * 10^38, past
+    // 2^127, to nearest; ln 2 is 10^38 under Ceiling.
+    CHECK(expAt<DecimalPlaces { -38 }, RoundingMode::Floor>(Rational { 88 }) == 1e38_r);
+    CHECK(expAt<DecimalPlaces { -38 }, RoundingMode::HalfEven>(Rational { 88 }) == overflow);
+    CHECK(lnAt<DecimalPlaces { -38 }, RoundingMode::Ceiling>(Rational { 2 }) == 1e38_r);
+    // exp -80 = 1.8 * 10^-35, whose ends lie over 2^(192+116): to whole 10^38s that denominator times
+    // 10^38 is past 2^434, which the kernel's 448 bits hold. 0, and 10^38 under Ceiling.
+    CHECK(expAt<DecimalPlaces { -38 }, RoundingMode::HalfEven>(Rational { -80 }) == Rational {});
+    CHECK(expAt<DecimalPlaces { -38 }, RoundingMode::Ceiling>(Rational { -80 }) == 1e38_r);
 }
 
 TEST_CASE("rounded_transcendental: absence and failures come first and in order", "[rounded_transcendental]")
@@ -206,19 +275,19 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
     // A logarithm of zero or below; before places out of range.
     STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational {}) == domainError);
     STATIC_REQUIRE(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { -1 }) == domainError);
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { -1 }) == domainError);
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { 2 }) == overflow);
-    STATIC_REQUIRE(lnAt<DecimalPlaces { -19 }, RoundingMode::HalfEven>(Rational { 1 }) == overflow);
+    STATIC_REQUIRE(lnAt<DecimalPlaces { 39 }, RoundingMode::HalfEven>(Rational { -1 }) == domainError);
+    STATIC_REQUIRE(lnAt<DecimalPlaces { 39 }, RoundingMode::HalfEven>(Rational { 2 }) == overflow);
+    STATIC_REQUIRE(lnAt<DecimalPlaces { -39 }, RoundingMode::HalfEven>(Rational { 1 }) == overflow);
     // Places out of range before the tiny rule: without that check the tiny rule would answer 0 in the modes
     // that round down or to nearest (only the two upward modes overflow on their own).
-    STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::Ceiling>(Rational { -50 }) == overflow);
-    STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { -50 }) == overflow);
-    STATIC_REQUIRE(expAt<DecimalPlaces { -19 }, RoundingMode::Floor>(Rational { -50 }) == overflow);
+    STATIC_REQUIRE(expAt<DecimalPlaces { 39 }, RoundingMode::Ceiling>(Rational { -100 }) == overflow);
+    STATIC_REQUIRE(expAt<DecimalPlaces { 39 }, RoundingMode::HalfEven>(Rational { -100 }) == overflow);
+    STATIC_REQUIRE(expAt<DecimalPlaces { -39 }, RoundingMode::Floor>(Rational { -100 }) == overflow);
     // A wide power of ten is a special point, answered before the kernel is asked: log10 10^30 is 30.
     constexpr Rational::Int tenToFifteen = 1'000'000'000'000'000;
     STATIC_REQUIRE(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { tenToFifteen * tenToFifteen })
                    == Rational { 30 });
-    // The rule below -43 comes first: exp -2^70 is 0 without the kernel.
+    // The rule below -89 comes first: exp -2^70 is 0 without the kernel.
     STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { -(Rational::Int { 1 } << 70) })
                    == Rational {});
 }

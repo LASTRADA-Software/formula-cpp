@@ -45,15 +45,26 @@ namespace detail
     /// largest `Rational` at every places. Above it the answer is `Overflow` without the kernel.
     inline constexpr Rational ExponentialArgumentCap { 887, 10 };
 
+    /// The smallest argument the exponential's kernel takes, -89: e^-89 = 2.2 * 10^-39 is below a quarter of
+    /// 10^-38, the finest last kept unit (`MaximumDecimalPlaces`), so below it e^x is below a quarter of the
+    /// last kept unit at every places accepted and its rounding is decided without the kernel. 129 ln 2 >
+    /// 89 bounds the kernel's reduction (`detail/transcendental.hpp`).
+    inline constexpr Rational ExponentialArgumentFloor { -89 };
+
     /// @p F of @p argument, rounded to @p places decimal places under @p roundingMode -- the correctly
     /// rounded decimal of the true value, rational or not. The decision, in order: a logarithm of zero or
-    /// below is `DomainError`; places outside -18...18 are `Overflow`, as for `checked_round`; a special
-    /// point -- the only values that can tie -- goes to `checked_round`; the exponential of more than 887/10
-    /// is `Overflow` (`ExponentialArgumentCap`: no such value fits a `Rational`), and of less than -43 is
-    /// below a quarter of the last kept unit at any places accepted, so 0, or one unit under `Ceiling` and
-    /// `AwayFromZero`; everything else is the kernel's enclosure, rounded by `decide_rounding`, which
-    /// answers `Overflow` when the kept integer does not fit -- e^88.5, at every places -- and when the two
-    /// ends round differently. The kernel takes every argument a `Rational` holds. The special points are
+    /// below is `DomainError`; places outside -`MaximumDecimalPlaces`...`MaximumDecimalPlaces` are
+    /// `Overflow`, as for `checked_round`; a special point -- the only values that can tie -- goes to
+    /// `checked_round`; the exponential of more than 887/10 is `Overflow` (`ExponentialArgumentCap`: no such
+    /// value fits a `Rational`), and of less than -89 (`ExponentialArgumentFloor`) is below a quarter of the
+    /// last kept unit at any places accepted, so 0, or one unit under `Ceiling` and `AwayFromZero`;
+    /// everything else is the kernel's enclosure, rounded by `decide_rounding`, which answers `Overflow`
+    /// when the kept integer does not fit -- e^88.5, at every places -- and when the two ends round
+    /// differently. A logarithm's two ends are at least 1.6 * 10^-37 apart, more than one unit at 37 places,
+    /// so a logarithm the kernel computes is always `Overflow` at 37 or 38 places; its exact points -- ln 1,
+    /// log10 10^k -- are answered without the kernel, wherever their value fits: ln 1 at every places, log10 10
+    /// and log10 1/10 at 38, log10 10^k for |k| <= 17 at 37. The kernel takes every argument a
+    /// `Rational` holds. The special points are
     /// `RepFunctions<Rational>`'s, through `transcendental_of`: their value, and `Inexact` elsewhere.
     template <Transcendental F>
     [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rounded_transcendental(
@@ -64,7 +75,7 @@ namespace detail
             if (argument.sign() <= 0)
                 return std::unexpected { ArithmeticError::DomainError };
         }
-        if (places.value > 18 || places.value < -18)
+        if (places.value > MaximumDecimalPlaces || places.value < -MaximumDecimalPlaces)
             return std::unexpected { ArithmeticError::Overflow };
 
         std::expected<Rational, ArithmeticError> const exact = transcendental_of<F, Rational>(argument);
@@ -82,7 +93,7 @@ namespace detail
         {
             if (argument > ExponentialArgumentCap)
                 return std::unexpected { ArithmeticError::Overflow };
-            if (argument < Rational { -43 })
+            if (argument < ExponentialArgumentFloor)
             {
                 if (roundingMode == RoundingMode::Ceiling || roundingMode == RoundingMode::AwayFromZero)
                     return Rational::from_decimal(1, -places.value);
@@ -127,7 +138,9 @@ struct RoundedTranscendentalNode: NodeBase
 /// places: `rounded_ln<DecimalPlaces { 4 }, RoundingMode::HalfEven>(var<Count> / var<InitialCount>)`.
 ///
 /// The integer kernel (`detail/transcendental.hpp`) takes every argument a `Rational` holds: ln (2^127 - 1)
-/// is 88.029691931113054295 at 18 places, under `Floor`. A rounding the kernel cannot decide is `Overflow`.
+/// is 88.029691931113054295 at 18 places, under `Floor`. A rounding the kernel cannot decide is `Overflow`:
+/// so is every logarithm it computes at 37 or 38 places, where its enclosure is wider than the last kept
+/// unit. ln 1 is answered exactly before the kernel is asked, at any places.
 template <DecimalPlaces Places, RoundingMode Mode, Node Operand>
 [[nodiscard]] constexpr auto rounded_ln(Operand operand) noexcept
 {
@@ -165,7 +178,7 @@ template <DecimalPlaces Places, RoundingMode Mode, typename Bound>
 /// The exponential of `operand`, rounded exactly to `Places` decimal places.
 ///
 /// Checked in this order: an argument above 887/10 is `Overflow`, since e^x is then past the largest
-/// `Rational`; one below -43 is 0, or one last kept unit under `Ceiling` and `AwayFromZero`, whatever its
+/// `Rational`; one below -89 is 0, or one last kept unit under `Ceiling` and `AwayFromZero`, whatever its
 /// width, so exp(-2^70) is 0; any other goes to the integer kernel (`detail/transcendental.hpp`), which
 /// answers wherever the result fits the declared places -- e^45 to 18 places, e^88 to whole units -- and is
 /// `Overflow` where it does not, as e^88.5 is at every places. A rounding the kernel cannot decide is

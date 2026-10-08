@@ -148,7 +148,7 @@ constexpr Rational::Int largestInt = std::numeric_limits<Rational::Int>::max(); 
 constexpr Rational::Int smallestInt = std::numeric_limits<Rational::Int>::min(); // -2^127
 
 // clang-format off
-constexpr std::array<Reference, 51> references { {
+constexpr std::array<Reference, 54> references { {
     { Transcendental::NaturalLogarithm, 2, 1, false, "6931471805599453094172321214581765680755", 40 },
     { Transcendental::NaturalLogarithm, 1, 2, true, "6931471805599453094172321214581765680755", 40 },
     { Transcendental::NaturalLogarithm, 3, 1, false, "1098612288668109691395245236922525704647", 39 },
@@ -181,6 +181,9 @@ constexpr std::array<Reference, 51> references { {
     { Transcendental::Exponential, -1, 1, false, "3678794411714423215955237701614608674458", 40 },
     { Transcendental::Exponential, 43, 1, false, "4727839468229346561474457562744280370819", 21 },
     { Transcendental::Exponential, -43, 1, false, "2115131037591080486631401007022651470196", 58 },
+    { Transcendental::Exponential, -50, 1, false, "1928749847963917783017342816527012574752", 61 },
+    { Transcendental::Exponential, -88, 1, false, "6054601895401185884531860533810599287768", 78 },
+    { Transcendental::Exponential, -89, 1, false, "2227363561795743739222909281640826188721", 78 },
     { Transcendental::Exponential, 1, 2, false, "1648721270700128146848650787814163571653", 39 },
     { Transcendental::Exponential, -1, 2, false, "6065306597126334236037995349911804534419", 40 },
     { Transcendental::Exponential, 10, 1, false, "2202646579480671651695790064528424436635", 35 },
@@ -264,9 +267,10 @@ TEST_CASE("transcendental kernel: the kernel re-derives its stored constants fro
 TEST_CASE("transcendental kernel: every reference value is enclosed and rounds as the reference does in every mode",
           "[transcendental]")
 {
-    constexpr std::array<int, 9> placesTried { -2, -1, 0, 1, 2, 4, 9, 17, 18 };
+    constexpr std::array<int, 12> placesTried { -38, -2, -1, 0, 1, 2, 4, 9, 17, 18, 30, 37 };
     std::size_t compared = 0;
     std::size_t undecided = 0;
+    std::size_t undecidedLogarithms = 0;
     for (std::size_t rowAt = 0; rowAt < references.size(); ++rowAt)
     {
         Reference const& row = references[rowAt];
@@ -291,18 +295,25 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
                 if (!decided.has_value() && referenceDecided.has_value())
                 {
                     CHECK(decided.error() == formula::ArithmeticError::Overflow);
-                    ++undecided;
+                    if (row.function != Transcendental::Exponential && places == 37)
+                        ++undecidedLogarithms;
+                    else
+                        ++undecided;
                 }
                 else
                     CHECK(decided == referenceDecided);
                 ++compared;
             }
     }
-    // 51 rows, 9 places, 7 modes: a loop over nothing fails here.
-    REQUIRE(compared == 3213);
-    // None: an exponential's 192 fraction bits and a logarithm's 128 decide every row the reference's 40
-    // digits decide. At 128 fraction bits the exponentials of 43 to 44 at 17 and 18 places were not.
+    // 54 rows, 12 places, 7 modes: a loop over nothing fails here.
+    REQUIRE(compared == 4536);
+    // None but the logarithms at 37 places: an exponential's 192 fraction bits decide every row the
+    // reference's 40 digits decide, at every places tried, and a logarithm's 128 at every places up to 30.
+    // At 128 fraction bits the exponentials of 43 to 44 at 17 and 18 places were not.
     CHECK(undecided == 0);
+    // A logarithm's ends are at least 1.6 * 10^-37 apart, wider than a unit at 37 places: every logarithm
+    // the reference decides there, 147 rows and modes, is Overflow.
+    CHECK(undecidedLogarithms == 147);
     // Three of them written out, so that a reader sees the digits.
     CHECK(kernel_rounding(Transcendental::NaturalLogarithm, Rational { 2 }, 18, RoundingMode::Floor)
           == Rational::from_decimal(693'147'180'559'945'309, -18));
@@ -362,7 +373,7 @@ TEST_CASE("transcendental kernel: a scaled quotient of 128-bit operands carries 
           "[transcendental]")
 {
     // The divisor 2^128 - 1 leaves a remainder above 2^127, whose doubling passes 2^128: the shifted-out bit
-    // must still count. Checked against the general long division of the 384-bit word, a different route.
+    // must still count. Checked against the general long division of the 448-bit word, a different route.
     detail::UInt128 const divisor { ~std::uint64_t { 0 }, ~std::uint64_t { 0 } };
     detail::UInt128 const dividend { std::uint64_t { 1 } << 63, 5 };
     for (std::size_t const fractionBits: { std::size_t { 128 }, std::size_t { 192 } })
@@ -388,7 +399,7 @@ TEST_CASE("transcendental kernel: the kernel answers at compile time", "[transce
 {
     // The one deliberate compile-time check of the kernel. A whole rounding -- the enclosure and
     // decide_rounding -- in one constant evaluation, measured at about
-    // 242 300 steps on cl 19.51.36257, against a default budget of about 1 049 000. Every other check that runs the kernel
+    // 279 200 steps on cl 19.51.36260, against a default budget of about 1 049 000. Every other check that runs the kernel
     // runs at run time.
     STATIC_REQUIRE(kernel_rounding(Transcendental::DecimalLogarithm, Rational { 2 }, 3, RoundingMode::HalfEven)
                    == Rational { 301, 1000 });
