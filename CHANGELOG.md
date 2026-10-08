@@ -6,6 +6,29 @@ change is recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- **`MaximumDecimalPlaces`** (`rounding.hpp`), 38: the most decimal places rounding takes either way, the scale
+  `Rational::from_decimal` and `_r` span. A place outside -38 to 38 is `ArithmeticError::Overflow`.
+
+### Changed
+
+- **Rounding reaches 38 decimal places in each direction**, up from 18, the largest power of ten in a 64-bit integer:
+  `checked_round` and `round` with `DecimalPlaces` or `SignificantDigits`, `checked_round_to_declared`,
+  `rational_from_double`, the rounding nodes, `rounded_output`, `rounded_sqrt`, `rounded_ln`, `rounded_log10` and
+  `rounded_exp`. 15 significant digits of a value below 1e-4 -- `-2.12345678901234e-5_r` is
+  `-212345678901234 / 10^19` -- now round instead of reporting `Overflow`. A place inside the range still reports
+  `Overflow` wherever an intermediate does not fit, never a wrong or clamped value: an irrational square root rounds
+  at no more than 19 places, and a logarithm the kernel computes at no more than 36 (ln 1 and log10 of a power of
+  ten are answered without the kernel, wherever their value fits: ln 1 at every places, log10 10 and log10 1/10 at
+  38). The integer kernel behind the rounded logarithms and exponential works in 448 bits, up
+  from 384, and `rounded_exp` computes every argument from -89 up, where it used to answer below -43 without the
+  kernel. Each rounded logarithm or exponential the kernel computes costs about 10 to 15 percent more
+  constant-evaluation steps than before, so a constant expression close to the compiler's budget may need room.
+- **Text output still stops at 18 decimal places** either way, as its own limit: `decimal_text`, `number_text`, a
+  trace's and `render()`'s numbers and `std::format` refuse more, as before, though the value was rounded further.
+  `checked_decimal_text` at fewer than -18 places is `Overflow` on its own, as it was through `checked_round`.
+
 ## [0.5.0] - 2026-10-07
 
 The fifth release. A tutorial on the documentation site builds a compressive-strength test step by step, and the README

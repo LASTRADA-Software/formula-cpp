@@ -485,10 +485,12 @@ std::println("not measured: {}", absentText.view());
 std::println("two places:   {}\n", twoPlaces.view());
 ```
 
-**When a number cannot be spelled.** `decimal_text` throws
-`ArithmeticException` for more than 18 places, and where rounding to whole
-tens or thousands overflows. `number_text` throws it where its rounding
-overflows so, and for a padded or approximating style in a unit whose
+**When a number cannot be spelled.** Text is written at no more than 18
+places either way -- its own limit, though `round` itself reaches 38
+([Numbers](numbers.md#limits)). `decimal_text` throws
+`ArithmeticException` for more than 18 places, or fewer than -18, and where
+rounding to whole tens or thousands overflows. `number_text` throws it
+where its rounding overflows so, and for a padded or approximating style in a unit whose
 declared decimals lie outside -18 to 18: a `Rational` in any unit you pass,
 or a `Measured` whose unit has a symbol or is dimensionless. A `Measured` in
 a dimensioned unit with no symbol is shown in the coherent unit, at that

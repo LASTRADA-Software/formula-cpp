@@ -629,8 +629,9 @@ value these fields state converts to one exactly.
 
 Conversion is built on `formula::Rational` and the `checked_` arithmetic
 functions, so it inherits their overflow behaviour and rounding limits
-exactly -- including the ±18-decimal-place ceiling on `DecimalPlaces` and the
-numerator-magnitude-dependent limits on rounding described in
+exactly -- including the ±38-decimal-place limit on rounding,
+`MaximumDecimalPlaces`, and the numerator-magnitude-dependent limits on
+rounding described in
 [`docs/numbers.md`](numbers.md#limits). Nothing in `dimension.hpp` or
 `unit.hpp` widens or narrows those limits; a `Unit`'s magnitude and offset are
 exactly the integer pairs `Rational` already knows how to handle exactly.

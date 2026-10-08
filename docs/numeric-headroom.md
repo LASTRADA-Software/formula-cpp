@@ -440,10 +440,10 @@ different denominator for every point is built to overflow.
 
 Only the integer `Rational` stores changed. These stay as they were:
 
-- **Rounding's decimal places**, which stop at ±18
-  ([Numbers](numbers.md#limits)). Widening them is a separate decision.
-  `from_decimal`'s exponents and the `_r` literal have since widened to
-  10^±38 and a 128-bit mantissa.
+- **Text output's decimal places**, which stop at 18 either way
+  ([Displaying numbers](display.md)). Rounding's own places, `from_decimal`'s
+  exponents and the `_r` literal have since widened to ±38 places, 10^±38 and
+  a 128-bit mantissa ([Numbers](numbers.md#limits)).
 - **The 64-bit fields** of `Unit`, `Band` and `Breakpoint`: `band` and
   `breakpoint` refuse a `Rational` bound or key that does not fit them.
 
